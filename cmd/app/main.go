@@ -141,15 +141,22 @@ func build(cfg config.Config, db *data.DB) application {
 	customerService := customer.NewService(customer.NewRepo(db))
 	invoiceService := invoice.NewService(invoice.NewRepo(db))
 
-	k := kernel.New(cfg).
+	k := kernel.New(cfg)
+
+	k.
 		// The pipeline order is the order of execution. Recover comes FIRST, or a
 		// panic in any middleware below it escapes without a page.
 		Use(
 			middleware.Recover(cfg.IsDev(), errorpage.Options{
 				Editor:    cfg.Editor,
 				AppModule: appModule,
+				// What the modules know about the state of the system, next to
+				// the failure somebody is already looking at.
+				Diagnose: k.Diagnose,
 			}),
-			middleware.Observe(cfg.IsDev(), cfg.TracingSecret),
+			// k.Recorder() is the buffer behind /_arandu/debug, and nil outside
+			// development -- which is what makes the console free in production.
+			middleware.Observe(cfg.IsDev(), cfg.TracingSecret, k.Recorder()),
 			middleware.SecurityHeaders(cfg.IsDev()),
 			middleware.RateLimit(limiter, 300, time.Minute, middleware.KeyBySession(sessions.IDFromRequest)),
 			middleware.CSRFProtect(csrf, sessions.IDFromRequest),
