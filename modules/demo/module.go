@@ -200,7 +200,8 @@ func (m *Module) otherTenantRead(w http.ResponseWriter, r *http.Request) {
 	actor := m.actor(r)
 
 	// Reaching into the other tenant needs a system grant, which is exactly why
-	// SystemGrant call sites are auditable: `aru doctor --strict` lists them all.
+	// SystemGrant call sites are auditable: `aru doctor` reports the ones outside
+	// a seeder, a job or a command, and `--strict` turns that into a failure.
 	// This is the demonstration cheating on purpose, to get an id worth trying.
 	foreign, err := m.customers.ListAs(ctx, security.SystemGrant(customer.ActionView, m.otherTenant), data.Query{Limit: 1})
 	if err != nil || len(foreign) == 0 {
