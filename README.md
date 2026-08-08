@@ -9,17 +9,19 @@
 <a href="LICENSE.md"><img src="https://img.shields.io/github/license/arandu-io/examples" alt="License"></a>
 </p>
 
+
 ## About these examples
 
-> **Note:** this repository is on the tree that ADR 0019 replaced, and porting it
-> is an open decision. Read it for the shape of a module — the entity, the
-> policy, the repository, the service — and read
+> **Note:** this repository is on an older tree, and porting it is an open
+> decision. Read it for the shape of a module — the entity, the policy, the
+> repository, the service — and read
 > [arandu-io/arandu](https://github.com/arandu-io/arandu) for the tree a new
 > project actually gets.
 
 What it demonstrates is the part that is hard to believe until it is on screen:
 a repository call that does not compile without a `Grant`, a tenant that cannot
-come from the request, and a debug console that reconstructs a request.
+come from the request, and a debug console that reconstructs a request after the
+fact.
 
 ## Learning Arandu
 
@@ -28,7 +30,7 @@ The API reference is generated from the doc comments and lives on
 symbol carries one, and that is deliberate: it is the documentation that cannot
 drift from the code, because it sits in the same file.
 
-The CLI documents itself — `aru help` lists every command, and each one explains
+The CLI documents itself. `aru help` lists every command, and each one explains
 what it writes and what to do with it. `aru doctor` explains what it found and
 what breaks, not which rule was violated.
 
