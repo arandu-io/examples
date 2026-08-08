@@ -1,0 +1,232 @@
+package repositories
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/arandu-io/framework/data"
+	"github.com/arandu-io/framework/security"
+
+	models "github.com/arandu-io/examples/app/Models"
+	policies "github.com/arandu-io/examples/app/Policies"
+)
+
+// Pagination bounds for posts. A request that asks for everything gets the
+// maximum, never everything: an unbounded query is how one page load takes a
+// database down.
+const (
+	postDefaultLimit = 50
+	postMaxLimit     = 200
+)
+
+// PostRepository is the only door to the posts table.
+//
+// Every method starts with g.Check. The Grant is required by the signature, so
+// forgetting it is a compile error, and the check proves the grant was issued for
+// this exact action -- which catches copy-paste between methods.
+//
+// The SQL uses "?" placeholders and types every supported database shares, so
+// these statements run unchanged on SQLite and PostgreSQL.
+type PostRepository struct {
+	db *data.DB
+}
+
+// NewPostRepository returns a repository over an instrumented handle.
+func NewPostRepository(db *data.DB) *PostRepository { return &PostRepository{db: db} }
+
+// Compile-time proof of the contract.
+var _ data.Repository[models.Post, string] = (*PostRepository)(nil)
+
+const postColumns = `id, title, slug, body, published_at, created_at`
+
+// Find returns one post by id.
+func (r *PostRepository) Find(ctx context.Context, g security.Grant, id string) (models.Post, error) {
+	if err := g.Check(policies.PostView); err != nil {
+		return models.Post{}, err
+	}
+	row := r.db.QueryRowContext(ctx,
+		`SELECT `+postColumns+` FROM posts WHERE id = ?`, id)
+	return r.scan(row)
+}
+
+// postSortable is the ordering allowlist. A sort field is a column name, and a
+// column name taken from the request is injection through a door nobody watches.
+var postSortable = map[string]string{
+	"":             "created_at",
+	"created_at":   "created_at",
+	"title":        "title",
+	"slug":         "slug",
+	"body":         "body",
+	"published_at": "published_at",
+}
+
+// List returns a page of posts.
+//
+// Pagination is keyset based: OFFSET grows more expensive with every page and
+// skips rows when data changes underneath it.
+func (r *PostRepository) List(ctx context.Context, g security.Grant, q data.Query) ([]models.Post, error) {
+	// PostList, not PostView. The specification can grant them to
+	// different roles -- "a support agent may open the record it was given, but
+	// may not page through every record there is" -- and checking view here made
+	// the list permission decorative: whoever could read one could read all of them.
+	if err := g.Check(policies.PostList); err != nil {
+		return nil, err
+	}
+	column, ok := postSortable[q.Sort]
+	if !ok {
+		return nil, fmt.Errorf("%w: %q", models.ErrPostSort, q.Sort)
+	}
+
+	limit := q.Limit
+	switch {
+	case limit <= 0:
+		limit = postDefaultLimit
+	case limit > postMaxLimit:
+		limit = postMaxLimit
+	}
+
+	query := `SELECT ` + postColumns + ` FROM posts WHERE 1 = 1`
+	var args []any
+	if q.Cursor != "" {
+		// See the tenant branch: the predicate follows q.Sort, not created_at.
+		query += ` AND (` + column + ` > (SELECT ` + column + ` FROM posts WHERE id = ?)
+		            OR (` + column + ` = (SELECT ` + column + ` FROM posts WHERE id = ?) AND id > ?))`
+		args = append(args, q.Cursor, q.Cursor, q.Cursor)
+	}
+	query += ` ORDER BY ` + column + `, id LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.Post
+	for rows.Next() {
+		p, err := r.scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// Create inserts the post and returns it as stored.
+func (r *PostRepository) Create(ctx context.Context, g security.Grant, p models.Post) (models.Post, error) {
+	if err := g.Check(policies.PostCreate); err != nil {
+		return models.Post{}, err
+	}
+
+	var err error
+	if p.ID == "" {
+		// The id comes from the application, not from a database default:
+		// gen_random_uuid, UUID() and randomblob are three spellings of one idea,
+		// and depending on any of them would tie the schema to one engine.
+		if p.ID, err = data.NewID(); err != nil {
+			return models.Post{}, err
+		}
+	}
+	p.CreatedAt = time.Now().UTC()
+
+	_, err = r.db.ExecContext(ctx,
+		`INSERT INTO posts (`+postColumns+`) VALUES (?, ?, ?, ?, ?, ?)`,
+		p.ID, p.Title, p.Slug, p.Body, p.PublishedAt, p.CreatedAt)
+	if err != nil {
+		if r.conflict(err) {
+			return models.Post{}, models.ErrPostConflict
+		}
+		return models.Post{}, err
+	}
+	return p, nil
+}
+
+// Update writes the mutable fields.
+func (r *PostRepository) Update(ctx context.Context, g security.Grant, p models.Post) (models.Post, error) {
+	if err := g.Check(policies.PostUpdate); err != nil {
+		return models.Post{}, err
+	}
+
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE posts SET title = ?, slug = ?, body = ?, published_at = ? WHERE id = ?`,
+		p.Title, p.Slug, p.Body, p.PublishedAt, p.ID)
+	if err != nil {
+		if r.conflict(err) {
+			return models.Post{}, models.ErrPostConflict
+		}
+		return models.Post{}, err
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return models.Post{}, models.ErrPostNotFound
+	}
+	return p, nil
+}
+
+// Delete removes one post.
+func (r *PostRepository) Delete(ctx context.Context, g security.Grant, id string) error {
+	if err := g.Check(policies.PostDelete); err != nil {
+		return err
+	}
+	res, err := r.db.ExecContext(ctx,
+		`DELETE FROM posts WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return models.ErrPostNotFound
+	}
+	return nil
+}
+
+// Health reports whether the repository can reach its storage.
+//
+// Nothing calls it out of the box. It is here so AppServiceProvider can
+// implement kernel.Health over the repositories it owns, which is what puts this
+// table on /_arandu/health and on the error page's diagnosis.
+func (r *PostRepository) Health(ctx context.Context) error { return r.db.PingContext(ctx) }
+
+// scan reads one row.
+//
+// It takes the interface inline rather than a named one, and it is a method
+// rather than a function, for the same reason as the helpers below: every
+// repository of the application shares this package, and a second module
+// declaring rowScanner would not compile.
+func (r *PostRepository) scan(row interface{ Scan(dest ...any) error }) (models.Post, error) {
+	var p models.Post
+	err := row.Scan(&p.ID, &p.Title, &p.Slug, &p.Body, &p.PublishedAt, &p.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return models.Post{}, models.ErrPostNotFound
+	}
+	if err != nil {
+		return models.Post{}, err
+	}
+	return p, nil
+}
+
+// normalize lowercases and trims, which is what keeps a plain UNIQUE index
+// case-insensitive on every engine.
+func (r *PostRepository) normalize(s string) string {
+	return strings.ToLower(strings.TrimSpace(s))
+}
+
+// conflict recognizes a duplicate key across engines by message, which is the
+// price of not importing a driver into a repository.
+func (r *PostRepository) conflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "unique constraint") ||
+		strings.Contains(msg, "duplicate key") ||
+		strings.Contains(msg, "duplicate entry")
+}
+
+// arandu:begin custom
+// Queries beyond the five above go here, and survive regeneration. Keep the
+// g.Check as the first line of each one.
+// arandu:end custom

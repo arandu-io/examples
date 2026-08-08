@@ -4,7 +4,7 @@
 
 **Do not open a public issue.** Use one of:
 
-- [GitHub Security Advisory](https://github.com/arandu-io/examples/security/advisories/new)
+- [GitHub Security Advisory](https://github.com/arandu-io/framework/security/advisories/new)
 - email to `security@arandu.dev`
 
 A public issue about a vulnerability will be closed and moved to a private

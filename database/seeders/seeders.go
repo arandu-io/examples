@@ -12,27 +12,24 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/arandu-io/framework/data"
 	"github.com/arandu-io/framework/modules/auth"
-
-	"github.com/arandu-io/examples/modules/customer"
-	"github.com/arandu-io/examples/modules/invoice"
 )
 
 // Deps carries what seeders are allowed to touch. It is explicit for the same
 // reason the rest of the wiring is: a seeder that can reach anything is a seeder
 // nobody can review.
 type Deps struct {
-	Auth      *auth.Service
-	Customers *customer.Service
-	Invoices  *invoice.Service
-
+	Auth *auth.Service
+	// DB is the handle a seeder of domain data needs. The skeleton ships Deps
+	// with Auth and Tenant only, because the first user is the one thing every
+	// project seeds; anything else is this application's, and adding it here is
+	// the one line it costs.
+	DB *data.DB
 	// Tenant is the tenant seeded rows belong to. It comes from the application,
 	// never from the seeder: a seeder that picks its own tenant seeds data nobody
 	// can reach (RULE 14).
 	Tenant string
-	// OtherTenant receives a second set of rows, so the isolation demonstration
-	// has something real to fail against.
-	OtherTenant string
 }
 
 // Seeder is one unit of seeding.
@@ -49,7 +46,7 @@ type Seeder interface {
 var registry = []Seeder{
 	DatabaseSeeder{},
 	AdminSeeder{},
-	DemoDataSeeder{},
+	PostSeeder{},
 }
 
 // Run executes DatabaseSeeder, or the one named by --class.
