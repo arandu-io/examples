@@ -1,101 +1,52 @@
-# arandu examples
+<h1 align="center">arandu-io/examples</h1>
 
-An application that demonstrates the Arandu framework, and a guided tour that
-makes each claim visible on screen.
+<p align="center">Applications built with Arandu, to read.</p>
 
-It has a second job, and that one matters more: **this is the shape
-`aru make:module` will generate.** The module below is written by hand so that
-the generator has something proven to copy, rather than a template someone
-thought looked good.
+<p align="center">
+<a href="https://github.com/arandu-io/examples/actions/workflows/ci.yml"><img src="https://github.com/arandu-io/examples/actions/workflows/ci.yml/badge.svg" alt="Build Status"></a>
+<a href="https://pkg.go.dev/github.com/arandu-io/examples"><img src="https://pkg.go.dev/badge/github.com/arandu-io/examples.svg" alt="Go Reference"></a>
+<a href="https://github.com/arandu-io/examples/tags"><img src="https://img.shields.io/github/v/tag/arandu-io/examples?label=version" alt="Latest Version"></a>
+<a href="LICENSE.md"><img src="https://img.shields.io/github/license/arandu-io/examples" alt="License"></a>
+</p>
 
-## Run it
+## About these examples
 
-Nothing to install. The default connection is SQLite, a file under `database/`.
+> **Note:** this repository is on the tree that ADR 0019 replaced, and porting it
+> is an open decision. Read it for the shape of a module — the entity, the
+> policy, the repository, the service — and read
+> [arandu-io/arandu](https://github.com/arandu-io/arandu) for the tree a new
+> project actually gets.
 
-```
-cp .env.example .env
-aru key:generate          # paste the line into .env
-aru migrate
-aru db:seed
-aru serve
-```
+What it demonstrates is the part that is hard to believe until it is on screen:
+a repository call that does not compile without a `Grant`, a tenant that cannot
+come from the request, and a debug console that reconstructs a request.
 
-Then open `/demo` and sign in at `/auth/login` with the credentials from
-`.env` (`admin@example.test`).
+## Learning Arandu
 
-Moving to PostgreSQL is `.env` and nothing else — no code changes, because the
-portability lives in the SQL rather than in an abstraction over it:
+The API reference is generated from the doc comments and lives on
+[pkg.go.dev](https://pkg.go.dev/github.com/arandu-io/framework). Every exported
+symbol carries one, and that is deliberate: it is the documentation that cannot
+drift from the code, because it sits in the same file.
 
-```
-DB_CONNECTION=pgsql
-DB_DATABASE=arandu
-DB_HOST=127.0.0.1
-DB_USERNAME=arandu
-DB_PASSWORD=arandu
-```
+The CLI documents itself — `aru help` lists every command, and each one explains
+what it writes and what to do with it. `aru doctor` explains what it found and
+what breaks, not which rule was violated.
 
-## The tour
+A guide and a website do not exist yet, and that is a decision rather than a
+gap: a guide written against an API that still moves is work done twice, and the
+second time is worse — there is wrong documentation published. The site is the
+next phase, and it will be an Arandu application.
 
-| Route | The claim it makes visible |
-|---|---|
-| `/demo/n-plus-one` | the page names the N+1 by itself, with the repeated statement and the stack that led to it |
-| `/demo/batched` | the same page done right: two queries whatever the number of customers |
-| `/demo/slow-query` | the diagnosis says which statement to look at |
-| `/demo/dump` | values recorded with origin and timing, and the customer document absent |
-| `/demo/panic` | your frames expanded, the framework's collapsed, queries still there |
-| `/demo/other-tenant` | a real id from another tenant answers "not found", not "forbidden" |
-| `/demo/no-grant` | the half a running program cannot show: it does not compile |
+## Contributing
 
-The last one is worth reading even without running anything:
+See [CONTRIBUTING.md](CONTRIBUTING.md). Before opening a pull request, the three
+commands at the top of that file have to pass, and CI runs exactly them.
 
-```
-go test ./modules/customer/ -run TestRepositoryWithoutGrantDoesNotCompile -v
-```
+## Security Vulnerabilities
 
-Two fixtures under `testdata/`. One omits the Grant argument; the other tries to
-forge a Grant and cannot, because every field of `security.Grant` is unexported.
-The test runs the toolchain over both and **requires** the failure, with the
-specific message — a fixture that fails for an unrelated reason would prove
-nothing.
-
-## The module
-
-`modules/customer/` is the canonical shape. One feature, one directory:
-
-```
-module.go            registration, routes, migrations, health
-customer.entity.go   the entity, and what it refuses to reveal
-customer.policy.go   who may do what; denies by default
-customer.repo.go     data access, requires a Grant
-customer.service.go  business rules; Authorize -> Grant -> Repository
-customer.request.go  input types and Validate
-handlers.go          thin: extract, delegate, render
-```
-
-Three decisions in there are worth copying into your own modules:
-
-**Reading a record and reading every field of it are different permissions.**
-`customer.view` lets support see a customer; `customer.view_full_document` is
-what it takes to see the unmasked registration number, and reading it is always
-an audit event. Most systems learn this distinction during an incident.
-
-**The entity refuses to serialize its own secret.** `MarshalJSON` and `LogValue`
-are methods on the type, so the document stays out of responses, logs and the
-debug page without any handler having to remember.
-
-**Read before write.** `Update` loads the stored row and runs the policy against
-that, not against what the client claims the row is. Skipping it is how a check
-passes on attacker-supplied data.
-
-## What is not here
-
-No view layer — that is `porang`, in phase 2, and it has its own specification
-(templ, Tailwind standalone, zero Node). The handlers answer JSON, and when the
-view layer lands they gain a branch that returns an HTML fragment: the module
-contract does not change.
-
-No generator either. This repository is the generator's input, not its output.
+Please review [our security policy](SECURITY.md) on how to report a
+vulnerability. Never open a public issue for one.
 
 ## License
 
-MIT, the same license Laravel uses. See `LICENSE.md`.
+Open-sourced software licensed under the [MIT license](LICENSE.md).
