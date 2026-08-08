@@ -8,91 +8,99 @@ import (
 	"html/template"
 	"io"
 
+	authui "github.com/arandu-io/examples/app/Http/Controllers/Auth"
 	"github.com/arandu-io/framework/view"
 )
+
+//line resources/views/welcome.kyse.go:7
+
+// WelcomeData is what the landing page draws.
+type WelcomeData = authui.AuthPage
+
+//line resources/views/welcome.go:21
 
 func init() { view.Register("welcome", renderWelcome) }
 
 // renderWelcome renders welcome.
 func renderWelcome(w io.Writer, data any) error {
-	d, ok := data.(AuthPage)
+	d, ok := data.(WelcomeData)
 	if !ok {
-		return view.WrongData("welcome", "AuthPage", data)
+		return view.WrongData("welcome", "WelcomeData", data)
 	}
 	_ = d
 	sections := map[string]func(io.Writer) error{
 		"content": func(w io.Writer) error {
 			var err error
 			if err == nil {
-				_, err = io.WriteString(w, "<div class=\"mx-auto flex w-full max-w-2xl flex-col items-start gap-6 py-12\">\n")
+				_, err = io.WriteString(w, "\t<div class=\"mx-auto flex w-full max-w-2xl flex-col items-start gap-6 py-12\">\n")
 			}
 			if err == nil {
-				_, err = io.WriteString(w, "<h1 class=\"text-3xl font-semibold tracking-tight text-slate-900 dark:text-slate-100\">")
+				_, err = io.WriteString(w, "\t\t<h1 class=\"text-3xl font-semibold tracking-tight\">")
 			}
 			if err == nil {
-//line resources/views/welcome.kyse.go:9
+//line resources/views/welcome.kyse.go:16
 				_, err = io.WriteString(w, template.HTMLEscapeString(view.Text(d.AppName)))
-//line resources/views/welcome.go:36
+//line resources/views/welcome.go:44
 			}
 			if err == nil {
 				_, err = io.WriteString(w, "</h1>\n")
 			}
 			if err == nil {
-				_, err = io.WriteString(w, "<p class=\"text-base text-slate-600 dark:text-slate-300\">The routing, the controllers and the markup are on the server. There is no API layer in between and no router in the browser, and what travels on an interaction is a fragment of HTML.</p>\n")
+				_, err = io.WriteString(w, "\t\t<p class=\"text-muted-foreground text-base\">The routing, the controllers and the markup are on the server. There is no API layer in between and no router in the browser, and what travels on an interaction is a fragment of HTML.</p>\n")
 			}
 			if err == nil {
-				_, err = io.WriteString(w, "<div class=\"flex flex-wrap items-center gap-3\">\n")
+				_, err = io.WriteString(w, "\t\t<div class=\"flex flex-wrap items-center gap-3\">\n")
 			}
-//line resources/views/welcome.kyse.go:12
+//line resources/views/welcome.kyse.go:19
 			if d.Authenticated {
-//line resources/views/welcome.go:49
+//line resources/views/welcome.go:57
 				if err == nil {
-					_, err = io.WriteString(w, "<a href=\"")
+					_, err = io.WriteString(w, "\t\t\t\t<a href=\"")
 				}
 				if err == nil {
-//line resources/views/welcome.kyse.go:13
+//line resources/views/welcome.kyse.go:20
 					_, err = io.WriteString(w, template.HTMLEscapeString(view.Text(d.DashboardURL)))
-//line resources/views/welcome.go:56
-				}
-				if err == nil {
-					_, err = io.WriteString(w, "\" class=\"inline-flex items-center justify-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900/20 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white\">Dashboard</a>\n")
-				}
-			}
-//line resources/views/welcome.kyse.go:15
-			if !d.Authenticated {
 //line resources/views/welcome.go:64
-				if err == nil {
-					_, err = io.WriteString(w, "<a href=\"")
 				}
 				if err == nil {
-//line resources/views/welcome.kyse.go:16
+					_, err = io.WriteString(w, "\" class=\"btn\">Dashboard</a>\n")
+				}
+			}
+//line resources/views/welcome.kyse.go:22
+			if !d.Authenticated {
+//line resources/views/welcome.go:72
+				if err == nil {
+					_, err = io.WriteString(w, "\t\t\t\t<a href=\"")
+				}
+				if err == nil {
+//line resources/views/welcome.kyse.go:23
 					_, err = io.WriteString(w, template.HTMLEscapeString(view.Text(d.LoginURL)))
-//line resources/views/welcome.go:71
+//line resources/views/welcome.go:79
 				}
 				if err == nil {
-					_, err = io.WriteString(w, "\" class=\"inline-flex items-center justify-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900/20 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white\">Login</a>\n")
+					_, err = io.WriteString(w, "\" class=\"btn\">Login</a>\n")
 				}
-//line resources/views/welcome.kyse.go:17
+//line resources/views/welcome.kyse.go:24
 				if d.RegisterURL != "" {
-//line resources/views/welcome.go:78
+//line resources/views/welcome.go:86
 					if err == nil {
-						_, err = io.WriteString(w, "<a href=\"")
+						_, err = io.WriteString(w, "\t\t\t\t\t<a href=\"")
 					}
 					if err == nil {
-//line resources/views/welcome.kyse.go:18
+//line resources/views/welcome.kyse.go:25
 						_, err = io.WriteString(w, template.HTMLEscapeString(view.Text(d.RegisterURL)))
-//line resources/views/welcome.go:85
+//line resources/views/welcome.go:93
 					}
 					if err == nil {
-						_, err = io.WriteString(w, "\" class=\"inline-flex items-center justify-center rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-900/10 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800\">Register</a>\n")
+						_, err = io.WriteString(w, "\" class=\"btn\" data-variant=\"outline\">Register</a>\n")
 					}
 				}
 			}
 			if err == nil {
-				_, err = io.WriteString(w, "</div>\n")
+				_, err = io.WriteString(w, "\t\t</div>\n")
 			}
 			if err == nil {
-				_, err = io.WriteString(w, "</div>\n")
+				_, err = io.WriteString(w, "\t</div>\n")
 			}
 			return err
 		},
@@ -103,4 +111,5 @@ func renderWelcome(w io.Writer, data any) error {
 var (
 	_ = template.HTMLEscapeString
 	_ = io.WriteString
+	_ = view.Text
 )

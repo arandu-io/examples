@@ -6,5 +6,25 @@
 # asks for by a fixed path.
 
 User-agent: *
+
+# The framework's own addresses: the content-addressed assets, the debug console
+# and the health check. None of them is a page, and a crawler spending its budget
+# on them is a crawler not reading the posts.
 Disallow: /_arandu/
+
+# The moderation area. It answers only to a signed-in administrator, so a
+# crawler reaching it would index a redirect to the sign-in screen -- and every
+# response from there also carries X-Robots-Tag, because a rule stated only here
+# is a rule that stops applying the moment somebody links to the page.
+Disallow: /admin/
+
+# The forms. Sign-in and sign-up are addresses, not content, and a search result
+# that leads to a login is a search result nobody wanted.
+Disallow: /auth/
+
 Allow: /
+
+# Where the pages are. It is generated from the route table and the published
+# posts, so a route that is renamed is a sitemap that is right on the next
+# request rather than a file somebody has to remember.
+Sitemap: /sitemap.xml

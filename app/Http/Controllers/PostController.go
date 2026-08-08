@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/arandu-io/framework/data"
@@ -11,11 +12,12 @@ import (
 	"github.com/arandu-io/framework/observability"
 	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/framework/validation"
+	"github.com/arandu-io/framework/view"
 
 	requests "github.com/arandu-io/examples/app/Http/Requests"
 	models "github.com/arandu-io/examples/app/Models"
 	services "github.com/arandu-io/examples/app/Services"
-	views "github.com/arandu-io/examples/resources/views"
+	views "github.com/arandu-io/examples/resources/views/posts"
 )
 
 // PostController answers the seven routes of the posts resource.
@@ -28,8 +30,17 @@ type PostController struct {
 	Controller
 
 	svc      *services.PostService
+	comments *services.CommentService
 	sessions *security.SessionStore
 	csrf     *security.CSRF
+
+	// appName is the brand in the navigation bar and the og:site_name, and base
+	// is the origin a canonical URL is absolute against. Both come from the
+	// configuration through the constructor: a canonical built from the Host
+	// header is one the client chose, which is how the same page ends up
+	// declaring two different canonicals to a crawler.
+	appName string
+	base    string
 }
 
 // NewPostController returns the controller. bootstrap builds it and hands it to
@@ -38,8 +49,8 @@ type PostController struct {
 // The session store and the CSRF issuer arrive through the constructor rather
 // than through the service: a screen is allowed to know about a token and a
 // cookie, and a service is not allowed to expose its own dependencies.
-func NewPostController(svc *services.PostService, sessions *security.SessionStore, csrf *security.CSRF) *PostController {
-	return &PostController{svc: svc, sessions: sessions, csrf: csrf}
+func NewPostController(svc *services.PostService, comments *services.CommentService, sessions *security.SessionStore, csrf *security.CSRF, appName, base string) *PostController {
+	return &PostController{svc: svc, comments: comments, sessions: sessions, csrf: csrf, appName: appName, base: base}
 }
 
 // Compile-time proof of the seven actions httpx.Router.Resource looks for. It
@@ -107,7 +118,7 @@ func (c *PostController) Index(ctx *httpx.Context) error {
 	}
 
 	return ctx.View("posts.index", views.PostsIndexData{
-		Page:       views.Page{Title: "Posts", Token: token},
+		Page:       c.chrome(ctx, true, actor.ID, token, "Posts"),
 		Posts:      rows,
 		NextCursor: next,
 	})
@@ -133,9 +144,25 @@ func (c *PostController) Show(ctx *httpx.Context) error {
 		return err
 	}
 
+	// The comments of this post, in the same request. A second round trip to
+	// fetch them would be a page that renders twice, and the reader is here for
+	// the article and the answers together.
+	//
+	// The Grant is the actor's, like every other read: docs/26 refuses a query
+	// path without a policy, and a comment thread is exactly the read where
+	// "it is only a listing" gets said.
+	thread, err := c.comments.ForPost(ctx.Ctx(), actor, found.ID)
+	if err != nil {
+		return c.fail(ctx, err)
+	}
+
 	return ctx.View("posts.show", views.PostsShowData{
-		Page: views.Page{Title: "Post", Token: token},
-		Post: c.row(found),
+		Page:       c.article(ctx, actor, token, found),
+		Post:       c.row(found),
+		Comments:   c.thread(thread),
+		CommentURL: ctx.URL("posts.comments", found.ID),
+		EditURL:    ctx.URL("posts.edit", found.ID),
+		DeleteURL:  ctx.URL("posts.destroy", found.ID),
 	})
 }
 
@@ -150,7 +177,7 @@ func (c *PostController) Create(ctx *httpx.Context) error {
 	}
 
 	return ctx.View("posts.create", views.PostsCreateData{
-		Page:   views.Page{Title: "New post", Token: token},
+		Page:   c.chrome(ctx, true, "", token, "New post"),
 		Errors: map[string][]string{},
 	})
 }
@@ -195,7 +222,7 @@ func (c *PostController) Edit(ctx *httpx.Context) error {
 	}
 
 	return ctx.View("posts.edit", views.PostsEditData{
-		Page:   views.Page{Title: "Edit post", Token: token},
+		Page:   c.chrome(ctx, true, "", token, "Edit post"),
 		Form:   c.form(found),
 		Errors: map[string][]string{},
 	})
@@ -281,6 +308,69 @@ func (c *PostController) row(p models.Post) views.PostRow {
 	}
 }
 
+// article is the chrome of one post, plus what the page says about itself.
+//
+// The description is the excerpt because that is already the opening of the
+// article: a description written separately is one of the two going stale. The
+// canonical is absolute, because a relative one is ignored by every crawler that
+// reads it -- which is the failure mode where the tag is present and does
+// nothing.
+func (c *PostController) article(ctx *httpx.Context, actor security.Subject, token string, p models.Post) view.Page {
+	page := c.chrome(ctx, true, actor.ID, token, p.Title)
+	page.Description = excerpt(p.Body)
+	page.Canonical = c.base + ctx.URL("posts.show", p.ID)
+	return page
+}
+
+// chrome is the state the layout draws, filled the same way on every screen.
+//
+// One helper rather than six literals: the navigation is drawn from these
+// fields, and a screen that filled four of them was a screen offering "Login" to
+// somebody who had just signed in.
+func (c *PostController) chrome(ctx *httpx.Context, signedIn bool, name, token, title string) view.Page {
+	return view.Page{
+		Title:         title,
+		AppName:       c.appName,
+		Token:         token,
+		Authenticated: signedIn,
+		UserName:      name,
+		HomeURL:       ctx.URL("home"),
+		LoginURL:      "/auth/login",
+		LogoutURL:     "/auth/logout",
+	}
+}
+
+// thread turns the stored comments into rows the markup draws.
+func (c *PostController) thread(found []models.Comment) []views.CommentRow {
+	rows := make([]views.CommentRow, 0, len(found))
+	for _, m := range found {
+		rows = append(rows, views.CommentRow{
+			ID:       m.ID,
+			Author:   m.Author,
+			Body:     m.Body,
+			Created:  m.CreatedAt.Format("2 January 2006"),
+			Approved: m.Approved,
+		})
+	}
+	return rows
+}
+
+// excerpt is the opening of a body, cut at a word boundary.
+//
+// It is here rather than in the view because it is a decision about
+// presentation, and a view that cuts a string is a view with a rule in it.
+func excerpt(body string) string {
+	const limit = 160
+	if len(body) <= limit {
+		return body
+	}
+	cut := body[:limit]
+	if at := strings.LastIndexByte(cut, ' '); at > 0 {
+		cut = cut[:at]
+	}
+	return cut + "…"
+}
+
 // form fills the edit form from the stored record.
 func (c *PostController) form(p models.Post) views.PostForm {
 	return views.PostForm{
@@ -331,7 +421,7 @@ func (c *PostController) rejectedCreate(ctx *httpx.Context, form views.PostForm,
 		return err
 	}
 	return c.Invalid(ctx, "posts.create", views.PostsCreateData{
-		Page:   views.Page{Title: "New post", Token: token},
+		Page:   c.chrome(ctx, true, "", token, "New post"),
 		Form:   form,
 		Errors: errs,
 	})
@@ -344,7 +434,7 @@ func (c *PostController) rejectedEdit(ctx *httpx.Context, form views.PostForm, e
 		return err
 	}
 	return c.Invalid(ctx, "posts.edit", views.PostsEditData{
-		Page:   views.Page{Title: "Edit post", Token: token},
+		Page:   c.chrome(ctx, true, "", token, "Edit post"),
 		Form:   form,
 		Errors: errs,
 	})

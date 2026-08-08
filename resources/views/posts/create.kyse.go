@@ -1,6 +1,12 @@
 //go:build kyse
 
-package views
+package posts
+
+import (
+	"github.com/arandu-io/kyse/components"
+
+	"github.com/arandu-io/framework/view"
+)
 
 @go
 // PostsCreateData is what PostController.Create hands this page, and what
@@ -12,15 +18,27 @@ type PostsCreateData struct {
 	// rather than from a global, because a template that reaches for request
 	// state outside the data it was given is how a form ends up carrying
 	// another session's token under load.
-	Page
+	view.Page
 	// Form is what was typed, so a rejected submission comes back filled in.
 	Form PostForm
 	// Errors is the message per field, as validation produced it.
 	Errors map[string][]string
 }
 
+// FieldError is the first message for a field, or empty.
+//
+// A method rather than a lookup in the markup: a view that indexes a map has to
+// check the length first, and d.Errors["title"][0] without that check panics
+// on the happy path -- which is the request where nothing was wrong.
+func (d PostsCreateData) FieldError(field string) string {
+	if msgs := d.Errors[field]; len(msgs) > 0 {
+		return msgs[0]
+	}
+	return ""
+}
+
 // Compile-time proof that this page fits the layout it extends.
-var _ Layout = PostsCreateData{}
+var _ view.Layout = PostsCreateData{}
 
 // PostForm is the form as text, which is what a form carries.
 //
@@ -56,38 +74,41 @@ type PostForm struct {
 
 	<form class="mt-8 space-y-6" method="post" action="/posts" hx-post="/posts" hx-target="this" hx-swap="outerHTML">
 		@csrf
+		
+		{!! components.Field(components.FieldProps{
+			Name:  "title",
+			Label: "Title",
+			Type:  "text",
+			Value: .Form.Title,
+			Error: .FieldError("title"),
+			Required: true,
+		}) !!}
 
-		<div class="space-y-1">
-			<label class="block text-sm font-medium" for="title">Title</label>
-			<input class="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" id="title" name="title" type="text" value="{{ .Form.Title }}" required>
-			@if(len(d.Errors["title"]) > 0)
-			<p class="text-sm text-red-600 dark:text-red-400">{{ d.Errors["title"][0] }}</p>
-			@endif
-		</div>
+		{!! components.Field(components.FieldProps{
+			Name:  "slug",
+			Label: "Slug",
+			Type:  "text",
+			Value: .Form.Slug,
+			Error: .FieldError("slug"),
+			Required: true,
+		}) !!}
 
-		<div class="space-y-1">
-			<label class="block text-sm font-medium" for="slug">Slug</label>
-			<input class="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" id="slug" name="slug" type="text" value="{{ .Form.Slug }}" required>
-			@if(len(d.Errors["slug"]) > 0)
-			<p class="text-sm text-red-600 dark:text-red-400">{{ d.Errors["slug"][0] }}</p>
-			@endif
-		</div>
+		{!! components.Textarea(components.TextareaProps{
+			Name:  "body",
+			Label: "Body",
+			Value: .Form.Body,
+			Error: .FieldError("body"),
+			Rows:  6,
+			Required: true,
+		}) !!}
 
-		<div class="space-y-1">
-			<label class="block text-sm font-medium" for="body">Body</label>
-			<textarea class="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" id="body" name="body" rows="4" required>{{ .Form.Body }}</textarea>
-			@if(len(d.Errors["body"]) > 0)
-			<p class="text-sm text-red-600 dark:text-red-400">{{ d.Errors["body"][0] }}</p>
-			@endif
-		</div>
-
-		<div class="space-y-1">
-			<label class="block text-sm font-medium" for="published_at">Published at</label>
-			<input class="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" id="published_at" name="published_at" type="datetime-local" value="{{ .Form.PublishedAt }}">
-			@if(len(d.Errors["published_at"]) > 0)
-			<p class="text-sm text-red-600 dark:text-red-400">{{ d.Errors["published_at"][0] }}</p>
-			@endif
-		</div>
+		{!! components.Field(components.FieldProps{
+			Name:  "published_at",
+			Label: "Published at",
+			Type:  "datetime-local",
+			Value: .Form.PublishedAt,
+			Error: .FieldError("published_at"),
+		}) !!}
 
 		<div class="flex items-center gap-3">
 			<button class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-300" type="submit">Save</button>

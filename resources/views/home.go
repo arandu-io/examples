@@ -8,59 +8,80 @@ import (
 	"html/template"
 	"io"
 
+	authui "github.com/arandu-io/examples/app/Http/Controllers/Auth"
 	"github.com/arandu-io/framework/view"
+	"github.com/arandu-io/kyse/components"
 )
+
+//line resources/views/home.kyse.go:11
+
+// HomeData is what HomeController.Index hands this page.
+type HomeData = authui.AuthPage
+
+//line resources/views/home.go:22
 
 func init() { view.Register("home", renderHome) }
 
 // renderHome renders home.
 func renderHome(w io.Writer, data any) error {
-	d, ok := data.(AuthPage)
+	d, ok := data.(HomeData)
 	if !ok {
-		return view.WrongData("home", "AuthPage", data)
+		return view.WrongData("home", "HomeData", data)
 	}
 	_ = d
 	sections := map[string]func(io.Writer) error{
 		"content": func(w io.Writer) error {
 			var err error
 			if err == nil {
-				_, err = io.WriteString(w, "<div class=\"mx-auto w-full max-w-2xl\">\n")
+				_, err = io.WriteString(w, "\t<div class=\"mx-auto w-full max-w-2xl\">\n")
 			}
 			if err == nil {
-				_, err = io.WriteString(w, "<section class=\"overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900\">\n")
+				_, err = io.WriteString(w, "\t\t<section class=\"card\">\n")
 			}
 			if err == nil {
-				_, err = io.WriteString(w, "<h1 class=\"border-b border-slate-200 px-6 py-4 text-base font-semibold tracking-tight dark:border-slate-800\">Dashboard</h1>\n")
+				_, err = io.WriteString(w, "\t\t\t<header class=\"border-b px-6 py-4\">\n")
 			}
 			if err == nil {
-				_, err = io.WriteString(w, "<div class=\"px-6 py-6 text-sm text-slate-600 dark:text-slate-300\">\n")
+				_, err = io.WriteString(w, "\t\t\t\t<h1 class=\"text-base font-semibold tracking-tight\">Dashboard</h1>\n")
 			}
-//line resources/views/home.kyse.go:12
+			if err == nil {
+				_, err = io.WriteString(w, "\t\t\t</header>\n")
+			}
+			if err == nil {
+				_, err = io.WriteString(w, "\t\t\t<div class=\"px-6 py-6 text-sm\">\n")
+			}
+//line resources/views/home.kyse.go:25
 			if d.Status != "" {
-//line resources/views/home.go:41
+//line resources/views/home.go:56
 				if err == nil {
-					_, err = io.WriteString(w, "<p role=\"status\" class=\"mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200\">")
+					_, err = io.WriteString(w, "\t\t\t\t\t<div class=\"mb-4\">\n")
 				}
 				if err == nil {
-//line resources/views/home.kyse.go:13
-					_, err = io.WriteString(w, template.HTMLEscapeString(view.Text(d.Status)))
-//line resources/views/home.go:48
+					_, err = io.WriteString(w, "\t\t\t\t\t\t")
 				}
 				if err == nil {
-					_, err = io.WriteString(w, "</p>\n")
+//line resources/views/home.kyse.go:27
+					_, err = io.WriteString(w, view.Text(components.Alert(components.AlertProps{Title: d.Status})))
+//line resources/views/home.go:66
+				}
+				if err == nil {
+					_, err = io.WriteString(w, "\n")
+				}
+				if err == nil {
+					_, err = io.WriteString(w, "\t\t\t\t\t</div>\n")
 				}
 			}
 			if err == nil {
-				_, err = io.WriteString(w, "<p>You are logged in.</p>\n")
+				_, err = io.WriteString(w, "\t\t\t\t<p class=\"text-muted-foreground\">You are logged in.</p>\n")
 			}
 			if err == nil {
-				_, err = io.WriteString(w, "</div>\n")
+				_, err = io.WriteString(w, "\t\t\t</div>\n")
 			}
 			if err == nil {
-				_, err = io.WriteString(w, "</section>\n")
+				_, err = io.WriteString(w, "\t\t</section>\n")
 			}
 			if err == nil {
-				_, err = io.WriteString(w, "</div>\n")
+				_, err = io.WriteString(w, "\t</div>\n")
 			}
 			return err
 		},
@@ -71,4 +92,5 @@ func renderHome(w io.Writer, data any) error {
 var (
 	_ = template.HTMLEscapeString
 	_ = io.WriteString
+	_ = view.Text
 )

@@ -35,7 +35,7 @@ import (
 // a glob would also embed this source file, and a public/ that silently
 // publishes whatever landed in it is how a stray dump file becomes a URL.
 //
-//go:embed favicon.ico robots.txt
+//go:embed favicon.ico robots.txt og-cover.svg
 var files embed.FS
 
 // contentTypes is the whole table, and it is deliberately short. A public/ that
@@ -45,6 +45,10 @@ var files embed.FS
 var contentTypes = map[string]string{
 	".ico": "image/x-icon",
 	".txt": "text/plain; charset=utf-8",
+	// The share image. An SVG rather than a PNG because it is a kilobyte,
+	// scales to whatever size a crawler asks for, and shows up in review as
+	// text -- a binary that changes is a diff nobody can read.
+	".svg": "image/svg+xml",
 }
 
 // cacheControl is an hour, not a year.

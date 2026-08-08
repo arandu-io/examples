@@ -28,6 +28,7 @@ import (
 	"github.com/arandu-io/queue"
 
 	controllers "github.com/arandu-io/examples/app/Http/Controllers"
+	authui "github.com/arandu-io/examples/app/Http/Controllers/Auth"
 	providers "github.com/arandu-io/examples/app/Providers"
 	repositories "github.com/arandu-io/examples/app/Repositories"
 	services "github.com/arandu-io/examples/app/Services"
@@ -43,6 +44,12 @@ import (
 	_ "github.com/arandu-io/examples/assets"
 
 	_ "github.com/arandu-io/examples/resources/views"
+	_ "github.com/arandu-io/examples/resources/views/admin"
+	_ "github.com/arandu-io/examples/resources/views/auth"
+	_ "github.com/arandu-io/examples/resources/views/auth/passwords"
+	_ "github.com/arandu-io/examples/resources/views/comments"
+	_ "github.com/arandu-io/examples/resources/views/layouts"
+	_ "github.com/arandu-io/examples/resources/views/posts"
 )
 
 // AppModule is this project's module path. The error page uses it to tell your
@@ -108,10 +115,21 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 
 	// The controllers, built here and handed to the routes. A controller that
 	// constructed its own collaborators would be a controller no test can pin.
+	// The services, built once and shared. The post screen reads the comment
+	// thread, so both controllers hold the same CommentService rather than one
+	// each -- two of them would be two policies to keep in step.
+	postService := services.NewPostService(repositories.NewPostRepository(db))
+	commentService := services.NewCommentService(repositories.NewCommentRepository(db))
+
 	deps := routes.Deps{
-		Home: controllers.NewHomeController(cfg.App.Name, sessions, csrf),
-		Post: controllers.NewPostController(
-			services.NewPostService(repositories.NewPostRepository(db)), sessions, csrf),
+		Home:    controllers.NewHomeController(cfg.App.Name, sessions, csrf),
+		Post:    controllers.NewPostController(postService, commentService, sessions, csrf, cfg.App.Name, cfg.App.URL),
+		Comment: controllers.NewCommentController(commentService, sessions, csrf),
+		Admin:   controllers.NewAdminController(postService, commentService, sessions, csrf),
+		// The origin the sitemap builds absolute URLs on. A sitemap of relative
+		// paths is refused by every crawler that reads one, and the value cannot
+		// come from the request: a Host header is what the client sent.
+		Sitemap: controllers.NewSitemapController(postService, cfg.Auth.Tenant, cfg.App.URL),
 	}
 
 	k := kernel.New(fw)
@@ -146,7 +164,11 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 			// Single tenant: every login belongs to one constant. A multi-tenant
 			// application swaps this for a resolver that reads the host name --
 			// same code path, same queries, one line different.
-			auth.New(authService, auth.FixedTenant(cfg.Auth.Tenant)),
+			// The starter kit's screens, in place of the framework's. The
+			// framework ships the minimum markup that exists so authentication
+			// could be tested at all; this one has a page. Register one or the
+			// other, never both -- they answer the same path.
+			authui.New(authService, sessions, csrf, auth.FixedTenant(cfg.Auth.Tenant)),
 			// The outbox table. A module that records domain events stores them
 			// in the same transaction as the write, and this is what brings the
 			// table those rows land in -- see doc 27.

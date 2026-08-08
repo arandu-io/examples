@@ -1,0 +1,266 @@
+package repositories
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/arandu-io/framework/data"
+	"github.com/arandu-io/framework/security"
+
+	models "github.com/arandu-io/examples/app/Models"
+	policies "github.com/arandu-io/examples/app/Policies"
+)
+
+// Pagination bounds for comments. A request that asks for everything gets the
+// maximum, never everything: an unbounded query is how one page load takes a
+// database down.
+const (
+	commentDefaultLimit = 50
+	commentMaxLimit     = 200
+)
+
+// CommentRepository is the only door to the comments table.
+//
+// Every method starts with g.Check. The Grant is required by the signature, so
+// forgetting it is a compile error, and the check proves the grant was issued for
+// this exact action -- which catches copy-paste between methods.
+//
+// The SQL uses "?" placeholders and types every supported database shares, so
+// these statements run unchanged on SQLite and PostgreSQL.
+type CommentRepository struct {
+	db *data.DB
+}
+
+// NewCommentRepository returns a repository over an instrumented handle.
+func NewCommentRepository(db *data.DB) *CommentRepository { return &CommentRepository{db: db} }
+
+// Compile-time proof of the contract.
+var _ data.Repository[models.Comment, string] = (*CommentRepository)(nil)
+
+const commentColumns = `id, post_id, author, body, approved, created_at`
+
+// Find returns one comment by id.
+func (r *CommentRepository) Find(ctx context.Context, g security.Grant, id string) (models.Comment, error) {
+	if err := g.Check(policies.CommentView); err != nil {
+		return models.Comment{}, err
+	}
+	row := r.db.QueryRowContext(ctx,
+		`SELECT `+commentColumns+` FROM comments WHERE id = ?`, id)
+	return r.scan(row)
+}
+
+// commentSortable is the ordering allowlist. A sort field is a column name, and a
+// column name taken from the request is injection through a door nobody watches.
+var commentSortable = map[string]string{
+	"":           "created_at",
+	"created_at": "created_at",
+	"post_id":    "post_id",
+	"author":     "author",
+	"body":       "body",
+}
+
+// List returns a page of comments.
+//
+// Pagination is keyset based: OFFSET grows more expensive with every page and
+// skips rows when data changes underneath it.
+func (r *CommentRepository) List(ctx context.Context, g security.Grant, q data.Query) ([]models.Comment, error) {
+	// CommentList, not CommentView. The specification can grant them to
+	// different roles -- "a support agent may open the record it was given, but
+	// may not page through every record there is" -- and checking view here made
+	// the list permission decorative: whoever could read one could read all of them.
+	if err := g.Check(policies.CommentList); err != nil {
+		return nil, err
+	}
+	column, ok := commentSortable[q.Sort]
+	if !ok {
+		return nil, fmt.Errorf("%w: %q", models.ErrCommentSort, q.Sort)
+	}
+
+	limit := q.Limit
+	switch {
+	case limit <= 0:
+		limit = commentDefaultLimit
+	case limit > commentMaxLimit:
+		limit = commentMaxLimit
+	}
+
+	query := `SELECT ` + commentColumns + ` FROM comments WHERE 1 = 1`
+	var args []any
+	if q.Cursor != "" {
+		// See the tenant branch: the predicate follows q.Sort, not created_at.
+		query += ` AND (` + column + ` > (SELECT ` + column + ` FROM comments WHERE id = ?)
+		            OR (` + column + ` = (SELECT ` + column + ` FROM comments WHERE id = ?) AND id > ?))`
+		args = append(args, q.Cursor, q.Cursor, q.Cursor)
+	}
+	query += ` ORDER BY ` + column + `, id LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.Comment
+	for rows.Next() {
+		co, err := r.scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, co)
+	}
+	return out, rows.Err()
+}
+
+// ForPost is the thread of one post, oldest first.
+//
+// A method of its own rather than a Filter on data.Query. data.Query has no
+// filter -- the field was removed because nothing implemented it, and adding one
+// back would be a query builder, which RULE 9 refuses. A predicate the
+// application needs is a method here, with its SQL visible and its parameters
+// bound.
+func (r *CommentRepository) ForPost(ctx context.Context, g security.Grant, postID string) ([]models.Comment, error) {
+	if err := g.Check(policies.CommentList); err != nil {
+		return nil, err
+	}
+
+	const query = `SELECT ` + commentColumns + `
+		FROM comments
+		WHERE post_id = ?
+		ORDER BY created_at, id
+		LIMIT ?`
+
+	rows, err := r.db.QueryContext(ctx, query, postID, commentMaxLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.Comment
+	for rows.Next() {
+		co, err := r.scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, co)
+	}
+	return out, rows.Err()
+}
+
+// Create inserts the comment and returns it as stored.
+func (r *CommentRepository) Create(ctx context.Context, g security.Grant, co models.Comment) (models.Comment, error) {
+	if err := g.Check(policies.CommentCreate); err != nil {
+		return models.Comment{}, err
+	}
+
+	var err error
+	if co.ID == "" {
+		// The id comes from the application, not from a database default:
+		// gen_random_uuid, UUID() and randomblob are three spellings of one idea,
+		// and depending on any of them would tie the schema to one engine.
+		if co.ID, err = data.NewID(); err != nil {
+			return models.Comment{}, err
+		}
+	}
+	co.CreatedAt = time.Now().UTC()
+
+	_, err = r.db.ExecContext(ctx,
+		`INSERT INTO comments (`+commentColumns+`) VALUES (?, ?, ?, ?, ?, ?)`,
+		co.ID, co.PostId, co.Author, co.Body, co.Approved, co.CreatedAt)
+	if err != nil {
+		if r.conflict(err) {
+			return models.Comment{}, models.ErrCommentConflict
+		}
+		return models.Comment{}, err
+	}
+	return co, nil
+}
+
+// Update writes the mutable fields.
+func (r *CommentRepository) Update(ctx context.Context, g security.Grant, co models.Comment) (models.Comment, error) {
+	if err := g.Check(policies.CommentUpdate); err != nil {
+		return models.Comment{}, err
+	}
+
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE comments SET post_id = ?, author = ?, body = ?, approved = ? WHERE id = ?`,
+		co.PostId, co.Author, co.Body, co.Approved, co.ID)
+	if err != nil {
+		if r.conflict(err) {
+			return models.Comment{}, models.ErrCommentConflict
+		}
+		return models.Comment{}, err
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return models.Comment{}, models.ErrCommentNotFound
+	}
+	return co, nil
+}
+
+// Delete removes one comment.
+func (r *CommentRepository) Delete(ctx context.Context, g security.Grant, id string) error {
+	if err := g.Check(policies.CommentDelete); err != nil {
+		return err
+	}
+	res, err := r.db.ExecContext(ctx,
+		`DELETE FROM comments WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return models.ErrCommentNotFound
+	}
+	return nil
+}
+
+// Health reports whether the repository can reach its storage.
+//
+// Nothing calls it out of the box. It is here so AppServiceProvider can
+// implement kernel.Health over the repositories it owns, which is what puts this
+// table on /_arandu/health and on the error page's diagnosis.
+func (r *CommentRepository) Health(ctx context.Context) error { return r.db.PingContext(ctx) }
+
+// scan reads one row.
+//
+// It takes the interface inline rather than a named one, and it is a method
+// rather than a function, for the same reason as the helpers below: every
+// repository of the application shares this package, and a second module
+// declaring rowScanner would not compile.
+func (r *CommentRepository) scan(row interface{ Scan(dest ...any) error }) (models.Comment, error) {
+	var co models.Comment
+	err := row.Scan(&co.ID, &co.PostId, &co.Author, &co.Body, &co.Approved, &co.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return models.Comment{}, models.ErrCommentNotFound
+	}
+	if err != nil {
+		return models.Comment{}, err
+	}
+	return co, nil
+}
+
+// normalize lowercases and trims, which is what keeps a plain UNIQUE index
+// case-insensitive on every engine.
+func (r *CommentRepository) normalize(s string) string {
+	return strings.ToLower(strings.TrimSpace(s))
+}
+
+// conflict recognizes a duplicate key across engines by message, which is the
+// price of not importing a driver into a repository.
+func (r *CommentRepository) conflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "unique constraint") ||
+		strings.Contains(msg, "duplicate key") ||
+		strings.Contains(msg, "duplicate entry")
+}
+
+// arandu:begin custom
+// Queries beyond the five above go here, and survive regeneration. Keep the
+// g.Check as the first line of each one.
+// arandu:end custom

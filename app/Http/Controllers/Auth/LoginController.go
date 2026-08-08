@@ -83,6 +83,12 @@ func (m *Module) Routes(r *httpx.Router) {
 	g.Post("/logout", m.doLogout)
 
 	// arandu:begin custom
-	// Registration, password reset and anything else you add go here.
+	// The password reset, in PasswordController.go. The kit publishes the three
+	// screens and stops there (ADR 0022): the handlers write to your users
+	// table and send through your mailer, so they are yours.
+	g.Get("/password", m.showPasswordRequest)
+	g.Post("/password/email", m.sendPasswordLink)
+	g.Get("/password/reset", m.showPasswordReset)
+	g.Post("/password/update", m.updatePassword)
 	// arandu:end custom
 }

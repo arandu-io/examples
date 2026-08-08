@@ -19,8 +19,11 @@ import (
 // resolved from a container: reading bootstrap/app.go tells you what every route
 // was given, which is the property a dependency container costs you.
 type Deps struct {
-	Home *controllers.HomeController
-	Post *controllers.PostController
+	Home    *controllers.HomeController
+	Post    *controllers.PostController
+	Comment *controllers.CommentController
+	Admin   *controllers.AdminController
+	Sitemap *controllers.SitemapController
 }
 
 // Web registers the browser-facing routes.
@@ -56,5 +59,20 @@ func Web(r *httpx.Router, d Deps) {
 	// A link is built from the name, so renaming the path does not leave a dead
 	// href behind.
 	r.Resource("posts", d.Post)
+
+	// The comment thread hangs off the post, because that is where it is read
+	// and where it is written. A top-level /comments would be a second address
+	// for the same conversation, and the id in the path is the post's -- so the
+	// route says which thread without the body having to be trusted about it.
+	r.Action("POST", "/posts/{id}/comments", d.Comment.Store).Name("posts.comments")
+
+	// The sitemap, built from this table and the published posts. robots.txt
+	// points at it, and it is a route rather than a file because a file would go
+	// stale the first time a post was written.
+	r.Action("GET", "/sitemap.xml", d.Sitemap.Index).Name("sitemap")
+
+	// Moderation is its own area, behind its own middleware, and it is where an
+	// administrator sees what is waiting. See routes/admin.go.
+	adminRoutes(r, d)
 	// arandu:end custom
 }

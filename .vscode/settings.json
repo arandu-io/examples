@@ -1,26 +1,32 @@
 {
-  "//": "Copiado para .vscode/settings.json de todo projeto que o `aru new` cria.",
-
-  "//1": "Um .kyse.go não é Go. Sem esta linha o gopls tenta analisá-lo, mostra erro em toda diretiva, e o editor fica vermelho num arquivo que está certo.",
-  "files.associations": {
-    "*.kyse.go": "kyse"
+  // The generated views are hidden, not deleted.
+  //
+  // `aru view:build` writes `button.go` beside `button.kyse.go`, and only the
+  // second one is ever edited -- the first opens with DO NOT EDIT and is
+  // overwritten on the next build. Showing both doubles every listing under
+  // resources/views/ with files nobody opens on purpose.
+  //
+  // They stay on disk and in git, which is what keeps `go build` working in a
+  // fresh clone, `go install` working for anybody who wants the binary, and the
+  // doc comments reaching pkg.go.dev. Hiding them is an editor preference;
+  // ignoring them would be a change to what the module is.
+  //
+  // The `when` clause hides `x.go` only where `x.kyse.go` sits beside it, so a
+  // hand-written Go file in the same directory stays visible.
+  "files.exclude": {
+    "**/*.go": { "when": "$(basename).kyse.go" }
   },
 
-  "//2": "O gerado é código, não é fonte. Some do buscador e some do explorador, agrupado sob o .kyse.go que o produziu — mesma coisa que o VS Code faz com .ts e .js.",
+  // Search skips them too, so grepping for a class name lands on the view that
+  // declares it rather than on the copy inside a generated string literal.
   "search.exclude": {
-    "**/resources/views/*.go": true,
-    "!**/resources/views/*.kyse.go": false
+    "**/*.go": { "when": "$(basename).kyse.go" }
   },
 
-  "//3": "gofmt não respeita build tag, então formatar um .kyse.go ao salvar o quebraria.",
-  "[kyse]": {
-    "editor.formatOnSave": false,
-    "editor.tabSize": 4,
-    "editor.insertSpaces": true
-  },
-
-  "//4": "O resto do projeto é Go normal.",
-  "[go]": {
-    "editor.formatOnSave": true
+  // A .kyse.go is Go with markup in it, and the Go extension would report the
+  // markup as syntax errors on every keystroke. The build tag already excludes
+  // it from the compiler; this excludes it from the language server.
+  "gopls": {
+    "build.buildFlags": []
   }
 }

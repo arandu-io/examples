@@ -20,3 +20,9 @@ go.work.sum
 database/*.sqlite
 database/*.sqlite-shm
 database/*.sqlite-wal
+
+# The SQLite file `aru migrate` creates. It is a working copy, not the schema:
+# the schema is database/migrations, and a committed database is one that
+# disagrees with them by the second day.
+database/*.sqlite
+database/*.db

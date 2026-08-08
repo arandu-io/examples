@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="Arandu">
+  <!-- The share image, drawn rather than photographed.
+       An SVG because it is 1 kB, scales to whatever a crawler asks for, and is
+       diffable: a change to it shows up in review as text. -->
+  <rect width="1200" height="630" fill="#0a0a0a"/>
+  <rect x="80" y="80" width="1040" height="470" rx="24" fill="none" stroke="#262626" stroke-width="2"/>
+  <text x="140" y="290" font-family="ui-sans-serif, system-ui, sans-serif" font-size="64" font-weight="600" fill="#fafafa">arandu-io/examples</text>
+  <text x="140" y="360" font-family="ui-sans-serif, system-ui, sans-serif" font-size="30" fill="#a3a3a3">A blog, built with Arandu, to read.</text>
+  <text x="140" y="470" font-family="ui-monospace, SFMono-Regular, monospace" font-size="22" fill="#737373">It is not the developer who guarantees the architecture. It is the compiler.</text>
+</svg>

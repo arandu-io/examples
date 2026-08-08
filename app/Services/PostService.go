@@ -74,6 +74,17 @@ func (s *PostService) List(ctx context.Context, actor security.Subject, q data.Q
 	return s.repo.List(ctx, g, q)
 }
 
+// ListWith is List for a caller that already holds a Grant.
+//
+// There is one of those in this application -- the sitemap, which answers a
+// crawler that has no session -- and it exists so that caller goes through the
+// service like every other, rather than reaching the repository directly. The
+// Grant it hands over still has to carry PostList: the repository checks it, so
+// a grant issued for another action is refused here as it would be anywhere.
+func (s *PostService) ListWith(ctx context.Context, g security.Grant, q data.Query) ([]models.Post, error) {
+	return s.repo.List(ctx, g, q)
+}
+
 // Update changes the mutable fields.
 //
 // It reads before writing, so the policy decides against the stored row rather
