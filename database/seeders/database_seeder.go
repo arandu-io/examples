@@ -2,8 +2,8 @@ package seeders
 
 import "context"
 
-// DatabaseSeeder is the entry point, the same role it has in Laravel: it decides
-// which seeders run and in which order. `aru db:seed` runs this one.
+// DatabaseSeeder is the entry point: it decides which seeders run and in which
+// order. `aru db:seed` runs this one.
 //
 // Add a seeder to the list below and to the registry in seeders.go.
 type DatabaseSeeder struct{}

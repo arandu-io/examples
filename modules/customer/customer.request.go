@@ -7,8 +7,8 @@ import (
 )
 
 // CreateRequest is the input contract. Fields are explicit: there is no mass
-// assignment, so the bug class Laravel's $fillable exists to contain does not
-// exist here -- a field the client sends and the struct does not declare simply
+// assignment, so a request body cannot write a field nobody meant to expose --
+// the bug class does not exist here -- a field the client sends and the struct does not declare simply
 // goes nowhere.
 type CreateRequest struct {
 	Name     string
