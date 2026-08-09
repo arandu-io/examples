@@ -25,11 +25,12 @@
 # A floor, not a pin: a newer CLI is always fine. Raise it when the project
 # starts using something a released CLI cannot compile.
 [arandu]
-aru = "v0.27.0"
+aru = "v0.27.2"
 
 [tools]
 tailwindcss = "v4.3.3"
 
+# --- aru font:add ---
 # The vendored faces. Written by `aru font:add`, and the files themselves are
 # under assets/fonts/ and committed -- so this section is not what makes the
 # build reproducible. The bytes are.
