@@ -50,13 +50,13 @@ import (
 	_ "github.com/arandu-io/database/pgx"
 	_ "github.com/arandu-io/database/sqlite"
 
-	_ "github.com/arandu-io/examples/resources/views"
-	_ "github.com/arandu-io/examples/resources/views/admin"
-	_ "github.com/arandu-io/examples/resources/views/auth"
-	_ "github.com/arandu-io/examples/resources/views/auth/passwords"
-	_ "github.com/arandu-io/examples/resources/views/comments"
-	_ "github.com/arandu-io/examples/resources/views/layouts"
-	_ "github.com/arandu-io/examples/resources/views/posts"
+	_ "github.com/arandu-io/examples/storage/framework/views"
+	_ "github.com/arandu-io/examples/storage/framework/views/admin"
+	_ "github.com/arandu-io/examples/storage/framework/views/auth"
+	_ "github.com/arandu-io/examples/storage/framework/views/auth/passwords"
+	_ "github.com/arandu-io/examples/storage/framework/views/comments"
+	_ "github.com/arandu-io/examples/storage/framework/views/layouts"
+	_ "github.com/arandu-io/examples/storage/framework/views/posts"
 )
 
 // AppModule is this project's module path. The error page uses it to tell your

@@ -15,7 +15,7 @@ import (
 	requests "github.com/arandu-io/examples/app/Http/Requests"
 	models "github.com/arandu-io/examples/app/Models"
 	services "github.com/arandu-io/examples/app/Services"
-	views "github.com/arandu-io/examples/resources/views/comments"
+	views "github.com/arandu-io/examples/storage/framework/views/comments"
 )
 
 // CommentController answers the seven routes of the comments resource.

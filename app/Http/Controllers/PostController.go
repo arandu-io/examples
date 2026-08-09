@@ -17,7 +17,7 @@ import (
 	requests "github.com/arandu-io/examples/app/Http/Requests"
 	models "github.com/arandu-io/examples/app/Models"
 	services "github.com/arandu-io/examples/app/Services"
-	views "github.com/arandu-io/examples/resources/views/posts"
+	views "github.com/arandu-io/examples/storage/framework/views/posts"
 )
 
 // PostController answers the seven routes of the posts resource.

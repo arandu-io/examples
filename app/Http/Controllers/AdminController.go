@@ -12,7 +12,7 @@ import (
 
 	models "github.com/arandu-io/examples/app/Models"
 	services "github.com/arandu-io/examples/app/Services"
-	admin "github.com/arandu-io/examples/resources/views/admin"
+	admin "github.com/arandu-io/examples/storage/framework/views/admin"
 )
 
 // AdminController answers the moderation area.
