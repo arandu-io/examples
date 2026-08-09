@@ -99,6 +99,21 @@ import (
 						@endif
 					@endif
 					@if(.SignedIn())
+						{{-- Both are drawn only when the controller filled them, and the
+						     controller fills the admin one only for somebody the policy
+						     would let in. The markup never asks about a role: a second
+						     place that decides authorization is the one that gets it
+						     wrong. An empty string draws nothing. --}}
+						@if(.PanelLink() != "" && !.IsCurrent(.PanelLink()))
+							<a href="{{ .PanelLink() }}" class="btn" data-variant="ghost" data-size="sm">
+								{!! icons.SquaresFour(icons.Props{}) !!} Dashboard
+							</a>
+						@endif
+						@if(.AdminLink() != "" && !.IsCurrent(.AdminLink()))
+							<a href="{{ .AdminLink() }}" class="btn" data-variant="ghost" data-size="sm">
+								{!! icons.ShieldCheck(icons.Props{}) !!} Moderation
+							</a>
+						@endif
 						<span class="text-muted-foreground hidden sm:inline">{{ .SignedInName() }}</span>
 						<form method="post" action="{{ .LogoutLink() }}">
 							@csrf

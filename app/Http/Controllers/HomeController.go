@@ -2,8 +2,8 @@ package controllers
 
 import (
 	"github.com/arandu-io/framework/httpx"
+	"github.com/arandu-io/framework/modules/auth"
 	"github.com/arandu-io/framework/security"
-	"github.com/arandu-io/framework/view"
 
 	authui "github.com/arandu-io/examples/app/Http/Controllers/Auth"
 )
@@ -28,12 +28,18 @@ type HomeController struct {
 	// allowed to know about a token and a cookie.
 	sessions *security.SessionStore
 	csrf     *security.CSRF
+
+	// nav draws the header, the same way on every screen. See chrome.go.
+	nav navigation
 }
 
 // NewHomeController returns the controller. bootstrap/app.go builds it and hands
 // it to the routes.
-func NewHomeController(appName string, sessions *security.SessionStore, csrf *security.CSRF) *HomeController {
-	return &HomeController{appName: appName, sessions: sessions, csrf: csrf}
+func NewHomeController(appName string, sessions *security.SessionStore, csrf *security.CSRF, people *auth.Service, tenant string) *HomeController {
+	return &HomeController{
+		appName: appName, sessions: sessions, csrf: csrf,
+		nav: navigation{appName: appName, people: people, tenant: tenant},
+	}
 }
 
 // Compile-time proof that this controller answers GET / the way Resource and the
@@ -63,30 +69,23 @@ func (c *HomeController) Index(ctx *httpx.Context) error {
 	}
 
 	// arandu:begin custom
+	page := c.nav.page(ctx, subject, signedIn, token, c.appName)
+	page.HomeURL = "/"
+
 	return ctx.View("home", authui.AuthPage{
 		// view.Page is the chrome the layout draws, embedded rather than
-		// repeated. The navigation draws a link only for what answers: the kit
-		// ships the sign-in handler and nothing else, so RegisterURL stays
-		// empty and the link is not drawn -- a link to a route nobody
-		// registered is a 404 the layout put there.
-		Page: view.Page{
-			Path:          ctx.Request.URL.Path,
-			AppName:       c.appName,
-			Title:         c.appName,
-			Token:         token,
-			Authenticated: signedIn,
-			// The identifier, because that is what a session carries. Show a
-			// display name here once you have a screen that loads the user
-			// through its policy.
-			UserName:  subject.ID,
-			HomeURL:   "/",
-			LoginURL:  "/auth/login",
-			LogoutURL: "/auth/logout",
-		},
+		// repeated, and it is filled by one helper so that a screen cannot draw
+		// half of it. This one used to build the literal itself: it greeted the
+		// signed-in person with the UUID out of their session, offered no way to
+		// create an account, and hid the password reset -- all three describing
+		// a kit that ships only the sign-in handler, which stopped being true
+		// when this application wired the whole of it.
+		Page: page,
 
-		// Password reset stays off for the same reason: write the handler, then
-		// turn the link on.
-		HasPasswordReset: false,
+		// The reset is wired: PasswordController answers /auth/password, mails
+		// a signed link and writes the new password. The link is drawn because
+		// the handler exists, which is the only reason a link is ever drawn.
+		HasPasswordReset: true,
 	})
 	// arandu:end custom
 }

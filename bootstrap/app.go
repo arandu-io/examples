@@ -146,10 +146,10 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 	categoryService := services.NewCategoryService(repositories.NewCategoryRepository(db))
 
 	deps := routes.Deps{
-		Home:     controllers.NewHomeController(cfg.App.Name, sessions, csrf),
+		Home:     controllers.NewHomeController(cfg.App.Name, sessions, csrf, authService, cfg.Auth.Tenant),
 		Post:     controllers.NewPostController(postService, commentService, categoryService, authService, sessions, csrf, cfg.App.Name, cfg.App.URL, cfg.Auth.Tenant),
-		Comment:  controllers.NewCommentController(commentService, sessions, csrf),
-		Category: controllers.NewCategoryController(categoryService, sessions, csrf),
+		Comment:  controllers.NewCommentController(commentService, sessions, csrf, cfg.App.Name, authService, cfg.Auth.Tenant),
+		Category: controllers.NewCategoryController(categoryService, sessions, csrf, cfg.App.Name, authService, cfg.Auth.Tenant),
 		Admin:    controllers.NewAdminController(postService, commentService, sessions, csrf),
 		// The origin the sitemap builds absolute URLs on. A sitemap of relative
 		// paths is refused by every crawler that reads one, and the value cannot

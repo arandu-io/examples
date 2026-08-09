@@ -7,10 +7,10 @@ import (
 
 	"github.com/arandu-io/framework/data"
 	"github.com/arandu-io/framework/httpx"
+	"github.com/arandu-io/framework/modules/auth"
 	"github.com/arandu-io/framework/observability"
 	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/framework/validation"
-	"github.com/arandu-io/framework/view"
 
 	requests "github.com/arandu-io/examples/app/Http/Requests"
 	models "github.com/arandu-io/examples/app/Models"
@@ -30,6 +30,9 @@ type CommentController struct {
 	svc      *services.CommentService
 	sessions *security.SessionStore
 	csrf     *security.CSRF
+
+	// nav draws the header, the same way on every screen. See chrome.go.
+	nav navigation
 }
 
 // NewCommentController returns the controller. bootstrap builds it and hands it to
@@ -38,8 +41,9 @@ type CommentController struct {
 // The session store and the CSRF issuer arrive through the constructor rather
 // than through the service: a screen is allowed to know about a token and a
 // cookie, and a service is not allowed to expose its own dependencies.
-func NewCommentController(svc *services.CommentService, sessions *security.SessionStore, csrf *security.CSRF) *CommentController {
-	return &CommentController{svc: svc, sessions: sessions, csrf: csrf}
+func NewCommentController(svc *services.CommentService, sessions *security.SessionStore, csrf *security.CSRF, appName string, people *auth.Service, tenant string) *CommentController {
+	return &CommentController{svc: svc, sessions: sessions, csrf: csrf,
+		nav: navigation{appName: appName, people: people, tenant: tenant}}
 }
 
 // Compile-time proof of the seven actions httpx.Router.Resource looks for. It
@@ -107,7 +111,7 @@ func (c *CommentController) Index(ctx *httpx.Context) error {
 	}
 
 	return ctx.View("comments.index", views.CommentsIndexData{
-		Page:       view.Page{Title: "Comments", Token: token},
+		Page:       c.nav.page(ctx, actor, true, token, "Comments"),
 		Comments:   rows,
 		NextCursor: next,
 	})
@@ -134,14 +138,15 @@ func (c *CommentController) Show(ctx *httpx.Context) error {
 	}
 
 	return ctx.View("comments.show", views.CommentsShowData{
-		Page:    view.Page{Title: "Comment", Token: token},
+		Page:    c.nav.page(ctx, actor, true, token, "Comment"),
 		Comment: c.row(found),
 	})
 }
 
 // Create renders the empty form.
 func (c *CommentController) Create(ctx *httpx.Context) error {
-	if _, err := c.actor(ctx); err != nil {
+	actor, err := c.actor(ctx)
+	if err != nil {
 		return c.signIn(ctx)
 	}
 	token, err := c.token(ctx)
@@ -150,7 +155,7 @@ func (c *CommentController) Create(ctx *httpx.Context) error {
 	}
 
 	return ctx.View("comments.create", views.CommentsCreateData{
-		Page:   view.Page{Title: "New comment", Token: token},
+		Page:   c.nav.page(ctx, actor, true, token, "New comment"),
 		Errors: map[string][]string{},
 	})
 }
@@ -177,14 +182,14 @@ func (c *CommentController) Store(ctx *httpx.Context) error {
 	in.Approved = false
 
 	if !c.Validated(errs) {
-		return c.rejectedCreate(ctx, form, errs)
+		return c.rejectedCreate(ctx, actor, form, errs)
 	}
 
 	created, err := c.svc.Create(ctx.Ctx(), actor, in)
 	if err != nil {
 		var invalid validation.Errors
 		if errors.As(err, &invalid) {
-			return c.rejectedCreate(ctx, form, invalid)
+			return c.rejectedCreate(ctx, actor, form, invalid)
 		}
 		return c.fail(ctx, err)
 	}
@@ -212,7 +217,7 @@ func (c *CommentController) Edit(ctx *httpx.Context) error {
 	}
 
 	return ctx.View("comments.edit", views.CommentsEditData{
-		Page:   view.Page{Title: "Edit comment", Token: token},
+		Page:   c.nav.page(ctx, actor, true, token, "Edit comment"),
 		Form:   c.form(found),
 		Errors: map[string][]string{},
 	})
@@ -228,7 +233,7 @@ func (c *CommentController) Update(ctx *httpx.Context) error {
 	in, form, errs := c.input(ctx)
 	form.ID = ctx.Param("id")
 	if !c.Validated(errs) {
-		return c.rejectedEdit(ctx, form, errs)
+		return c.rejectedEdit(ctx, actor, form, errs)
 	}
 
 	updated, err := c.svc.Update(ctx.Ctx(), actor, requests.UpdateComment{
@@ -241,7 +246,7 @@ func (c *CommentController) Update(ctx *httpx.Context) error {
 	if err != nil {
 		var invalid validation.Errors
 		if errors.As(err, &invalid) {
-			return c.rejectedEdit(ctx, form, invalid)
+			return c.rejectedEdit(ctx, actor, form, invalid)
 		}
 		return c.fail(ctx, err)
 	}
@@ -342,26 +347,26 @@ func (c *CommentController) input(ctx *httpx.Context) (requests.StoreComment, vi
 
 // rejectedCreate re-renders the creation form with its errors, as the 422
 // fragment HTMX swaps back in.
-func (c *CommentController) rejectedCreate(ctx *httpx.Context, form views.CommentForm, errs validation.Errors) error {
+func (c *CommentController) rejectedCreate(ctx *httpx.Context, actor security.Subject, form views.CommentForm, errs validation.Errors) error {
 	token, err := c.token(ctx)
 	if err != nil {
 		return err
 	}
 	return c.Invalid(ctx, "comments.create", views.CommentsCreateData{
-		Page:   view.Page{Title: "New comment", Token: token},
+		Page:   c.nav.page(ctx, actor, true, token, "New comment"),
 		Form:   form,
 		Errors: errs,
 	})
 }
 
 // rejectedEdit re-renders the edit form with its errors.
-func (c *CommentController) rejectedEdit(ctx *httpx.Context, form views.CommentForm, errs validation.Errors) error {
+func (c *CommentController) rejectedEdit(ctx *httpx.Context, actor security.Subject, form views.CommentForm, errs validation.Errors) error {
 	token, err := c.token(ctx)
 	if err != nil {
 		return err
 	}
 	return c.Invalid(ctx, "comments.edit", views.CommentsEditData{
-		Page:   view.Page{Title: "Edit comment", Token: token},
+		Page:   c.nav.page(ctx, actor, true, token, "Edit comment"),
 		Form:   form,
 		Errors: errs,
 	})

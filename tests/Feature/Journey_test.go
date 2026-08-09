@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/arandu-io/framework/arandutest"
 	"github.com/arandu-io/framework/data"
 
 	"github.com/arandu-io/examples/tests"
@@ -181,4 +182,136 @@ func seedJourneyPost(t *testing.T, db *data.DB) string {
 		t.Fatalf("seeding a post: %v", err)
 	}
 	return id
+}
+
+// TestTheHeaderSaysWhoYouAre.
+//
+// The navigation used to be six struct literals per controller, and they
+// drifted: /categories drew a brand linking to href="", a "Sign in" button that
+// reloaded the page you were already reading, no way to create an account, and
+// the guest half of the bar shown to a signed-in administrator. Every one of
+// those is a field somebody forgot to fill in.
+//
+// So this asserts the header from the three sides it has: a guest, a reader,
+// and an administrator -- on a screen from each controller, because the defect
+// was never in the layout. It was in who filled it in.
+func TestTheHeaderSaysWhoYouAre(t *testing.T) {
+	client, db := tests.App(t)
+	post := seedJourneyPost(t, db)
+
+	// The two screens a guest can reach. /categories asks for a session and
+	// answers 303 to one, which is why the signed-in test below is the one that
+	// reads it -- and /categories is where the drift was worst.
+	for _, path := range []string{"/", "/posts/" + post} {
+		bar := header(client.Get(path).OK().Body())
+		if bar == "" {
+			t.Fatalf("%s has no header at all", path)
+		}
+		if strings.Contains(bar, `href=""`) {
+			t.Errorf("%s: the header links to nowhere -- a field nobody filled in", path)
+		}
+		for _, want := range []string{"/auth/login", "/auth/register"} {
+			if !strings.Contains(bar, want) {
+				t.Errorf("%s: a guest is not offered %s", path, want)
+			}
+		}
+		if strings.Contains(bar, "/admin") || strings.Contains(bar, "/dashboard") {
+			t.Errorf("%s: a guest is offered an address that would refuse them", path)
+		}
+	}
+}
+
+// A reader gets their own area and never the moderation queue; an administrator
+// gets both. The header must never offer an address that answers 403 -- so the
+// role is decided in the controller and the markup only ever sees a string.
+func TestTheHeaderOffersOnlyWhatWouldOpen(t *testing.T) {
+	for _, who := range []struct {
+		role     string
+		wants    []string
+		refuses  []string
+		greeting string
+	}{
+		{role: "", wants: []string{"/dashboard"}, refuses: []string{"/admin"}, greeting: "Grace Hopper"},
+		{role: "admin", wants: []string{"/dashboard", "/admin"}, greeting: "Ada Lovelace"},
+	} {
+		t.Run("role="+who.role, func(t *testing.T) {
+			client, db := tests.App(t)
+			signInAs(t, client, db, who.greeting, who.role)
+
+			// Two screens from two controllers. The layout was never the
+			// defect; who filled it in was, and that is per controller.
+			for _, path := range []string{"/", "/categories"} {
+				bar := header(client.Get(path).OK().Body())
+				if strings.Contains(bar, `href=""`) {
+					t.Errorf("%s: the header links to nowhere", path)
+				}
+				if !strings.Contains(bar, who.greeting) {
+					t.Errorf("%s: the header does not greet by name", path)
+				}
+			}
+
+			bar := header(client.Get("/").OK().Body())
+			for _, want := range who.wants {
+				if !strings.Contains(bar, want) {
+					t.Errorf("no link to %s", want)
+				}
+			}
+			for _, refuse := range who.refuses {
+				if strings.Contains(bar, refuse) {
+					t.Errorf("offered %s, which would answer 403", refuse)
+				}
+			}
+			if !strings.Contains(bar, who.greeting) {
+				t.Errorf("the header does not greet by name:\n%s", bar)
+			}
+			if uuidInHeader.MatchString(bar) {
+				t.Errorf("the header greets somebody with the id out of their session:\n%s", bar)
+			}
+			if strings.Contains(bar, "/auth/login") || strings.Contains(bar, "/auth/register") {
+				t.Error("a signed-in person is offered the guest half of the bar")
+			}
+		})
+	}
+}
+
+var uuidInHeader = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-`)
+
+// signInAs registers somebody, confirms their address and opens a session.
+//
+// The role is written to the row directly. It is not a form field, and it must
+// not become one: RegisterRequest has no field for it and the policy refuses a
+// candidate carrying any, which is what stops registration from being a way to
+// make yourself an administrator.
+func signInAs(t *testing.T, client *arandutest.Client, db *data.DB, name, role string) {
+	t.Helper()
+
+	const password = "a-password-that-passes"
+	email := strings.ToLower(strings.ReplaceAll(name, " ", ".")) + "@example.com"
+
+	client.Get("/auth/register").OK()
+	client.Post("/auth/register", map[string]string{
+		"name": name, "email": email,
+		"password": password, "password_confirmation": password,
+	}).RedirectsTo("/auth/verify")
+
+	// Confirmed and given the role in one write, because what is under test is
+	// the header and not the verification flow -- that has its own test.
+	//
+	// The column holds JSON, which is how the repository writes it. A bare
+	// "admin" is written happily by SQLite and then fails to unmarshal on the
+	// next read, so the account simply stops being able to sign in -- silently,
+	// three asserts later.
+	roles := "[]"
+	if role != "" {
+		roles = `["` + role + `"]`
+	}
+	if _, err := db.ExecContext(context.Background(),
+		`UPDATE users SET verified_at = ?, roles = ? WHERE email = ?`,
+		time.Now(), roles, email); err != nil {
+		t.Fatalf("preparing the account: %v", err)
+	}
+
+	client.Get("/auth/login").OK()
+	client.Post("/auth/login", map[string]string{"email": email, "password": password}).
+		RedirectsTo("/")
 }

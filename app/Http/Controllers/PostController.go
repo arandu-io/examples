@@ -40,7 +40,10 @@ type PostController struct {
 	// service, and it is here rather than a users repository of this
 	// application's own: the users table belongs to that module, and a second
 	// owner of a schema is how a migration breaks code nobody thought read it.
-	people   *auth.Service
+	people *auth.Service
+
+	// nav draws the header, the same way on every screen. See chrome.go.
+	nav      navigation
 	sessions *security.SessionStore
 	csrf     *security.CSRF
 
@@ -67,6 +70,7 @@ func NewPostController(svc *services.PostService, comments *services.CommentServ
 		svc: svc, comments: comments, categories: categories, people: people,
 		sessions: sessions, csrf: csrf,
 		appName: appName, base: base, tenant: tenant,
+		nav: navigation{appName: appName, people: people, tenant: tenant},
 	}
 }
 
@@ -95,7 +99,7 @@ func (c *PostController) Index(ctx *httpx.Context) error {
 	// sees everything, drafts included. Two queries, because they are two
 	// questions -- and the guest one cannot reach a draft at all rather than
 	// reaching it and discarding it.
-	actor, signedIn := c.reader(ctx)
+	actor, signedIn := c.nav.reader(ctx, c.sessions)
 
 	// The page size is decided here rather than passed through blindly: asking
 	// for a known number is what lets the next cursor be offered only when a
@@ -148,7 +152,7 @@ func (c *PostController) Index(ctx *httpx.Context) error {
 	}
 
 	return ctx.View("posts.index", views.PostsIndexData{
-		Page:  c.chrome(ctx, signedIn, actor.ID, token, "Posts"),
+		Page:  c.nav.page(ctx, actor, signedIn, token, "Posts"),
 		Posts: rows,
 		// Empty for a guest, and an empty URL draws no button.
 		NewURL:     ifSignedIn(signedIn, ctx.URL("posts.create")),
@@ -165,7 +169,7 @@ func (c *PostController) Index(ctx *httpx.Context) error {
 // differ by a heading and a filter, and a second template would be a second
 // place to fix the card the next time a card changes (RULE 9).
 func (c *PostController) Section(ctx *httpx.Context) error {
-	actor, signedIn := c.reader(ctx)
+	actor, signedIn := c.nav.reader(ctx, c.sessions)
 
 	category, err := c.categories.BySlug(ctx.Ctx(), actor, ctx.Param("slug"))
 	if err != nil {
@@ -192,7 +196,7 @@ func (c *PostController) Section(ctx *httpx.Context) error {
 		return err
 	}
 
-	page := c.chrome(ctx, signedIn, actor.ID, token, category.Name)
+	page := c.nav.page(ctx, actor, signedIn, token, category.Name)
 	page.Description = category.Description
 	// The canonical is this section's own address. Without it the section pages
 	// and the front page look like the same page with the same posts to a
@@ -252,7 +256,7 @@ func (c *PostController) Show(ctx *httpx.Context) error {
 	// may read this post is PostPolicy's answer, not this handler's -- the
 	// article is public when it is published and refused when it is a draft,
 	// and both answers come from the same place every other answer does.
-	actor, signedIn := c.reader(ctx)
+	actor, signedIn := c.nav.reader(ctx, c.sessions)
 
 	found, err := c.svc.Get(ctx.Ctx(), actor, ctx.Param("id"))
 	if err != nil {
@@ -305,7 +309,12 @@ func (c *PostController) Show(ctx *httpx.Context) error {
 
 // Create renders the empty form.
 func (c *PostController) Create(ctx *httpx.Context) error {
-	if _, err := c.actor(ctx); err != nil {
+	// The subject, not just the fact that there is one. The header greets by
+	// name and decides whether to offer the moderation queue, and both were
+	// drawn from an empty id here -- so the author writing a post got the header
+	// of a stranger.
+	actor, err := c.actor(ctx)
+	if err != nil {
 		return c.signIn(ctx)
 	}
 	token, err := c.token(ctx)
@@ -314,7 +323,7 @@ func (c *PostController) Create(ctx *httpx.Context) error {
 	}
 
 	return ctx.View("posts.create", views.PostsCreateData{
-		Page:   c.chrome(ctx, true, "", token, "New post"),
+		Page:   c.nav.page(ctx, actor, true, token, "New post"),
 		Errors: map[string][]string{},
 	})
 }
@@ -328,14 +337,14 @@ func (c *PostController) Store(ctx *httpx.Context) error {
 
 	in, form, errs := c.input(ctx)
 	if !c.Validated(errs) {
-		return c.rejectedCreate(ctx, form, errs)
+		return c.rejectedCreate(ctx, actor, form, errs)
 	}
 
 	created, err := c.svc.Create(ctx.Ctx(), actor, in)
 	if err != nil {
 		var invalid validation.Errors
 		if errors.As(err, &invalid) {
-			return c.rejectedCreate(ctx, form, invalid)
+			return c.rejectedCreate(ctx, actor, form, invalid)
 		}
 		return c.fail(ctx, err)
 	}
@@ -359,7 +368,7 @@ func (c *PostController) Edit(ctx *httpx.Context) error {
 	}
 
 	return ctx.View("posts.edit", views.PostsEditData{
-		Page:   c.chrome(ctx, true, "", token, "Edit post"),
+		Page:   c.nav.page(ctx, actor, true, token, "Edit post"),
 		Form:   c.form(found),
 		Errors: map[string][]string{},
 	})
@@ -375,7 +384,7 @@ func (c *PostController) Update(ctx *httpx.Context) error {
 	in, form, errs := c.input(ctx)
 	form.ID = ctx.Param("id")
 	if !c.Validated(errs) {
-		return c.rejectedEdit(ctx, form, errs)
+		return c.rejectedEdit(ctx, actor, form, errs)
 	}
 
 	updated, err := c.svc.Update(ctx.Ctx(), actor, requests.UpdatePost{
@@ -388,7 +397,7 @@ func (c *PostController) Update(ctx *httpx.Context) error {
 	if err != nil {
 		var invalid validation.Errors
 		if errors.As(err, &invalid) {
-			return c.rejectedEdit(ctx, form, invalid)
+			return c.rejectedEdit(ctx, actor, form, invalid)
 		}
 		return c.fail(ctx, err)
 	}
@@ -489,72 +498,10 @@ func (c *PostController) row(ctx *httpx.Context, p models.Post, comments int, se
 // reads it -- which is the failure mode where the tag is present and does
 // nothing.
 func (c *PostController) article(ctx *httpx.Context, actor security.Subject, signedIn bool, token string, p models.Post) view.Page {
-	page := c.chrome(ctx, signedIn, actor.ID, token, p.Title)
+	page := c.nav.page(ctx, actor, signedIn, token, p.Title)
 	page.Description = excerpt(p.Body)
 	page.Canonical = c.base + ctx.URL("posts.show", p.ID)
 	return page
-}
-
-// displayName is what the header greets somebody by.
-//
-// The session carries an id and not a name, deliberately -- a name in a session
-// is a name that stays wrong after somebody changes it. One lookup per page for
-// the person who is signed in is the price, and it is a single row by primary
-// key.
-//
-// It falls back to the id rather than failing: a header is not worth a 500.
-func (c *PostController) displayName(ctx *httpx.Context, id string) string {
-	if id == "" {
-		return ""
-	}
-	names, err := c.people.Names(ctx.Ctx(), c.tenant, []string{id})
-	if err != nil || names[id] == "" {
-		return id
-	}
-	return names[id]
-}
-
-// reader is who is asking: the signed-in subject, or a declared guest.
-//
-// The tenant of a guest is the application's, from configuration. A visitor
-// cannot choose whose rows they read (RULE 14), and it is not suspended because
-// nobody signed in.
-func (c *PostController) reader(ctx *httpx.Context) (security.Subject, bool) {
-	if actor, err := c.sessions.Load(ctx.Ctx(), ctx.Request); err == nil {
-		return actor, true
-	}
-	return security.Guest(c.tenant), false
-}
-
-// ifSignedIn is the address, or nothing for a guest.
-func ifSignedIn(signedIn bool, url string) string {
-	if signedIn {
-		return url
-	}
-	return ""
-}
-
-// chrome is the state the layout draws, filled the same way on every screen.
-//
-// One helper rather than six literals: the navigation is drawn from these
-// fields, and a screen that filled four of them was a screen offering "Login" to
-// somebody who had just signed in.
-func (c *PostController) chrome(ctx *httpx.Context, signedIn bool, name, token, title string) view.Page {
-	return view.Page{
-		Title:         title,
-		AppName:       c.appName,
-		Token:         token,
-		Authenticated: signedIn,
-		UserName:      c.displayName(ctx, name),
-		Path:          ctx.Request.URL.Path,
-		HomeURL:       ctx.URL("home"),
-		LoginURL:      "/auth/login",
-		LogoutURL:     "/auth/logout",
-		// Registration is open on this blog, so the layout draws the button.
-		// An application that closes it leaves this empty, and the header stops
-		// offering an address that refuses everybody.
-		RegisterURL: "/auth/register",
-	}
 }
 
 // thread turns the stored comments into rows the markup draws.
@@ -654,26 +601,26 @@ func (c *PostController) input(ctx *httpx.Context) (requests.StorePost, views.Po
 
 // rejectedCreate re-renders the creation form with its errors, as the 422
 // fragment HTMX swaps back in.
-func (c *PostController) rejectedCreate(ctx *httpx.Context, form views.PostForm, errs validation.Errors) error {
+func (c *PostController) rejectedCreate(ctx *httpx.Context, actor security.Subject, form views.PostForm, errs validation.Errors) error {
 	token, err := c.token(ctx)
 	if err != nil {
 		return err
 	}
 	return c.Invalid(ctx, "posts.create", views.PostsCreateData{
-		Page:   c.chrome(ctx, true, "", token, "New post"),
+		Page:   c.nav.page(ctx, actor, true, token, "New post"),
 		Form:   form,
 		Errors: errs,
 	})
 }
 
 // rejectedEdit re-renders the edit form with its errors.
-func (c *PostController) rejectedEdit(ctx *httpx.Context, form views.PostForm, errs validation.Errors) error {
+func (c *PostController) rejectedEdit(ctx *httpx.Context, actor security.Subject, form views.PostForm, errs validation.Errors) error {
 	token, err := c.token(ctx)
 	if err != nil {
 		return err
 	}
 	return c.Invalid(ctx, "posts.edit", views.PostsEditData{
-		Page:   c.chrome(ctx, true, "", token, "Edit post"),
+		Page:   c.nav.page(ctx, actor, true, token, "Edit post"),
 		Form:   form,
 		Errors: errs,
 	})

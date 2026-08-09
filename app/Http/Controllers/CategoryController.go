@@ -7,10 +7,10 @@ import (
 
 	"github.com/arandu-io/framework/data"
 	"github.com/arandu-io/framework/httpx"
+	"github.com/arandu-io/framework/modules/auth"
 	"github.com/arandu-io/framework/observability"
 	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/framework/validation"
-	"github.com/arandu-io/framework/view"
 
 	requests "github.com/arandu-io/examples/app/Http/Requests"
 	models "github.com/arandu-io/examples/app/Models"
@@ -30,6 +30,9 @@ type CategoryController struct {
 	svc      *services.CategoryService
 	sessions *security.SessionStore
 	csrf     *security.CSRF
+
+	// nav draws the header, the same way on every screen. See chrome.go.
+	nav navigation
 }
 
 // NewCategoryController returns the controller. bootstrap builds it and hands it to
@@ -38,8 +41,9 @@ type CategoryController struct {
 // The session store and the CSRF issuer arrive through the constructor rather
 // than through the service: a screen is allowed to know about a token and a
 // cookie, and a service is not allowed to expose its own dependencies.
-func NewCategoryController(svc *services.CategoryService, sessions *security.SessionStore, csrf *security.CSRF) *CategoryController {
-	return &CategoryController{svc: svc, sessions: sessions, csrf: csrf}
+func NewCategoryController(svc *services.CategoryService, sessions *security.SessionStore, csrf *security.CSRF, appName string, people *auth.Service, tenant string) *CategoryController {
+	return &CategoryController{svc: svc, sessions: sessions, csrf: csrf,
+		nav: navigation{appName: appName, people: people, tenant: tenant}}
 }
 
 // Compile-time proof of the seven actions httpx.Router.Resource looks for. It
@@ -107,7 +111,7 @@ func (c *CategoryController) Index(ctx *httpx.Context) error {
 	}
 
 	return ctx.View("categories.index", views.CategoriesIndexData{
-		Page:       view.Page{Title: "Categories", Token: token},
+		Page:       c.nav.page(ctx, actor, true, token, "Categories"),
 		Categories: rows,
 		NextCursor: next,
 	})
@@ -134,14 +138,15 @@ func (c *CategoryController) Show(ctx *httpx.Context) error {
 	}
 
 	return ctx.View("categories.show", views.CategoriesShowData{
-		Page:     view.Page{Title: "Category", Token: token},
+		Page:     c.nav.page(ctx, actor, true, token, "Category"),
 		Category: c.row(found),
 	})
 }
 
 // Create renders the empty form.
 func (c *CategoryController) Create(ctx *httpx.Context) error {
-	if _, err := c.actor(ctx); err != nil {
+	actor, err := c.actor(ctx)
+	if err != nil {
 		return c.signIn(ctx)
 	}
 	token, err := c.token(ctx)
@@ -150,7 +155,7 @@ func (c *CategoryController) Create(ctx *httpx.Context) error {
 	}
 
 	return ctx.View("categories.create", views.CategoriesCreateData{
-		Page:   view.Page{Title: "New category", Token: token},
+		Page:   c.nav.page(ctx, actor, true, token, "New category"),
 		Errors: map[string][]string{},
 	})
 }
@@ -164,14 +169,14 @@ func (c *CategoryController) Store(ctx *httpx.Context) error {
 
 	in, form, errs := c.input(ctx)
 	if !c.Validated(errs) {
-		return c.rejectedCreate(ctx, form, errs)
+		return c.rejectedCreate(ctx, actor, form, errs)
 	}
 
 	created, err := c.svc.Create(ctx.Ctx(), actor, in)
 	if err != nil {
 		var invalid validation.Errors
 		if errors.As(err, &invalid) {
-			return c.rejectedCreate(ctx, form, invalid)
+			return c.rejectedCreate(ctx, actor, form, invalid)
 		}
 		return c.fail(ctx, err)
 	}
@@ -195,7 +200,7 @@ func (c *CategoryController) Edit(ctx *httpx.Context) error {
 	}
 
 	return ctx.View("categories.edit", views.CategoriesEditData{
-		Page:   view.Page{Title: "Edit category", Token: token},
+		Page:   c.nav.page(ctx, actor, true, token, "Edit category"),
 		Form:   c.form(found),
 		Errors: map[string][]string{},
 	})
@@ -211,7 +216,7 @@ func (c *CategoryController) Update(ctx *httpx.Context) error {
 	in, form, errs := c.input(ctx)
 	form.ID = ctx.Param("id")
 	if !c.Validated(errs) {
-		return c.rejectedEdit(ctx, form, errs)
+		return c.rejectedEdit(ctx, actor, form, errs)
 	}
 
 	updated, err := c.svc.Update(ctx.Ctx(), actor, requests.UpdateCategory{
@@ -223,7 +228,7 @@ func (c *CategoryController) Update(ctx *httpx.Context) error {
 	if err != nil {
 		var invalid validation.Errors
 		if errors.As(err, &invalid) {
-			return c.rejectedEdit(ctx, form, invalid)
+			return c.rejectedEdit(ctx, actor, form, invalid)
 		}
 		return c.fail(ctx, err)
 	}
@@ -320,26 +325,26 @@ func (c *CategoryController) input(ctx *httpx.Context) (requests.StoreCategory, 
 
 // rejectedCreate re-renders the creation form with its errors, as the 422
 // fragment HTMX swaps back in.
-func (c *CategoryController) rejectedCreate(ctx *httpx.Context, form views.CategoryForm, errs validation.Errors) error {
+func (c *CategoryController) rejectedCreate(ctx *httpx.Context, actor security.Subject, form views.CategoryForm, errs validation.Errors) error {
 	token, err := c.token(ctx)
 	if err != nil {
 		return err
 	}
 	return c.Invalid(ctx, "categories.create", views.CategoriesCreateData{
-		Page:   view.Page{Title: "New category", Token: token},
+		Page:   c.nav.page(ctx, actor, true, token, "New category"),
 		Form:   form,
 		Errors: errs,
 	})
 }
 
 // rejectedEdit re-renders the edit form with its errors.
-func (c *CategoryController) rejectedEdit(ctx *httpx.Context, form views.CategoryForm, errs validation.Errors) error {
+func (c *CategoryController) rejectedEdit(ctx *httpx.Context, actor security.Subject, form views.CategoryForm, errs validation.Errors) error {
 	token, err := c.token(ctx)
 	if err != nil {
 		return err
 	}
 	return c.Invalid(ctx, "categories.edit", views.CategoriesEditData{
-		Page:   view.Page{Title: "Edit category", Token: token},
+		Page:   c.nav.page(ctx, actor, true, token, "Edit category"),
 		Form:   form,
 		Errors: errs,
 	})
