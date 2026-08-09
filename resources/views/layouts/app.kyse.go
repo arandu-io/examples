@@ -2,7 +2,10 @@
 
 package layouts
 
-import "github.com/arandu-io/kyse/components"
+import (
+	"github.com/arandu-io/kyse/components"
+	"github.com/arandu-io/kyse/icons"
+)
 
 <!doctype html>
 <html lang="en" class="h-full">
@@ -57,17 +60,27 @@ import "github.com/arandu-io/kyse/components"
 				</a>
 				<div class="flex items-center gap-2 text-sm">
 					{!! components.ThemeToggle() !!}
+					{{-- The icons here name the action rather than decorate it, which
+					     is the only reason any of them is in this file. A door you
+					     go in and a door you come out of look alike in words and do
+					     not look alike in a glyph. --}}
 					@if(!.SignedIn())
-						<a href="{{ .LoginLink() }}" class="btn" data-variant="ghost" data-size="sm">Sign in</a>
+						<a href="{{ .LoginLink() }}" class="btn" data-variant="ghost" data-size="sm">
+							{!! icons.SignIn(icons.Props{}) !!} Sign in
+						</a>
 						@if(.RegisterLink() != "")
-							<a href="{{ .RegisterLink() }}" class="btn" data-size="sm">Create account</a>
+							<a href="{{ .RegisterLink() }}" class="btn" data-size="sm">
+								{!! icons.UserPlus(icons.Props{}) !!} Create account
+							</a>
 						@endif
 					@endif
 					@if(.SignedIn())
 						<span class="text-muted-foreground hidden sm:inline">{{ .SignedInName() }}</span>
 						<form method="post" action="{{ .LogoutLink() }}">
 							@csrf
-							<button type="submit" class="btn" data-variant="ghost" data-size="sm">Sign out</button>
+							<button type="submit" class="btn" data-variant="ghost" data-size="sm">
+								{!! icons.SignOut(icons.Props{}) !!} Sign out
+							</button>
 						</form>
 					@endif
 				</div>
@@ -85,7 +98,9 @@ import "github.com/arandu-io/kyse/components"
 		<footer class="border-t">
 			<div class="text-muted-foreground mx-auto flex max-w-5xl flex-col gap-2 px-6 py-8 text-sm sm:flex-row sm:items-center sm:justify-between">
 				<p>An example application. Everything here is seeded.</p>
-				<a class="hover:text-foreground" href="https://github.com/arandu-io/examples">Read the source</a>
+				<a class="hover:text-foreground inline-flex items-center gap-1.5" href="https://github.com/arandu-io/examples">
+					{!! icons.GithubLogo(icons.Props{}) !!} Read the source
+				</a>
 			</div>
 		</footer>
 

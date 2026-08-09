@@ -196,6 +196,43 @@
     text-transform: uppercase;
   }
 
+  /* One fact of the meta line: a glyph and the value it labels.
+   *
+   * inline-flex and a gap, so the icon sits on the text baseline row rather
+   * than on the line box -- which is what makes an icon look dropped when it is
+   * simply inline. The size is set here and nowhere else: an icon whose size is
+   * decided at the call site is an icon that is a different size on each page.
+   *
+   * tabular-nums because the values are counts, and counts in a row that shift
+   * width as they change are the reason a listing looks unstable while it
+   * loads. */
+  .meta-fact {
+    align-items: center;
+    display: inline-flex;
+    font-variant-numeric: tabular-nums;
+    gap: 0.3rem;
+  }
+  .meta-fact svg {
+    font-size: 0.875rem;
+    opacity: 0.75;
+  }
+
+  /* The section, which is a link and not a fact: it is the one thing on the
+   * line you can act on, so it is the one that responds to a pointer. */
+  .section-tag {
+    align-items: center;
+    display: inline-flex;
+    gap: 0.3rem;
+    transition: color 120ms ease;
+  }
+  .section-tag svg {
+    font-size: 0.875rem;
+    opacity: 0.75;
+  }
+  a.section-tag:hover {
+    color: var(--foreground);
+  }
+
   /* A section chip in the navigation bar. The current one is filled; the rest
    * are outlined, and the difference is where you are rather than decoration. */
   .section-chip {
@@ -216,6 +253,25 @@
     background-color: var(--foreground);
     border-color: var(--foreground);
     color: var(--background);
+  }
+
+  /* The glyph above an authentication heading.
+   *
+   * One per screen, saying which of the three you are on -- they are three
+   * pages of one form with three different jobs, and the words at the top are
+   * the only thing that told them apart. It is a circle rather than a bare
+   * icon so the page has one deliberate shape on it above the fold. */
+  .auth-mark {
+    align-items: center;
+    background-color: var(--muted);
+    border-radius: 9999px;
+    display: inline-flex;
+    height: 3rem;
+    justify-content: center;
+    width: 3rem;
+  }
+  .auth-mark svg {
+    font-size: 1.375rem;
   }
 
   /* The mark in the masthead. It carries its own colours, so it gets no filter

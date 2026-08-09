@@ -3,8 +3,6 @@
 package posts
 
 import (
-	"strings"
-
 	"github.com/arandu-io/kyse/components"
 	"github.com/arandu-io/kyse/icons"
 
@@ -148,23 +146,21 @@ func (r PostRow) StatusVariant() string {
 
 // Meta is the grey line under the title: when it went out, and how many people
 // answered.
-func (r PostRow) Meta() string {
-	when := r.PublishedAt
-	if when == "" {
-		when = "not published"
+func (r PostRow) When() string {
+	if r.PublishedAt == "" {
+		return "not published"
 	}
+	return r.PublishedAt
+}
 
-	// Only what there is something to say about. "0 comments" under every card
-	// of a new blog is a column of zeroes that says the same thing five times,
-	// and it says it about the thing you would rather nobody counted.
-	parts := []string{when}
-	if r.Views != "" {
-		parts = append(parts, r.Views+" reads")
-	}
-	if r.Comments != "" && r.Comments != "0" {
-		parts = append(parts, r.Comments+" comments")
-	}
-	return strings.Join(parts, " · ")
+// HasComments says whether the count is worth drawing.
+//
+// "0 comments" under every card of a new blog is a column of zeroes that says
+// the same thing five times, and it says it about the thing you would rather
+// nobody counted. Empty and "0" are the same answer here -- the listing does not
+// count the thread at all, so it sends neither.
+func (r PostRow) HasComments() bool {
+	return r.Comments != "" && r.Comments != "0"
 }
 @endgo
 
@@ -179,7 +175,9 @@ func (r PostRow) Meta() string {
 			@endif
 		</div>
 		@if(.NewURL != "")
-			<a class="btn shrink-0" href="{{ .NewURL }}">Write one</a>
+			<a class="btn shrink-0" href="{{ .NewURL }}">
+				{!! icons.PencilSimple(icons.Props{}) !!} Write one
+			</a>
 		@endif
 	</header>
 
@@ -201,12 +199,23 @@ func (r PostRow) Meta() string {
 	     the rest in a list under it. --}}
 	@if(len(.Posts) > 0)
 		<article class="mt-10 border-b pb-10">
-			<div class="eyebrow flex flex-wrap items-center gap-x-2 gap-y-1">
+			{{-- Three facts, three glyphs. They were one string joined by middots,
+			     which reads as one fact in three parts -- and the eye has to
+			     parse the sentence to find the date. A calendar, an eye and a
+			     speech bubble are told apart without reading. --}}
+			<div class="eyebrow flex flex-wrap items-center gap-x-3 gap-y-1">
 				@if(.Lead().Category != "")
-					<a class="hover:text-foreground" href="{{ .Lead().CategoryURL }}">{{ .Lead().Category }}</a>
-					<span aria-hidden="true">&middot;</span>
+					<a class="section-tag" href="{{ .Lead().CategoryURL }}">
+						{!! icons.Tag(icons.Props{}) !!} {{ .Lead().Category }}
+					</a>
 				@endif
-				<span>{{ .Lead().Meta() }}</span>
+				<span class="meta-fact">{!! icons.CalendarBlank(icons.Props{}) !!} {{ .Lead().When() }}</span>
+				@if(.Lead().Views != "")
+					<span class="meta-fact">{!! icons.Eye(icons.Props{}) !!} {{ .Lead().Views }}</span>
+				@endif
+				@if(.Lead().HasComments())
+					<span class="meta-fact">{!! icons.ChatCircle(icons.Props{}) !!} {{ .Lead().Comments }}</span>
+				@endif
 			</div>
 
 			<h2 class="headline mt-3 text-3xl sm:text-4xl">
@@ -226,12 +235,17 @@ func (r PostRow) Meta() string {
 			@foreach(.Rest() as post)
 				<li class="py-6">
 					<a class="group flex flex-col gap-2" href="{{ post.URL }}">
-						<div class="eyebrow flex flex-wrap items-center gap-x-2 gap-y-1">
+						<div class="eyebrow flex flex-wrap items-center gap-x-3 gap-y-1">
 							@if(post.Category != "")
-								<span>{{ post.Category }}</span>
-								<span aria-hidden="true">&middot;</span>
+								<span class="section-tag">{!! icons.Tag(icons.Props{}) !!} {{ post.Category }}</span>
 							@endif
-							<span>{{ post.Meta() }}</span>
+							<span class="meta-fact">{!! icons.CalendarBlank(icons.Props{}) !!} {{ post.When() }}</span>
+							@if(post.Views != "")
+								<span class="meta-fact">{!! icons.Eye(icons.Props{}) !!} {{ post.Views }}</span>
+							@endif
+							@if(post.HasComments())
+								<span class="meta-fact">{!! icons.ChatCircle(icons.Props{}) !!} {{ post.Comments }}</span>
+							@endif
 						</div>
 						<h3 class="headline text-xl group-hover:underline">{{ post.Title }}</h3>
 						<p class="text-muted-foreground text-sm leading-relaxed">{{ post.Excerpt }}</p>
@@ -256,7 +270,9 @@ func (r PostRow) Meta() string {
 
 	@if(.NextCursor != "")
 		<nav class="mt-10 flex justify-center">
-			<a class="btn" data-variant="outline" href="?cursor={{ .NextCursor }}">Older posts</a>
+			<a class="btn" data-variant="outline" href="?cursor={{ .NextCursor }}">
+				Older posts {!! icons.ArrowRight(icons.Props{}) !!}
+			</a>
 		</nav>
 	@endif
 @endsection

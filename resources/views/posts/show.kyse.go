@@ -4,6 +4,7 @@ package posts
 
 import (
 	"github.com/arandu-io/kyse/components"
+	"github.com/arandu-io/kyse/icons"
 
 	"github.com/arandu-io/framework/view"
 )
@@ -72,12 +73,19 @@ func (c CommentRow) Badge() string {
 @section('content')
 	<article class="mx-auto w-full max-w-2xl">
 		<header>
-			<div class="eyebrow flex flex-wrap items-center gap-x-2 gap-y-1">
+			<div class="eyebrow flex flex-wrap items-center gap-x-3 gap-y-1">
 				@if(.Post.Category != "")
-					<a class="hover:text-foreground" href="{{ .Post.CategoryURL }}">{{ .Post.Category }}</a>
-					<span aria-hidden="true">&middot;</span>
+					<a class="section-tag" href="{{ .Post.CategoryURL }}">
+						{!! icons.Tag(icons.Props{}) !!} {{ .Post.Category }}
+					</a>
 				@endif
-				<span>{{ .Post.Meta() }}</span>
+				<span class="meta-fact">{!! icons.CalendarBlank(icons.Props{}) !!} {{ .Post.When() }}</span>
+				@if(.Post.Views != "")
+					<span class="meta-fact">{!! icons.Eye(icons.Props{}) !!} {{ .Post.Views }}</span>
+				@endif
+				@if(.Post.HasComments())
+					<span class="meta-fact">{!! icons.ChatCircle(icons.Props{}) !!} {{ .Post.Comments }}</span>
+				@endif
 			</div>
 			<h1 class="headline mt-3 text-4xl sm:text-5xl">{{ .Post.Title }}</h1>
 		</header>
@@ -93,9 +101,13 @@ func (c CommentRow) Badge() string {
 
 		@if(.EditURL != "")
 			<footer class="mt-10 flex items-center gap-3 border-t pt-6">
-				<a class="btn" data-variant="outline" data-size="sm" href="{{ .EditURL }}">Edit</a>
+				<a class="btn" data-variant="outline" data-size="sm" href="{{ .EditURL }}">
+					{!! icons.PencilSimple(icons.Props{}) !!} Edit
+				</a>
 				<button type="button" class="btn" data-variant="destructive" data-size="sm"
-					onclick="deletePost.showModal()">Delete</button>
+					onclick="deletePost.showModal()">
+					{!! icons.Trash(icons.Props{}) !!} Delete
+				</button>
 			</footer>
 
 			{!! components.Dialog(components.DialogProps{
@@ -111,7 +123,8 @@ func (c CommentRow) Badge() string {
 	</article>
 
 	<section class="mx-auto mt-16 w-full max-w-2xl border-t pt-10">
-		<h2 class="headline text-2xl">
+		<h2 class="headline flex items-center gap-2 text-2xl">
+			{!! icons.ChatCircle(icons.Props{}) !!}
 			Comments
 			@if(len(.Comments) > 0)
 				{!! components.Badge(components.BadgeProps{Label: .Post.Comments, Variant: "secondary"}) !!}
@@ -127,8 +140,13 @@ func (c CommentRow) Badge() string {
 							<div class="flex flex-wrap items-center gap-2">
 								<span class="text-sm font-medium">{{ comment.Author }}</span>
 								<span class="text-muted-foreground text-xs">{{ comment.Created }}</span>
+								{{-- The clock is the state, and it is the reason this badge
+								     exists: a comment that is there but not public reads as
+								     a bug without something saying it is waiting. --}}
 								@if(comment.Badge() != "")
-									{!! components.Badge(components.BadgeProps{Label: comment.Badge(), Variant: "outline"}) !!}
+									<span class="meta-fact text-muted-foreground text-xs">
+										{!! icons.Clock(icons.Props{}) !!} {{ comment.Badge() }}
+									</span>
 								@endif
 							</div>
 							<p class="mt-1.5 text-sm leading-relaxed whitespace-pre-line">{{ comment.Body }}</p>
@@ -160,7 +178,9 @@ func (c CommentRow) Badge() string {
 				}) !!}
 
 				<div>
-					<button type="submit" class="btn">Post the comment</button>
+					<button type="submit" class="btn">
+						{!! icons.PaperPlaneTilt(icons.Props{}) !!} Post the comment
+					</button>
 				</div>
 			</form>
 		@endif
@@ -175,14 +195,17 @@ func (c CommentRow) Badge() string {
 				}) !!}
 				<form class="mt-4" method="post" action="{{ .ResendURL }}">
 					@csrf
-					<button type="submit" class="btn" data-variant="outline" data-size="sm">Send the link again</button>
+					<button type="submit" class="btn" data-variant="outline" data-size="sm">
+						{!! icons.EnvelopeSimple(icons.Props{}) !!} Send the link again
+					</button>
 				</form>
 			</div>
 		@endif
 
 		@if(.CommentURL == "" && !.Unverified)
-			<p class="text-muted-foreground mt-10 text-sm">
-				<a class="hover:underline" href="{{ .LoginLink() }}">Sign in</a> to leave a comment.
+			<p class="text-muted-foreground mt-10 flex items-center gap-1.5 text-sm">
+				{!! icons.SignIn(icons.Props{}) !!}
+				<span><a class="text-foreground hover:underline" href="{{ .LoginLink() }}">Sign in</a> to leave a comment.</span>
 			</p>
 		@endif
 	</section>

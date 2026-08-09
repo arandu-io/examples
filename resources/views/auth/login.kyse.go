@@ -4,6 +4,7 @@ package auth
 
 import (
 	"github.com/arandu-io/kyse/components"
+	"github.com/arandu-io/kyse/icons"
 
 	authui "github.com/arandu-io/examples/app/Http/Controllers/Auth"
 )
@@ -18,7 +19,8 @@ type LoginData = authui.AuthPage
 @section('content')
 	<div class="mx-auto w-full max-w-md">
 		<header class="mb-8 text-center">
-			<h1 class="headline text-3xl">Sign in</h1>
+			<span class="auth-mark">{!! icons.SignIn(icons.Props{}) !!}</span>
+			<h1 class="headline mt-4 text-3xl">Sign in</h1>
 			<p class="text-muted-foreground mt-2 text-sm">To write, to comment, or to moderate.</p>
 		</header>
 

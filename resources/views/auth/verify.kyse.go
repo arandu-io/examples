@@ -4,6 +4,7 @@ package auth
 
 import (
 	"github.com/arandu-io/kyse/components"
+	"github.com/arandu-io/kyse/icons"
 
 	authui "github.com/arandu-io/examples/app/Http/Controllers/Auth"
 )
@@ -18,7 +19,8 @@ type VerifyData = authui.AuthPage
 @section('content')
 	<div class="mx-auto w-full max-w-md">
 		<header class="mb-8 text-center">
-			<h1 class="headline text-3xl">Check your inbox</h1>
+			<span class="auth-mark">{!! icons.EnvelopeSimple(icons.Props{}) !!}</span>
+			<h1 class="headline mt-4 text-3xl">Check your inbox</h1>
 			<p class="text-muted-foreground mt-2 text-sm">
 				One link, and the account is yours.
 			</p>
