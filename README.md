@@ -45,9 +45,28 @@ both fall back to a known password:
 | `admin@example.com` | `arandu-demo-password` | writes, publishes, moderates |
 | `reader@example.com` | `arandu-demo-password` | comments, and nothing else |
 
-Set `ARANDU_ADMIN_EMAIL` and `ARANDU_ADMIN_PASSWORD` to choose your own. Outside
-development the seeder refuses without them — a default password is a hole
+Outside development that fallback is refused — a default password is a hole
 exactly once, the first time it runs somewhere it was not supposed to.
+
+### An account of your own
+
+```sh
+aru db:seed UserSeeder -e you@example.com -p a-long-password -r admin
+```
+
+Run it again and the account is left exactly as it is, because creating is safe
+to repeat and replacing a password is not. To replace one — the first
+administrator of a fresh deployment, or somebody locked out before the mail
+transport is configured, who has nowhere for a reset link to go:
+
+```sh
+aru db:seed UserSeeder -upd -e you@example.com -p a-new-password
+```
+
+The password is on the command line, so it is in your shell history and was
+visible in `ps` while the command ran. The command says so, and prints how to
+drop the history entry. It is the door for getting in; change the password from
+the application afterwards.
 
 You land on six posts in four sections, one of them a draft that is not there
 until you sign in. There is a moderation panel at `/admin` with one comment

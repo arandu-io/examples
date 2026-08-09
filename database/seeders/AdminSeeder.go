@@ -15,13 +15,18 @@ import (
 // with a system grant, and it does it in the open rather than at boot -- seeding
 // that happens by itself is how a known password reaches production.
 //
-// Credentials come from the environment rather than from flags: a password typed
-// as an argument lands in the shell history and in the process list.
+// It is the demo administrator, and it takes nothing: `aru db:seed` on a fresh
+// clone has to produce somebody to sign in as, without arguments, or the first
+// run ends at the sign-in screen.
 //
-// In development, and only there, both fall back to a known demo pair so that a
-// fresh clone has somebody to sign in as. Outside development the variables are
-// required -- see demoPassword, in ReaderSeeder.go, for the one guard that
-// matters.
+// A specific address and password is UserSeeder's job:
+//
+//	aru db:seed UserSeeder -e you@example.com -p a-long-password -r admin
+//
+// The pair below is a fallback and it is guarded by APP_ENV and by nothing else,
+// which is the only guard that matters: a default password is a hole exactly
+// once, the first time this runs somewhere it was not supposed to. ARANDU_ADMIN_
+// still overrides it, for a pipeline that seeds without a terminal.
 type AdminSeeder struct{}
 
 // Name is how the seeder is addressed on the command line.
