@@ -1,4 +1,4 @@
-package controllers_test
+package unit_test
 
 import (
 	"context"
@@ -15,15 +15,15 @@ import (
 
 // These tests need no database: every repository method checks the Grant before
 // touching the handle, which is exactly the property under test.
-func postRepoWithoutDB() *repositories.PostRepository {
-	return repositories.NewPostRepository(nil)
+func commentRepoWithoutDB() *repositories.CommentRepository {
+	return repositories.NewCommentRepository(nil)
 }
 
-// TestEveryPostMethodRequiresItsGrant is the framework thesis at runtime:
+// TestEveryCommentMethodRequiresItsGrant is the framework thesis at runtime:
 // the zero Grant -- the only one a caller outside the security package can build
 // -- never gets through, and a grant for one action does not open another.
-func TestEveryPostMethodRequiresItsGrant(t *testing.T) {
-	repo := postRepoWithoutDB()
+func TestEveryCommentMethodRequiresItsGrant(t *testing.T) {
+	repo := commentRepoWithoutDB()
 	ctx := context.Background()
 	var zero security.Grant
 
@@ -37,11 +37,11 @@ func TestEveryPostMethodRequiresItsGrant(t *testing.T) {
 			return err
 		},
 		"Create": func(g security.Grant) error {
-			_, err := repo.Create(ctx, g, models.Post{})
+			_, err := repo.Create(ctx, g, models.Comment{})
 			return err
 		},
 		"Update": func(g security.Grant) error {
-			_, err := repo.Update(ctx, g, models.Post{})
+			_, err := repo.Update(ctx, g, models.Comment{})
 			return err
 		},
 		"Delete": func(g security.Grant) error {
@@ -63,36 +63,36 @@ func TestEveryPostMethodRequiresItsGrant(t *testing.T) {
 	}
 }
 
-// TestThePostPolicyDeniesWhatItDoesNotKnow is the property that keeps a
+// TestTheCommentPolicyDeniesWhatItDoesNotKnow is the property that keeps a
 // policy safe as it grows: an action nobody wrote a rule for is refused, rather
 // than falling through to allowed.
 //
 // It uses an action that will never be opened, so it keeps passing after you open
 // the real ones -- a test that breaks when you do what the generator told you to
 // do is a test people delete.
-func TestThePostPolicyDeniesWhatItDoesNotKnow(t *testing.T) {
+func TestTheCommentPolicyDeniesWhatItDoesNotKnow(t *testing.T) {
 	admin := security.Subject{ID: "a1", Tenant: "t1", Roles: []string{"admin", "staff"}}
 
-	err := (policies.PostPolicy{}).Can(context.Background(), admin,
-		"post.action_that_does_not_exist", models.Post{})
+	err := (policies.CommentPolicy{}).Can(context.Background(), admin,
+		"comment.action_that_does_not_exist", models.Comment{})
 
 	if err == nil {
 		t.Fatal("an action with no rule was allowed: the policy falls through to allowed")
 	}
 }
 
-// TestPostListRejectsSortOutsideTheAllowlist keeps the one door a column
+// TestCommentListRejectsSortOutsideTheAllowlist keeps the one door a column
 // name could come through closed.
-func TestPostListRejectsSortOutsideTheAllowlist(t *testing.T) {
-	repo := postRepoWithoutDB()
-	// PostList, because listing is its own permission: a role may be
+func TestCommentListRejectsSortOutsideTheAllowlist(t *testing.T) {
+	repo := commentRepoWithoutDB()
+	// CommentList, because listing is its own permission: a role may be
 	// allowed to open the record it was given and not to page through every one.
-	g := security.SystemGrant(policies.PostList, "t1")
+	g := security.SystemGrant(policies.CommentList, "t1")
 
-	_, err := repo.List(context.Background(), g, data.Query{Sort: "1; DROP TABLE posts"})
+	_, err := repo.List(context.Background(), g, data.Query{Sort: "1; DROP TABLE comments"})
 
-	if !errors.Is(err, models.ErrPostSort) {
-		t.Fatalf("error = %v, want ErrPostSort", err)
+	if !errors.Is(err, models.ErrCommentSort) {
+		t.Fatalf("error = %v, want ErrCommentSort", err)
 	}
 }
 
