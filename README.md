@@ -73,7 +73,7 @@ aru new blog --module=github.com/you/blog
 cd blog
 ```
 
-You get the tree a Laravel developer recognises: `app/Http/Controllers`,
+You get the tree: `app/Http/Controllers`,
 `app/Models`, `app/Policies`, `routes/web.go`, `resources/views`,
 `database/migrations`. It runs already — `aru dev` and there is a landing page.
 
