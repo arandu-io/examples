@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/arandu-io/kyse/components"
+	"github.com/arandu-io/kyse/icons"
 
 	"github.com/arandu-io/framework/view"
 )
@@ -213,7 +214,9 @@ func (r PostRow) Meta() string {
 			</h2>
 			<p class="standfirst mt-3">{{ .Lead().Excerpt }}</p>
 			<p class="mt-4">
-				<a class="text-sm font-medium hover:underline" href="{{ .Lead().URL }}">Read it &rarr;</a>
+				<a class="inline-flex items-center gap-1.5 text-sm font-medium hover:underline" href="{{ .Lead().URL }}">
+					Read it {!! icons.ArrowRight(icons.Props{}) !!}
+				</a>
 			</p>
 		</article>
 	@endif
