@@ -14,12 +14,14 @@
 package bootstrap
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/arandu-io/framework/data"
 	"github.com/arandu-io/framework/events"
 	"github.com/arandu-io/framework/httpx/middleware"
 	"github.com/arandu-io/framework/kernel"
+	"github.com/arandu-io/framework/mail"
 	"github.com/arandu-io/framework/modules/auth"
 	"github.com/arandu-io/framework/observability/errorpage"
 	"github.com/arandu-io/framework/scheduler"
@@ -56,6 +58,7 @@ import (
 	_ "github.com/arandu-io/examples/storage/framework/views/auth/passwords"
 	_ "github.com/arandu-io/examples/storage/framework/views/comments"
 	_ "github.com/arandu-io/examples/storage/framework/views/layouts"
+	_ "github.com/arandu-io/examples/storage/framework/views/mail"
 	_ "github.com/arandu-io/examples/storage/framework/views/posts"
 )
 
@@ -79,6 +82,10 @@ type App struct {
 	Scheduler *scheduler.Module
 	// Queue is the job store `aru work` drains.
 	Queue *queue.Store
+	// Mail is what sends. It is returned as well as used, because a job that
+	// sends is built outside this function and reaching back in for the mailer
+	// later is the hidden coupling the explicit wiring exists to avoid.
+	Mail *mail.Mailer
 }
 
 // Build wires the application and returns it ready to boot.
@@ -117,6 +124,15 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 	// 800ms wait shows up as "other", and the timeout is not optional --
 	// http.Client has none by default, and a call with no deadline is how one
 	// slow dependency turns into every request of the process hanging.
+
+	// The mailer, and which transport is configuration rather than a decision
+	// the calling code makes. Development is the log transport, so `aru dev`
+	// works with nothing installed -- an application that needs a mail server to
+	// start is one nobody runs.
+	mailer := mail.New(mailTransport(cfg.Mail), view.NewRenderer(), mail.Address{
+		Email: cfg.Mail.FromAddress,
+		Name:  cfg.Mail.FromName,
+	})
 
 	authService := auth.NewService(auth.NewUserRepo(db), sessions, csrf)
 
@@ -175,7 +191,7 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 			// framework ships the minimum markup that exists so authentication
 			// could be tested at all; this one has a page. Register one or the
 			// other, never both -- they answer the same path.
-			authui.New(authService, sessions, csrf, auth.FixedTenant(cfg.Auth.Tenant)),
+			authui.New(authService, sessions, csrf, mailer, cfg.App.URL, auth.FixedTenant(cfg.Auth.Tenant)),
 			// The outbox table. A module that records domain events stores them
 			// in the same transaction as the write, and this is what brings the
 			// table those rows land in -- see doc 27.
@@ -206,5 +222,35 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 	sched := scheduler.NewModule(k.Tasks(), scheduler.Options{Recorder: k.Recorder()})
 	k.Register(sched)
 
-	return App{Kernel: k, Auth: authService, Scheduler: sched, Queue: queueStore}
+	return App{Kernel: k, Auth: authService, Scheduler: sched, Queue: queueStore, Mail: mailer}
+}
+
+// mailTransport picks the transport the configuration asked for.
+//
+// A switch here rather than a registry: there are four, they are all in this
+// file, and a name that matches nothing is refused at boot rather than at the
+// first message. An application that starts and cannot send is one that finds
+// out from a customer.
+func mailTransport(cfg appconfig.Mail) mail.Transport {
+	switch cfg.Mailer {
+	case appconfig.MailerSMTP:
+		return mail.SMTP{
+			Host:     cfg.Host,
+			Port:     strconv.Itoa(cfg.Port),
+			Username: cfg.Username,
+			Password: cfg.Password,
+		}
+	case appconfig.MailerArray:
+		return &mail.Array{}
+	case appconfig.MailerResend, appconfig.MailerSendGrid:
+		// The adapters are submodules, because in Go there is no optional
+		// dependency and a provider's client in the core is that client in every
+		// binary. Add the one you use and return it here:
+		//
+		//	go get github.com/arandu-io/mail/resend
+		//	return resend.New(cfg.Key)
+		panic("mail: " + string(cfg.Mailer) + " needs its submodule: go get github.com/arandu-io/mail/" + string(cfg.Mailer))
+	default:
+		return mail.Log{}
+	}
 }

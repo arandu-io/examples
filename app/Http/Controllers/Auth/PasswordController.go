@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/arandu-io/framework/observability"
+
+	appmail "github.com/arandu-io/examples/app/Mail"
 	"github.com/arandu-io/framework/view"
 )
 
@@ -27,6 +29,10 @@ import (
 // store holding it is not a store of live reset links, and it is compared with
 // hmac.Equal rather than == -- the comparison is against a secret and the timing
 // of a byte-by-byte one leaks its prefix.
+//
+// The link is sent through the application's mailer. In development that is the
+// log transport, so it still ends up somewhere readable -- but the code path is
+// the one production takes, rather than a branch that only runs on a laptop.
 //
 // It is held in memory. That is right for one instance and wrong for two, in
 // exactly the way the session store is: behind a load balancer the reset link
@@ -60,11 +66,7 @@ func (m *Module) showPasswordRequest(w http.ResponseWriter, r *http.Request) {
 	m.screen(w, r, "auth.passwords.email", AuthPage{})
 }
 
-// sendPasswordLink issues a token and, in this example, prints the link.
-//
-// A real application sends it through its mailer. Printing it is what keeps this
-// example runnable with nothing installed -- and it is marked in the log as what
-// it is, so nobody ships it by accident.
+// sendPasswordLink issues a token and mails the link.
 func (m *Module) sendPasswordLink(w http.ResponseWriter, r *http.Request) {
 	email := strings.TrimSpace(r.PostFormValue("email"))
 
@@ -82,8 +84,20 @@ func (m *Module) sendPasswordLink(w http.ResponseWriter, r *http.Request) {
 		resets.byHash[string(sum[:])] = reset{email: email, expires: time.Now().Add(resetTTL)}
 		resets.Unlock()
 
-		observability.Log(r.Context()).Info("password reset link issued -- this example prints it instead of sending it",
-			"email", email, "link", "/auth/password/reset?token="+token)
+		// Sent, not printed. Which transport carries it is configuration: in
+		// development it is the log transport, so the link still ends up
+		// somewhere you can read it -- and the code path is the same one
+		// production takes, rather than a branch that only runs on a laptop.
+		//
+		// The failure is logged and not returned. Telling the person that
+		// sending failed tells them the address is registered, which is the
+		// oracle this whole handler is written to avoid.
+		if err := m.mailer.To(email).Send(r.Context(), appmail.PasswordReset{
+			Name: email,
+			Link: m.base + "/auth/password/reset?token=" + token,
+		}); err != nil {
+			observability.Log(r.Context()).Error("sending the password reset", "error", err)
+		}
 	}
 
 	// The same answer either way. A form that says "no such account" is an

@@ -11,6 +11,7 @@ package authui
 import (
 	"github.com/arandu-io/framework/httpx"
 	"github.com/arandu-io/framework/kernel"
+	"github.com/arandu-io/framework/mail"
 	"github.com/arandu-io/framework/modules/auth"
 	"github.com/arandu-io/framework/security"
 )
@@ -36,6 +37,13 @@ type Module struct {
 	sessions *security.SessionStore
 	csrf     *security.CSRF
 	tenant   auth.TenantResolver
+
+	// mailer is what sends the reset link, and base is the origin the link is
+	// built on. The origin comes from configuration and never from the request:
+	// a Host header is what the client sent, and a reset link built from one is
+	// a reset link an attacker chose the destination of.
+	mailer *mail.Mailer
+	base   string
 }
 
 // New returns the module.
@@ -47,7 +55,7 @@ type Module struct {
 // The session store and the CSRF issuer are passed in rather than reached
 // through the service, because a screen is allowed to know about a token and a
 // cookie, and the service is not allowed to expose its own dependencies.
-func New(svc *auth.Service, sessions *security.SessionStore, csrf *security.CSRF, tenant auth.TenantResolver) *Module {
+func New(svc *auth.Service, sessions *security.SessionStore, csrf *security.CSRF, mailer *mail.Mailer, base string, tenant auth.TenantResolver) *Module {
 	if tenant == nil {
 		tenant = auth.FixedTenant("")
 	}
@@ -56,6 +64,8 @@ func New(svc *auth.Service, sessions *security.SessionStore, csrf *security.CSRF
 		auth:     svc,
 		sessions: sessions,
 		csrf:     csrf,
+		mailer:   mailer,
+		base:     base,
 		tenant:   tenant,
 	}
 }
