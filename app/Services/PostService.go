@@ -58,11 +58,30 @@ func (s *PostService) Create(ctx context.Context, actor security.Subject, in req
 
 // Get returns one post.
 func (s *PostService) Get(ctx context.Context, actor security.Subject, id string) (models.Post, error) {
+	// Asked twice, and the second time is the one that matters.
+	//
+	// The first call is about the zero value, because the row has not been read
+	// yet -- it answers "may this subject look at posts at all", which is what
+	// produces the Grant the repository needs. The second is about the row that
+	// came back, and it is where a rule that depends on the record is decided:
+	// a guest may read a published post and not a draft.
+	//
+	// Deciding only once, on the zero value, is how a policy that reads
+	// p.PublishedAt is written and never consulted -- the field it branches on
+	// is always empty, so the rule silently means something else.
 	g, err := security.Authorize(ctx, s.policy, actor, policies.PostView, models.Post{})
 	if err != nil {
 		return models.Post{}, err
 	}
-	return s.repo.Find(ctx, g, id)
+
+	found, err := s.repo.Find(ctx, g, id)
+	if err != nil {
+		return models.Post{}, err
+	}
+	if _, err := security.Authorize(ctx, s.policy, actor, policies.PostView, found); err != nil {
+		return models.Post{}, err
+	}
+	return found, nil
 }
 
 // List returns a page of posts.
@@ -72,6 +91,20 @@ func (s *PostService) List(ctx context.Context, actor security.Subject, q data.Q
 		return nil, err
 	}
 	return s.repo.List(ctx, g, q)
+}
+
+// Published is the public listing, for a reader with or without an account.
+//
+// It goes through Authorize like everything else. A guest reaches PostPolicy and
+// is allowed; somebody signed in is allowed too, and gets the same rows -- the
+// published listing is the published listing, and having it mean two things
+// depending on the reader is how a page starts disagreeing with its own sitemap.
+func (s *PostService) Published(ctx context.Context, actor security.Subject, limit int) ([]models.Post, error) {
+	g, err := security.Authorize(ctx, s.policy, actor, policies.PostPublicList, models.Post{})
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.Published(ctx, g, limit)
 }
 
 // ListWith is List for a caller that already holds a Grant.

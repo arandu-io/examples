@@ -26,6 +26,16 @@ const (
 	PostUpdate security.Action = "post.update"
 	// PostDelete is removing one.
 	PostDelete security.Action = "post.delete"
+
+	// PostPublicList is the published listing: what a reader with no account
+	// sees, and what the sitemap is built from.
+	//
+	// A named action rather than PostList with a filter. The two questions are
+	// different -- "page through everything" and "what is public" -- and one
+	// permission answering both is a permission whose meaning depends on who is
+	// asking, which is the kind nobody can audit. It has its own query, and the
+	// query is what makes a draft unreachable rather than merely unlisted.
+	PostPublicList security.Action = "post.list.public"
 )
 
 // PostPolicy is the only authority over who does what with Post.
@@ -43,29 +53,44 @@ func (PostPolicy) Can(ctx context.Context, s security.Subject, a security.Action
 
 	// arandu:begin custom
 	//
-	// Every action needs somebody signed in, and the reason is not a choice
-	// this policy made: `security.Authorize` refuses an anonymous subject
-	// before it ever calls Can, so a rule written for an empty ID would never
-	// be reached. The controller redirects to the sign-in screen first, which
-	// is the same answer arriving earlier.
+	// # A reader with no session
 	//
-	// # There is no public reading yet, and this is where it would go
+	// A blog is read by people who are not signed in, and this is where that is
+	// decided -- in the policy, like everything else, rather than by a
+	// middleware that lets a request past before anybody asked what it wanted.
 	//
-	// A blog is read by people who are not signed in, and today this framework
-	// has no path for that: Authorize refuses an anonymous subject, there is no
-	// guest Subject, and the one way to reach a repository without a session is
-	// security.SystemGrant -- which `aru doctor` reports outside a seeder, a
-	// job or a command, on purpose.
+	// A guest is a subject security.Guest built on purpose. A Subject nobody
+	// filled in is not one, and Authorize still refuses it before reaching this
+	// method: an empty subject is almost always a session that failed to load,
+	// and answering an authorization question about nobody is how a hole opens
+	// by accident.
 	//
-	// So this application is an authoring tool with a login, not a public site.
-	// Making it one is a framework decision, not a policy this file can write,
-	// and it is the same decision the arandu-io website needs.
-	if s.ID == "" {
-		return fmt.Errorf("this blog is read and written by signed-in authors")
+	// What a guest may do is read one published post. Not the listing: the index
+	// pages through everything, drafts included, and a listing filtered "for
+	// guests" would be a second query path with a second chance to be wrong.
+	// Reading the article is what a link and a search result lead to.
+	if s.IsGuest() {
+		switch {
+		// The published listing, which has a query of its own. PostList is not
+		// opened: it pages through everything, drafts included, and a listing
+		// "filtered for guests" would be a second query path with a second
+		// chance to be wrong.
+		case a == PostPublicList:
+			return nil
+		// PostView is asked twice: once with the zero value, for permission to
+		// look at all, and again with the row that was read. The first has no
+		// id, and answering it is what produces the Grant the repository needs.
+		case a == PostView && p.ID == "":
+			return nil
+		case a == PostView && !p.PublishedAt.IsZero():
+			return nil
+		}
+		return fmt.Errorf("%s is not public: a reader without an account sees published posts", a)
 	}
 
+	// From here it is somebody with an account.
 	switch a {
-	case PostList, PostView:
+	case PostList, PostView, PostPublicList:
 		return nil
 
 	case PostCreate, PostUpdate, PostDelete:

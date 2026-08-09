@@ -5,12 +5,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/arandu-io/framework/data"
 	"github.com/arandu-io/framework/httpx"
 	"github.com/arandu-io/framework/security"
 
 	models "github.com/arandu-io/examples/app/Models"
-	policies "github.com/arandu-io/examples/app/Policies"
 	services "github.com/arandu-io/examples/app/Services"
 )
 
@@ -21,17 +19,17 @@ import (
 // one release after it is written, and wrong in the direction nobody notices:
 // it keeps listing the page that moved.
 //
-// # Why it holds a system grant
+// # It holds no system grant, and that is the point
 //
-// A crawler has no session, and security.Authorize refuses an anonymous subject
-// before it consults a policy. So the choice is between a sitemap that is empty
-// for everybody and a named, single-action grant here.
+// It used to. A crawler has no session, Authorize refuses an empty subject
+// before it consults a policy, and the only way to build a listing was
+// security.SystemGrant -- which skips the policy altogether. A public page
+// served with the instrument a scheduled job uses.
 //
-// It is the same shape the seeder uses, and it is deliberately narrow: one
-// action, one query, and only the fields a sitemap carries -- a slug and a date,
-// both of which are on the page it points at. `aru doctor` reports this call
-// outside a seeder, a job or a command, and this is the exception the marker
-// below declares out loud rather than works around.
+// It reads as a guest now, through PostPolicy, and what that buys is not
+// tidiness: the sitemap cannot list something the policy would refuse to serve,
+// because one rule answers both questions. A system grant would have listed
+// every draft, and the crawler would have found a redirect behind each one.
 type SitemapController struct {
 	Controller
 
@@ -62,10 +60,9 @@ type sitemap struct {
 
 // Index writes the sitemap.
 func (c *SitemapController) Index(ctx *httpx.Context) error {
-	//arandu:system-grant a crawler has no session, and a sitemap that needs one lists nothing
-	g := security.SystemGrant(policies.PostList, c.tenant)
-
-	found, err := c.posts.ListWith(ctx.Ctx(), g, data.Query{Limit: 1000})
+	// The same guest a reader is. PostPolicy allows the published listing and
+	// refuses PostList, so what comes back is what a visitor is allowed to see.
+	found, err := c.posts.Published(ctx.Ctx(), security.Guest(c.tenant), 1000)
 	if err != nil {
 		return err
 	}
@@ -79,11 +76,6 @@ func (c *SitemapController) Index(ctx *httpx.Context) error {
 	}
 
 	for _, p := range found {
-		// A draft is not a page yet. Listing one is asking a crawler to index a
-		// redirect, and then to keep asking for it.
-		if p.PublishedAt.IsZero() {
-			continue
-		}
 		doc.URLs = append(doc.URLs, sitemap{
 			Location: c.base + ctx.URL("posts.show", p.ID),
 			Modified: p.PublishedAt.Format(time.DateOnly),

@@ -123,7 +123,7 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 
 	deps := routes.Deps{
 		Home:    controllers.NewHomeController(cfg.App.Name, sessions, csrf),
-		Post:    controllers.NewPostController(postService, commentService, sessions, csrf, cfg.App.Name, cfg.App.URL),
+		Post:    controllers.NewPostController(postService, commentService, sessions, csrf, cfg.App.Name, cfg.App.URL, cfg.Auth.Tenant),
 		Comment: controllers.NewCommentController(commentService, sessions, csrf),
 		Admin:   controllers.NewAdminController(postService, commentService, sessions, csrf),
 		// The origin the sitemap builds absolute URLs on. A sitemap of relative

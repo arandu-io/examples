@@ -41,6 +41,9 @@ type PostController struct {
 	// declaring two different canonicals to a crawler.
 	appName string
 	base    string
+	// tenant is what a guest reads under. It is the application's, from
+	// configuration, and never from the request.
+	tenant string
 }
 
 // NewPostController returns the controller. bootstrap builds it and hands it to
@@ -49,8 +52,8 @@ type PostController struct {
 // The session store and the CSRF issuer arrive through the constructor rather
 // than through the service: a screen is allowed to know about a token and a
 // cookie, and a service is not allowed to expose its own dependencies.
-func NewPostController(svc *services.PostService, comments *services.CommentService, sessions *security.SessionStore, csrf *security.CSRF, appName, base string) *PostController {
-	return &PostController{svc: svc, comments: comments, sessions: sessions, csrf: csrf, appName: appName, base: base}
+func NewPostController(svc *services.PostService, comments *services.CommentService, sessions *security.SessionStore, csrf *security.CSRF, appName, base, tenant string) *PostController {
+	return &PostController{svc: svc, comments: comments, sessions: sessions, csrf: csrf, appName: appName, base: base, tenant: tenant}
 }
 
 // Compile-time proof of the seven actions httpx.Router.Resource looks for. It
@@ -74,10 +77,11 @@ const postPerPage = 25
 
 // Index renders the listing.
 func (c *PostController) Index(ctx *httpx.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
+	// A reader with no session sees the published listing; somebody signed in
+	// sees everything, drafts included. Two queries, because they are two
+	// questions -- and the guest one cannot reach a draft at all rather than
+	// reaching it and discarding it.
+	actor, signedIn := c.reader(ctx)
 
 	// The page size is decided here rather than passed through blindly: asking
 	// for a known number is what lets the next cursor be offered only when a
@@ -87,18 +91,24 @@ func (c *PostController) Index(ctx *httpx.Context) error {
 		limit = n
 	}
 
-	found, err := c.svc.List(ctx.Ctx(), actor, data.Query{
-		Limit:  limit,
-		Cursor: ctx.Query("cursor"),
-		Sort:   ctx.Query("sort"),
-	})
+	var found []models.Post
+	var err error
+	if signedIn {
+		found, err = c.svc.List(ctx.Ctx(), actor, data.Query{
+			Limit:  limit,
+			Cursor: ctx.Query("cursor"),
+			Sort:   ctx.Query("sort"),
+		})
+	} else {
+		found, err = c.svc.Published(ctx.Ctx(), actor, limit)
+	}
 	if err != nil {
 		return c.fail(ctx, err)
 	}
 
 	rows := make([]views.PostRow, 0, len(found))
 	for _, p := range found {
-		rows = append(rows, c.row(p))
+		rows = append(rows, c.row(ctx, p, 0))
 	}
 
 	// The listing writes nothing, but the layout around it does: the sign-out
@@ -118,18 +128,21 @@ func (c *PostController) Index(ctx *httpx.Context) error {
 	}
 
 	return ctx.View("posts.index", views.PostsIndexData{
-		Page:       c.chrome(ctx, true, actor.ID, token, "Posts"),
-		Posts:      rows,
+		Page:  c.chrome(ctx, signedIn, actor.ID, token, "Posts"),
+		Posts: rows,
+		// Empty for a guest, and an empty URL draws no button.
+		NewURL:     ifSignedIn(signedIn, ctx.URL("posts.create")),
 		NextCursor: next,
 	})
 }
 
 // Show renders one record.
 func (c *PostController) Show(ctx *httpx.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
+	// A reader with no session is a guest rather than a redirect. Whether they
+	// may read this post is PostPolicy's answer, not this handler's -- the
+	// article is public when it is published and refused when it is a draft,
+	// and both answers come from the same place every other answer does.
+	actor, signedIn := c.reader(ctx)
 
 	found, err := c.svc.Get(ctx.Ctx(), actor, ctx.Param("id"))
 	if err != nil {
@@ -144,25 +157,29 @@ func (c *PostController) Show(ctx *httpx.Context) error {
 		return err
 	}
 
-	// The comments of this post, in the same request. A second round trip to
-	// fetch them would be a page that renders twice, and the reader is here for
-	// the article and the answers together.
-	//
-	// The Grant is the actor's, like every other read: docs/26 refuses a query
-	// path without a policy, and a comment thread is exactly the read where
-	// "it is only a listing" gets said.
-	thread, err := c.comments.ForPost(ctx.Ctx(), actor, found.ID)
-	if err != nil {
-		return c.fail(ctx, err)
+	// A guest sees the article and not the thread. Comments are written by
+	// people with accounts and read by them, and CommentPolicy says so -- asking
+	// for them here as a guest would be a refusal that costs a query.
+	var thread []models.Comment
+	if signedIn {
+		thread, err = c.comments.ForPost(ctx.Ctx(), actor, found.ID)
+		if err != nil {
+			return c.fail(ctx, err)
+		}
 	}
 
 	return ctx.View("posts.show", views.PostsShowData{
-		Page:       c.article(ctx, actor, token, found),
-		Post:       c.row(found),
-		Comments:   c.thread(thread),
-		CommentURL: ctx.URL("posts.comments", found.ID),
-		EditURL:    ctx.URL("posts.edit", found.ID),
-		DeleteURL:  ctx.URL("posts.destroy", found.ID),
+		Page:     c.article(ctx, actor, signedIn, token, found),
+		Post:     c.row(ctx, found, len(thread)),
+		Comments: c.thread(thread),
+
+		// The three addresses a guest does not get. An empty URL draws no
+		// control, so the policy reaches the markup as data rather than as a
+		// question the view asks -- and a button that is not drawn is one
+		// nobody has to check twice on the way in.
+		CommentURL: ifSignedIn(signedIn, ctx.URL("posts.comments", found.ID)),
+		EditURL:    ifSignedIn(signedIn, ctx.URL("posts.edit", found.ID)),
+		DeleteURL:  ifSignedIn(signedIn, ctx.URL("posts.destroy", found.ID)),
 	})
 }
 
@@ -297,14 +314,30 @@ func (c *PostController) token(ctx *httpx.Context) (string, error) {
 // Formatting happens here rather than in the view: a view that formats a
 // time.Time would need the time package, and what a date looks like on screen is
 // a decision about presentation, which is this side of the line.
-func (c *PostController) row(p models.Post) views.PostRow {
+func (c *PostController) row(ctx *httpx.Context, p models.Post, comments int) views.PostRow {
+	// A draft has no publication date, and formatting the zero value prints
+	// 0001-01-01 -- a date that looks like data and is the absence of it. The
+	// view reads the empty string as "not published", which is what the badge
+	// and the meta line branch on.
+	published := ""
+	if !p.PublishedAt.IsZero() {
+		published = p.PublishedAt.Format("2 January 2006")
+	}
+
 	return views.PostRow{
 		ID:          p.ID,
 		Title:       p.Title,
 		Slug:        p.Slug,
 		Body:        p.Body,
-		PublishedAt: p.PublishedAt.Format("2006-01-02 15:04"),
-		Created:     p.CreatedAt.Format("2006-01-02 15:04"),
+		Excerpt:     excerpt(p.Body),
+		PublishedAt: published,
+		Created:     p.CreatedAt.Format("2 January 2006"),
+		// Built from the route name. "/posts/"+p.ID compiles and keeps
+		// compiling after the route moves, and the card links nowhere -- which
+		// is exactly what happened: every card on the listing had an empty href
+		// until this line existed.
+		URL:      ctx.URL("posts.show", p.ID),
+		Comments: strconv.Itoa(comments),
 	}
 }
 
@@ -315,11 +348,31 @@ func (c *PostController) row(p models.Post) views.PostRow {
 // canonical is absolute, because a relative one is ignored by every crawler that
 // reads it -- which is the failure mode where the tag is present and does
 // nothing.
-func (c *PostController) article(ctx *httpx.Context, actor security.Subject, token string, p models.Post) view.Page {
-	page := c.chrome(ctx, true, actor.ID, token, p.Title)
+func (c *PostController) article(ctx *httpx.Context, actor security.Subject, signedIn bool, token string, p models.Post) view.Page {
+	page := c.chrome(ctx, signedIn, actor.ID, token, p.Title)
 	page.Description = excerpt(p.Body)
 	page.Canonical = c.base + ctx.URL("posts.show", p.ID)
 	return page
+}
+
+// reader is who is asking: the signed-in subject, or a declared guest.
+//
+// The tenant of a guest is the application's, from configuration. A visitor
+// cannot choose whose rows they read (RULE 14), and it is not suspended because
+// nobody signed in.
+func (c *PostController) reader(ctx *httpx.Context) (security.Subject, bool) {
+	if actor, err := c.sessions.Load(ctx.Ctx(), ctx.Request); err == nil {
+		return actor, true
+	}
+	return security.Guest(c.tenant), false
+}
+
+// ifSignedIn is the address, or nothing for a guest.
+func ifSignedIn(signedIn bool, url string) string {
+	if signedIn {
+		return url
+	}
+	return ""
 }
 
 // chrome is the state the layout draws, filled the same way on every screen.

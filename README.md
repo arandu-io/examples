@@ -233,21 +233,53 @@ not run even if one were referenced.
 
 ---
 
+## Public reading, decided by the policy
+
+A reader with no account gets the published listing and any published post. A
+draft answers 403. The comment form is not drawn for them, and the sign-in
+invitation is.
+
+None of that is a middleware. It is `app/Policies/PostPolicy.go`:
+
+```go
+if s.IsGuest() {
+	switch {
+	case a == PostPublicList:
+		return nil
+	case a == PostView && p.ID == "":
+		return nil
+	case a == PostView && !p.PublishedAt.IsZero():
+		return nil
+	}
+	return fmt.Errorf("%s is not public: a reader without an account sees published posts", a)
+}
+```
+
+Three things in there are worth the time they cost:
+
+**A guest is declared, not inferred.** `security.Guest(tenant)` builds it, and
+`Authorize` still refuses a `Subject` nobody filled in — because an empty subject
+is almost always a session that failed to load, and answering an authorization
+question about nobody is how a hole opens by accident.
+
+**`PostPublicList` is its own action.** Not `PostList` with a filter: the two are
+different questions, "page through everything" and "what is public", and one
+permission answering both means something different depending on who asks. It
+has its own query, and the query is what makes a draft unreachable rather than
+merely unlisted.
+
+**`PostView` is asked twice.** Once against the zero value, for permission to
+look at all — that is what produces the Grant the repository needs — and again
+against the row that came back. Deciding only once is how a policy that reads
+`p.PublishedAt` gets written and never consulted: the field it branches on is
+always empty.
+
+The sitemap holds no system grant because of this. It reads as a guest, through
+the same policy, so it cannot list something the application would refuse to
+serve — a `SystemGrant` would have listed every draft, and a crawler would have
+found a redirect behind each one.
+
 ## What this example does not do, and it matters
-
-**There is no public reading.** A visitor who is not signed in is redirected to
-the sign-in screen, including on `/posts`.
-
-That is not an omission here — it is the shape of the framework today.
-`security.Authorize` refuses an anonymous subject before it consults the policy,
-there is no guest `Subject`, and the only way to reach a repository without a
-session is `security.SystemGrant`, which `aru doctor` reports outside a seeder,
-a job or a command.
-
-So this is an authoring tool with a login, not a public blog. Serving a page to
-somebody who is not signed in is a decision for the framework, and it is the
-same decision a public website needs. `app/Policies/PostPolicy.go` says so where
-the rule would go.
 
 **The reset store is in memory.** Right for one instance and wrong for two, in
 exactly the way the session store is: behind a load balancer the link works only

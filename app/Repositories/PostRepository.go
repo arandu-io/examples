@@ -117,6 +117,51 @@ func (r *PostRepository) List(ctx context.Context, g security.Grant, q data.Quer
 	return out, rows.Err()
 }
 
+// Published is the public listing: what is out, newest first.
+//
+// A query of its own rather than List with a filter. The predicate is what makes
+// a draft unreachable rather than merely unlisted -- a filter applied after the
+// rows are read is one somebody removes while tidying, and the row is already
+// in memory when they do.
+//
+// It checks PostPublicList, so a Grant issued for PostList is refused here. That
+// is the point of the two actions being two: this method answers a narrower
+// question, and the narrower permission is what may ask it.
+func (r *PostRepository) Published(ctx context.Context, g security.Grant, limit int) ([]models.Post, error) {
+	if err := g.Check(policies.PostPublicList); err != nil {
+		return nil, err
+	}
+	if limit <= 0 || limit > postMaxLimit {
+		limit = postMaxLimit
+	}
+
+	const query = `SELECT ` + postColumns + `
+		FROM posts
+		WHERE published_at IS NOT NULL AND published_at > ?
+		ORDER BY published_at DESC, id
+		LIMIT ?`
+
+	// IS NOT NULL is not enough, and finding that out cost a draft in the
+	// sitemap. PublishedAt is a time.Time, not a pointer, so "not published" is
+	// the zero value -- which the driver writes as 0001-01-01, a real timestamp
+	// that is very much not null. The predicate has to say what it means.
+	rows, err := r.db.QueryContext(ctx, query, time.Time{}, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.Post
+	for rows.Next() {
+		p, err := r.scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 // Create inserts the post and returns it as stored.
 func (r *PostRepository) Create(ctx context.Context, g security.Grant, p models.Post) (models.Post, error) {
 	if err := g.Check(policies.PostCreate); err != nil {
