@@ -22,7 +22,7 @@ var sqliteMagic = []byte("SQLite format 3\x00")
 // TestNoDatabaseIsTracked.
 //
 // Three were, twice: arandu_blog, arandu_blog-shm and arandu_blog-wal. The file
-// has no extension -- DB_DATABASE was a bare name, which SQLite reads as a path
+// has no extension -- the path in DATABASE_URL was a bare name, which SQLite reads
 // relative to wherever the process started -- so *.sqlite missed it, *.db
 // missed it, and database/* missed it because it was in the project root.
 //
@@ -48,9 +48,9 @@ func TestNoDatabaseIsTracked(t *testing.T) {
 
     git rm --cached %s
 
-DB_DATABASE is a PATH for sqlite. A bare name puts the file wherever the process
-started, which is the project root, where no ignore rule expects it -- the
-config refuses that value now, so this file predates the refusal.`, name, name)
+The path in DATABASE_URL is a PATH. A bare name puts the file wherever the
+process started, which is the project root, where no ignore rule expects it --
+the config refuses that value now, so this file predates the refusal.`, name, name)
 		}
 	}
 }

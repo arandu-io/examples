@@ -129,11 +129,10 @@ func AppWithMailbox(t *testing.T) (*arandutest.Client, *data.DB, *mail.Array) {
 	t.Helper()
 
 	// Before appconfig.Load: this is what mailTransport switches on.
-	t.Setenv("MAIL_MAILER", "array")
+	t.Setenv("MAIL_URL", "array://")
 	t.Setenv("APP_ENV", "dev")
 	t.Setenv("APP_KEY", "0123456789abcdef0123456789abcdef")
-	t.Setenv("DB_CONNECTION", "sqlite")
-	t.Setenv("DB_DATABASE", filepath.Join(t.TempDir(), "test.sqlite"))
+	t.Setenv("DATABASE_URL", "sqlite://"+filepath.Join(t.TempDir(), "test.sqlite"))
 	t.Setenv("ARANDU_TENANT_ID", "11111111-1111-4111-8111-111111111111")
 
 	// The schema, through the same command a deploy runs. A test that creates
@@ -160,7 +159,7 @@ func AppWithMailbox(t *testing.T) (*arandutest.Client, *data.DB, *mail.Array) {
 
 	box, ok := app.Mail.Transport().(*mail.Array)
 	if !ok {
-		// MAIL_MAILER is set above, so this is a wiring change rather than a
+		// MAIL_URL is set above, so this is a wiring change rather than a
 		// configuration mistake -- and a test that silently got the log
 		// transport would assert nothing about what was sent.
 		t.Fatalf("the test mailer is %s and not the array transport: nothing can read what was sent",
