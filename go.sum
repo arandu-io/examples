@@ -4,10 +4,8 @@ github.com/arandu-io/database/pgx v0.1.0 h1:gEQwVSnN/X+T+rdRkhb/6yxd6jd5Jf4rXM4l
 github.com/arandu-io/database/pgx v0.1.0/go.mod h1:TQkcXVZ5UH8hMq/XLSnzBtf5zc+vF8LAsHCvAaU+GsE=
 github.com/arandu-io/database/sqlite v0.1.0 h1:BrFB5QpBHe9pCyZl2rAXux8UePTImJgd3YY/edkxEBo=
 github.com/arandu-io/database/sqlite v0.1.0/go.mod h1:5g/T6m0v2Lztu4CUeNrXyuLrpUOH4Oj5Zgz92tQC/3Y=
-github.com/arandu-io/framework v0.19.1 h1:m1Jh0XnHEtAha1mYKc0QOHjpTji/hZoNxN71aC4Nl0I=
-github.com/arandu-io/framework v0.19.1/go.mod h1:c0r4p08puM7BwQ4NJg4M/Yjf5ECeYeheis0F+j6a7X8=
-github.com/arandu-io/kyse v0.2.0 h1:WYKjG7mCQvy7qHZu1+j4gFCFZ+CY2jVXwrp1cUk7PHI=
-github.com/arandu-io/kyse v0.2.0/go.mod h1:OaeVNZapXDXCC+fYCdRFAbUslyfCISVO92uDI6Cs8js=
+github.com/arandu-io/framework v0.20.0 h1:4+XVfMikQVbznHYC1dF4aUM+zf24/wmrvLBoEe2y/rI=
+github.com/arandu-io/framework v0.20.0/go.mod h1:c0r4p08puM7BwQ4NJg4M/Yjf5ECeYeheis0F+j6a7X8=
 github.com/arandu-io/kyse v0.3.0 h1:U108v6W7Ircf4fe4KCP15+HEpSU1CA7781IAIMjO7RE=
 github.com/arandu-io/kyse v0.3.0/go.mod h1:zHE/TR+YaaVym6k1O+D4r6V5VvEGu58Yb6qq5N1FbuU=
 github.com/arandu-io/queue v0.2.0 h1:6QJImUH1GzHVX+9HuOC2eW/Q8hn9Baki/aTmY4g9/3Y=

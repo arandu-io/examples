@@ -306,7 +306,40 @@ not a bug that can be introduced there — a field added to `RegisterRequest`
 still arrives at that check. Closing registration is deleting three lines, and
 there is no second path that creates a user from a form.
 
-### 10. Build and run
+### 10. The typography
+
+```sh
+aru font:add "Young Serif" --as display
+```
+
+One command, 18 KB, and it is the only font this blog vendors — the body stays
+on the system stack, which costs nothing and paints immediately.
+
+What it replaced was a stack of local faces: Iowan Old Style, Palatino, Georgia,
+Times. That is Iowan on a Mac, Georgia on Windows, Liberation Serif on Linux and
+Times on Android — four different blogs, with the identity decided by the
+reader's operating system.
+
+The command writes the woff2 under `assets/fonts/`, the OFL beside it, the
+`@font-face` into `resources/css/fonts.css`, and the record into `arandu.toml`.
+Three of those are what a person gets wrong by hand:
+
+- the **unicode-range** is copied from the source rather than guessed;
+- the **metric overrides** are read out of the font, so `font-display: swap`
+  changes the shapes without moving a line;
+- the **`src:`** carries the font's own content hash. A relative `url()` reaches
+  the file and is served uncached, so the font is re-downloaded on every page
+  view with nothing broken enough to notice.
+
+`latin` is the default subset, and that is a fact and not a preference:
+`U+0000-00FF` carries every accented letter English and Portuguese use.
+`--subset latin,latin-ext` adds Polish, Czech and Turkish.
+
+Nothing is fetched at build time and nothing at run time. The CSP is
+`default-src 'self'`, and a font from a CDN would mean loosening it in order to
+look different.
+
+### 11. Build and run
 
 ```sh
 aru view:build      # kyse -> Go, and the stylesheet

@@ -36,6 +36,11 @@ import (
 	<meta property="og:image" content="/og-cover.svg">
 	<meta name="theme-color" content="#2E211A">
 
+	{{-- The vendored faces, fetched with the page rather than two round trips
+	     deep. One line for every face `aru font:add` installed, so swapping the
+	     family is that command running and not this file changing. --}}
+	{!! view.FontPreloads() !!}
+
 	<link rel="stylesheet" href="{{ view.URL("app.css") }}">
 	<script src="{{ view.URL("htmx.min.js") }}" defer></script>
 	<script src="{{ view.URL("alpine.min.js") }}" defer></script>

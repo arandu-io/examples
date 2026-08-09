@@ -24,6 +24,14 @@
 
 @import "tailwindcss" source(none);
 
+/* The vendored faces, written by `aru font:add`. It declares --font-display and
+ * --font-sans, so nothing below this line names a family: swapping the face is
+ * that command running again, not every template changing.
+ *
+ * Imported after tailwindcss and before the @theme block below, because a later
+ * @theme wins and the two would otherwise fight over the same token. */
+@import "./fonts.css";
+
 @source "../views/**/*.kyse.go";
 @source "../../storage/framework/views/**/*.go";
 
@@ -45,21 +53,15 @@
     Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
 
-  /* The display face, for the masthead and for a headline.
+  /* --font-display comes from fonts.css, which `aru font:add` generates.
    *
-   * A serif against the geometric mark, and it is a real choice rather than a
-   * default: the logo is all straight edges and repeated angles, so the type
-   * beside it either repeats that -- and disappears into it -- or answers it.
-   * This answers it.
+   * It used to be a stack of local faces -- Iowan Old Style, Palatino, Georgia,
+   * Times -- and that is four different blogs: Iowan on a Mac, Georgia on
+   * Windows, Liberation Serif on Linux, Times on Android. The identity was a
+   * lottery decided by the reader's operating system.
    *
-   * Local faces only, in a stack that degrades. The Artifact-style trick of
-   * fetching a webfont is not available here for a better reason than policy:
-   * the CSP of this application is script-src 'self', the assets are embedded
-   * in the binary, and a font from a CDN is a request that fails silently and
-   * leaves the page in Times. */
-  --font-display:
-    "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua",
-    "Hoefler Text", Georgia, "Times New Roman", serif;
+   * The vendored face is 18 KB, served from this origin, with a metric-matched
+   * fallback so the swap moves nothing. */
 
   /* The palette, read off the mark rather than picked to go with it.
    *
