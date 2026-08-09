@@ -309,7 +309,17 @@ there is no second path that creates a user from a form.
 ### 10. The typography
 
 ```sh
+aru font:search --category serif --variable    # 1942 families, browsable
+aru font:info "Young Serif"                    # weights, axes, scripts, licence
 aru font:add "Young Serif" --as display
+```
+
+A font of your own — one being drawn for the project, or bought from a foundry —
+takes the same wiring:
+
+```sh
+aru font:add --file ./Own.woff2 --family "Own" --as display
+aru font:add --file ./Own.ttf   --family "Own" --as display --metrics-from ./Own.ttf
 ```
 
 One command, 18 KB, and it is the only font this blog vendors — the body stays
