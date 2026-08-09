@@ -25,28 +25,10 @@
 # A floor, not a pin: a newer CLI is always fine. Raise it when the project
 # starts using something a released CLI cannot compile.
 [arandu]
-aru = "v0.26.0"
+aru = "v0.26.1"
 
 [tools]
 tailwindcss = "v4.3.3"
-
-# The vendored faces. Written by `aru font:add`, and the files themselves are
-# under assets/fonts/ and committed -- so this section is not what makes the
-# build reproducible. The bytes are.
-#
-# What it records is what a diff cannot answer: which family this is, what
-# licence arrived with it, and what would be fetched if somebody ran the command
-# again. The metrics are here so removing one face does not send the other back
-# to the network for numbers already known.
-
-# The vendored faces. Written by `aru font:add`, and the files themselves are
-# under assets/fonts/ and committed -- so this section is not what makes the
-# build reproducible. The bytes are.
-#
-# What it records is what a diff cannot answer: which family this is, what
-# licence arrived with it, and what would be fetched if somebody ran the command
-# again. The metrics are here so removing one face does not send the other back
-# to the network for numbers already known.
 
 # The vendored faces. Written by `aru font:add`, and the files themselves are
 # under assets/fonts/ and committed -- so this section is not what makes the
