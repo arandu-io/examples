@@ -13,14 +13,18 @@ const (
 	MailerLog Mailer = "log"
 	// MailerSMTP is any SMTP server.
 	MailerSMTP Mailer = "smtp"
-	// MailerResend is Resend, through the mail/resend submodule.
+	// MailerResend is Resend, and it is what this example is configured for.
 	//
 	// Resend and SendGrid rather than Amazon SES, and it is a decision rather
 	// than an omission: SES needs an AWS account, a sending identity, a region
-	// and a sandbox exit request before the first message leaves, and the two
-	// below need an API key. Laravel ships a ResendTransport of its own.
+	// and a sandbox exit request before the first message leaves, and these two
+	// need an API key.
+	//
+	// Both are in the core rather than in a submodule, because neither needs a
+	// dependency to reach: one POST with a JSON body is net/http, which every
+	// binary already links. See ADR 0031.
 	MailerResend Mailer = "resend"
-	// MailerSendGrid is SendGrid, through the mail/sendgrid submodule.
+	// MailerSendGrid is SendGrid.
 	MailerSendGrid Mailer = "sendgrid"
 	// MailerArray keeps messages in memory, for tests to read.
 	MailerArray Mailer = "array"

@@ -41,7 +41,7 @@ func NewPostRepository(db *data.DB) *PostRepository { return &PostRepository{db:
 // Compile-time proof of the contract.
 var _ data.Repository[models.Post, string] = (*PostRepository)(nil)
 
-const postColumns = `id, title, slug, body, published_at, created_at`
+const postColumns = `id, title, slug, body, category_id, views, published_at, created_at`
 
 // Find returns one post by id.
 func (r *PostRepository) Find(ctx context.Context, g security.Grant, id string) (models.Post, error) {
@@ -180,8 +180,8 @@ func (r *PostRepository) Create(ctx context.Context, g security.Grant, p models.
 	p.CreatedAt = time.Now().UTC()
 
 	_, err = r.db.ExecContext(ctx,
-		`INSERT INTO posts (`+postColumns+`) VALUES (?, ?, ?, ?, ?, ?)`,
-		p.ID, p.Title, p.Slug, p.Body, p.PublishedAt, p.CreatedAt)
+		`INSERT INTO posts (`+postColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.ID, p.Title, p.Slug, p.Body, nullID(p.CategoryID), p.Views, p.PublishedAt, p.CreatedAt)
 	if err != nil {
 		if r.conflict(err) {
 			return models.Post{}, models.ErrPostConflict
@@ -198,8 +198,9 @@ func (r *PostRepository) Update(ctx context.Context, g security.Grant, p models.
 	}
 
 	res, err := r.db.ExecContext(ctx,
-		`UPDATE posts SET title = ?, slug = ?, body = ?, published_at = ? WHERE id = ?`,
-		p.Title, p.Slug, p.Body, p.PublishedAt, p.ID)
+		`UPDATE posts SET title = ?, slug = ?, body = ?, category_id = ?, published_at = ?
+		 WHERE id = ?`,
+		p.Title, p.Slug, p.Body, nullID(p.CategoryID), p.PublishedAt, p.ID)
 	if err != nil {
 		if r.conflict(err) {
 			return models.Post{}, models.ErrPostConflict
@@ -242,15 +243,37 @@ func (r *PostRepository) Health(ctx context.Context) error { return r.db.PingCon
 // repository of the application shares this package, and a second module
 // declaring rowScanner would not compile.
 func (r *PostRepository) scan(row interface{ Scan(dest ...any) error }) (models.Post, error) {
-	var p models.Post
-	err := row.Scan(&p.ID, &p.Title, &p.Slug, &p.Body, &p.PublishedAt, &p.CreatedAt)
+	var (
+		p        models.Post
+		category sql.NullString
+	)
+	err := row.Scan(&p.ID, &p.Title, &p.Slug, &p.Body, &category, &p.Views,
+		&p.PublishedAt, &p.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return models.Post{}, models.ErrPostNotFound
 	}
 	if err != nil {
 		return models.Post{}, err
 	}
+	// The column arrived in a later migration, so every post written before it
+	// has NULL there. Reading through sql.NullString rather than into the field
+	// is what keeps those rows readable -- a plain *string scan of a NULL is an
+	// error, on every post that existed before categories did.
+	p.CategoryID = category.String
 	return p, nil
+}
+
+// nullID keeps an empty id out of the column as NULL rather than as "".
+//
+// They read back the same, so it does not matter on the way out. It matters on
+// the way in: `WHERE category_id = ?` with an empty string matches the posts
+// filed nowhere, and a section page built from that query would list every
+// unfiled draft under whatever section was asked for.
+func nullID(id string) any {
+	if id == "" {
+		return nil
+	}
+	return id
 }
 
 // normalize lowercases and trims, which is what keeps a plain UNIQUE index
@@ -274,4 +297,99 @@ func (r *PostRepository) conflict(err error) bool {
 // arandu:begin custom
 // Queries beyond the five above go here, and survive regeneration. Keep the
 // g.Check as the first line of each one.
+
+// PublishedInCategory is the public listing narrowed to one section.
+//
+// A method rather than an argument on Published, because the predicate is what
+// makes a draft unreachable and an optional filter is one somebody makes
+// optional in the other direction. It checks the same PostPublicList: the
+// question is narrower, not different.
+func (r *PostRepository) PublishedInCategory(ctx context.Context, g security.Grant, categoryID string, limit int) ([]models.Post, error) {
+	if err := g.Check(policies.PostPublicList); err != nil {
+		return nil, err
+	}
+	if limit <= 0 || limit > postMaxLimit {
+		limit = postMaxLimit
+	}
+
+	const query = `SELECT ` + postColumns + `
+		FROM posts
+		WHERE category_id = ? AND published_at IS NOT NULL AND published_at > ?
+		ORDER BY published_at DESC, id
+		LIMIT ?`
+
+	rows, err := r.db.QueryContext(ctx, query, categoryID, time.Time{}, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.Post
+	for rows.Next() {
+		p, err := r.scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// CountByCategory returns how many posts each section holds.
+//
+// One query for the whole navigation rather than one per section: a sidebar with
+// eight sections would otherwise be eight round trips per page, which is the
+// N+1 that an ORM is usually blamed for and that hand-written SQL reproduces
+// just as easily.
+//
+// The empty key is not returned: posts filed nowhere are not a section.
+func (r *PostRepository) CountByCategory(ctx context.Context, g security.Grant) (map[string]int, error) {
+	if err := g.Check(policies.PostPublicList); err != nil {
+		return nil, err
+	}
+
+	const query = `SELECT category_id, COUNT(*)
+		FROM posts
+		WHERE category_id IS NOT NULL AND published_at IS NOT NULL AND published_at > ?
+		GROUP BY category_id`
+
+	rows, err := r.db.QueryContext(ctx, query, time.Time{})
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := map[string]int{}
+	for rows.Next() {
+		var (
+			id sql.NullString
+			n  int
+		)
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, err
+		}
+		if id.Valid {
+			out[id.String] = n
+		}
+	}
+	return out, rows.Err()
+}
+
+// IncrementViews adds one to the counter.
+//
+// `views = views + 1` in the statement, not read-add-write in Go: two readers
+// opening the same article at the same time both read the same number, and the
+// second write lands on the first, so one of the two views never happened.
+//
+// It checks PostView -- the same permission as reading the article, because that
+// is what it is a side effect of. A separate action would be a permission
+// nobody could grant without also granting the read it always follows.
+func (r *PostRepository) IncrementViews(ctx context.Context, g security.Grant, id string) error {
+	if err := g.Check(policies.PostView); err != nil {
+		return err
+	}
+	_, err := r.db.ExecContext(ctx, `UPDATE posts SET views = views + 1 WHERE id = ?`, id)
+	return err
+}
+
 // arandu:end custom

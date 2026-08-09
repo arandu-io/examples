@@ -92,6 +92,19 @@ func (s *CommentService) ForPost(ctx context.Context, actor security.Subject, po
 	return s.repo.ForPost(ctx, g, postID)
 }
 
+// PublicForPost is the thread as a reader sees it: approved, plus their own
+// while it waits for review.
+//
+// The reader is taken from the actor and never from an argument, so "show me my
+// pending comments" cannot be asked on somebody else's behalf.
+func (s *CommentService) PublicForPost(ctx context.Context, actor security.Subject, postID string) ([]models.Comment, error) {
+	g, err := security.Authorize(ctx, s.policy, actor, policies.CommentPublicList, models.Comment{})
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.PublicForPost(ctx, g, postID, actor.ID)
+}
+
 // Approve makes a comment public.
 //
 // It is a separate action from Update because it is a separate permission: the

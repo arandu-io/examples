@@ -13,47 +13,72 @@
 <a href="LICENSE.md"><img src="https://img.shields.io/github/license/arandu-io/examples" alt="License"></a>
 </p>
 
-Posts, comments, a moderation panel and a password reset. Small enough to read
-in one sitting, and almost every file in it was written by the toolchain rather
-than by hand — which is the part worth checking.
+Posts filed into sections, a comment thread that needs a confirmed address, a
+moderation panel and a password reset. Small enough to read in one sitting, and
+almost every file in it was written by the toolchain rather than by hand — which
+is the part worth checking.
 
 ---
 
 ## Run it
 
-Five commands, nothing installed. It runs on SQLite, in a file under
-`database/`.
-
 ```sh
 git clone https://github.com/arandu-io/examples.git blog && cd blog
+
+docker compose up -d postgres         # credentials are already in .env.example
 
 cp .env.example .env
 aru key:generate                      # copy the line it prints into .env
 aru migrate
-
-ARANDU_ADMIN_EMAIL=you@example.com \
-ARANDU_ADMIN_PASSWORD=a-very-long-password-here \
-  aru db:seed
+aru db:seed
 
 aru dev
 ```
 
-Then <http://localhost:8080/posts>, and sign in with the address you seeded.
+Then <http://localhost:8080>.
 
-You will land on three posts, one of them a draft. There is a moderation panel
-at `/admin`, a sitemap at `/sitemap.xml`, and a password reset at
-`/auth/password` — the link it issues is printed in the log rather than sent,
-because an example that needs an SMTP server is an example nobody runs.
+`aru db:seed` prints the two accounts it made. In development, and only there,
+both fall back to a known password:
 
-### On PostgreSQL instead
+| | | |
+|---|---|---|
+| `admin@example.com` | `arandu-demo-password` | writes, publishes, moderates |
+| `reader@example.com` | `arandu-demo-password` | comments, and nothing else |
 
-One line, and no query changes:
+Set `ARANDU_ADMIN_EMAIL` and `ARANDU_ADMIN_PASSWORD` to choose your own. Outside
+development the seeder refuses without them — a default password is a hole
+exactly once, the first time it runs somewhere it was not supposed to.
+
+You land on six posts in four sections, one of them a draft that is not there
+until you sign in. There is a moderation panel at `/admin` with one comment
+waiting, a sitemap at `/sitemap.xml`, a section page at `/c/security`, and a
+registration form at `/auth/register`.
+
+**Nothing is actually mailed.** `MAIL_MAILER=log` writes the message to the
+output of `aru dev` instead of sending it, which is where the verification link
+and the password reset link both end up. An example that needs an SMTP server is
+an example nobody runs. Two lines switch it to a real provider:
 
 ```sh
-docker compose up -d postgres
-sed -i '' 's/^DB_CONNECTION=.*/DB_CONNECTION=pgsql/' .env
-aru migrate
+MAIL_MAILER=resend
+MAIL_KEY=re_xxxxxxxx
 ```
+
+### On SQLite instead
+
+The skeleton defaults to SQLite so a new project starts with nothing installed.
+This one defaults to PostgreSQL because an example is the other job: it shows
+the shape of a real deployment, and a real one has a server.
+
+Switching back is two lines and no query changes:
+
+```sh
+DB_CONNECTION=sqlite
+DB_DATABASE=database/database.sqlite
+```
+
+`DB_DATABASE` is a **path** for SQLite. A bare name puts the file in the project
+root, which is how three database files once ended up committed here.
 
 Every statement the generator writes uses the portable subset and `?`
 placeholders, which the dialect rebinds to `$1, $2` on the way out.
@@ -190,7 +215,79 @@ comparison is against a secret. And asking for a link answers the same thing
 whether the address is registered or not — a form that says "no such account" is
 an oracle for which addresses exist, one request at a time.
 
-### 8. Build and run
+### 8. The sections
+
+```sh
+aru make:module category --fields "name:string!,slug:string!,description:text"
+aru make:migration add_category_to_posts --fields "category_id:string"
+```
+
+Twelve files and a column. Two of them are edited by hand and both are the
+interesting kind.
+
+`app/Policies/CategoryPolicy.go` opens reading to everybody, including a reader
+with no account — the navigation is built from this list, and a navigation that
+disappears when you sign out was never public. Writing stays with an
+administrator: somebody who may write a post is not therefore somebody who may
+invent a section of the blog.
+
+`database/migrations/..._add_category_to_posts.go` adds a **nullable** column.
+That is RULE 16 read forwards: during a rollout the previous binary is still
+inserting posts that know nothing about categories, and a `NOT NULL` column with
+no default fails every one of those inserts for as long as the two overlap.
+
+The section page is `/c/{slug}` and it renders `posts.index` — the same view as
+the front page, with a different heading and a narrower query. A second template
+would be a second place to fix the card the next time a card changes.
+
+### 9. Registration, and a confirmed address
+
+**Hand-written file 5 — `app/Http/Controllers/Auth/RegisterController.go`.**
+
+The kit publishes `auth/register.kyse.go` and `auth/verify.kyse.go` and stops
+there, for the same reason it stops at the password reset. Wiring them is this
+file, and three decisions in it are worth the read.
+
+**The link is signed, not stored.** `security.Signer` puts the user id and an
+expiry inside an HMAC over the application key. Nothing is written when the mail
+goes out — no table, no cleanup job, and no decision about what a click means
+once the row is gone. The **purpose** is part of the signature, so a
+verification link is not a password reset link even though the same key signed
+both.
+
+**The link does not sign you in.** It confirms and sends you to the sign-in
+screen. A link in an e-mail that opens a session is a session anybody who reads
+that inbox, or that forwarded message, can have.
+
+**Confirming buys exactly one thing**, and that is the point:
+
+```go
+case CommentCreate:
+    if !s.Verified {
+        return fmt.Errorf("confirm your email address before commenting")
+    }
+    return nil
+```
+
+An account costs nothing to create, so "signed in" is not a bar at all. One
+round trip through an inbox is. A `verified_at` column that nothing consults is
+a column.
+
+Read `app/Policies/UserPolicy.go` next to it. Self-registration is a guest
+authorized against `ActionUserCreate`, and the policy decides by looking at the
+**candidate**:
+
+```go
+if s.IsGuest() && len(u.Roles) == 0 { return nil }
+```
+
+A guest may create a user with no roles; the same guest asking for `admin` is
+refused by the same line. Privilege escalation through the registration form is
+not a bug that can be introduced there — a field added to `RegisterRequest`
+still arrives at that check. Closing registration is deleting three lines, and
+there is no second path that creates a user from a form.
+
+### 10. Build and run
 
 ```sh
 aru view:build      # kyse -> Go, and the stylesheet

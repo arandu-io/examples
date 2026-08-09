@@ -46,7 +46,10 @@ type Seeder interface {
 var registry = []Seeder{
 	DatabaseSeeder{},
 	AdminSeeder{},
+	ReaderSeeder{},
+	CategorySeeder{},
 	PostSeeder{},
+	CommentSeeder{},
 }
 
 // Run executes DatabaseSeeder, or the one named by --class.

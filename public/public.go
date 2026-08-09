@@ -35,7 +35,7 @@ import (
 // a glob would also embed this source file, and a public/ that silently
 // publishes whatever landed in it is how a stray dump file becomes a URL.
 //
-//go:embed favicon.ico favicon.png robots.txt og-cover.svg
+//go:embed favicon.ico favicon.png logo.png robots.txt og-cover.svg
 var files embed.FS
 
 // contentTypes is the whole table, and it is deliberately short. A public/ that

@@ -9,6 +9,7 @@ import (
 
 	"github.com/arandu-io/framework/data"
 	"github.com/arandu-io/framework/httpx"
+	"github.com/arandu-io/framework/modules/auth"
 	"github.com/arandu-io/framework/observability"
 	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/framework/validation"
@@ -31,6 +32,15 @@ type PostController struct {
 
 	svc      *services.PostService
 	comments *services.CommentService
+	// categories is what fills the section bar and resolves /c/{slug}. The same
+	// service the administrator's CRUD uses, because there is one policy over
+	// categories and a second door to them would be a second place to forget it.
+	categories *services.CategoryService
+	// people resolves the author of a comment to a name. It is the auth
+	// service, and it is here rather than a users repository of this
+	// application's own: the users table belongs to that module, and a second
+	// owner of a schema is how a migration breaks code nobody thought read it.
+	people   *auth.Service
 	sessions *security.SessionStore
 	csrf     *security.CSRF
 
@@ -52,8 +62,12 @@ type PostController struct {
 // The session store and the CSRF issuer arrive through the constructor rather
 // than through the service: a screen is allowed to know about a token and a
 // cookie, and a service is not allowed to expose its own dependencies.
-func NewPostController(svc *services.PostService, comments *services.CommentService, sessions *security.SessionStore, csrf *security.CSRF, appName, base, tenant string) *PostController {
-	return &PostController{svc: svc, comments: comments, sessions: sessions, csrf: csrf, appName: appName, base: base, tenant: tenant}
+func NewPostController(svc *services.PostService, comments *services.CommentService, categories *services.CategoryService, people *auth.Service, sessions *security.SessionStore, csrf *security.CSRF, appName, base, tenant string) *PostController {
+	return &PostController{
+		svc: svc, comments: comments, categories: categories, people: people,
+		sessions: sessions, csrf: csrf,
+		appName: appName, base: base, tenant: tenant,
+	}
 }
 
 // Compile-time proof of the seven actions httpx.Router.Resource looks for. It
@@ -106,9 +120,15 @@ func (c *PostController) Index(ctx *httpx.Context) error {
 		return c.fail(ctx, err)
 	}
 
+	// The sections, and the name of the one each post is in. One query for the
+	// whole page rather than one per row: eight cards in eight sections would
+	// otherwise be eight lookups, which is the N+1 an ORM gets blamed for and
+	// that hand-written SQL reproduces just as easily.
+	sections, byID := c.sections(ctx, actor, "")
+
 	rows := make([]views.PostRow, 0, len(found))
 	for _, p := range found {
-		rows = append(rows, c.row(ctx, p, 0))
+		rows = append(rows, c.row(ctx, p, 0, byID))
 	}
 
 	// The listing writes nothing, but the layout around it does: the sign-out
@@ -133,7 +153,97 @@ func (c *PostController) Index(ctx *httpx.Context) error {
 		// Empty for a guest, and an empty URL draws no button.
 		NewURL:     ifSignedIn(signedIn, ctx.URL("posts.create")),
 		NextCursor: next,
+		Sections:   sections,
+		Heading:    "Everything we have written",
+		Standfirst: "Notes on building with Arandu: the decisions, what they cost, and what they bought.",
 	})
+}
+
+// Section is the public listing narrowed to one category.
+//
+// It reuses posts.index rather than having a view of its own. The two pages
+// differ by a heading and a filter, and a second template would be a second
+// place to fix the card the next time a card changes (RULE 9).
+func (c *PostController) Section(ctx *httpx.Context) error {
+	actor, signedIn := c.reader(ctx)
+
+	category, err := c.categories.BySlug(ctx.Ctx(), actor, ctx.Param("slug"))
+	if err != nil {
+		// A slug nobody recognises is a 404 and not a 500. It arrives from a
+		// URL bar and from every crawler that ever indexed a section that has
+		// since been renamed.
+		return c.fail(ctx, err)
+	}
+
+	found, err := c.svc.PublishedInCategory(ctx.Ctx(), actor, category.ID, postPerPage)
+	if err != nil {
+		return c.fail(ctx, err)
+	}
+
+	sections, byID := c.sections(ctx, actor, category.ID)
+
+	rows := make([]views.PostRow, 0, len(found))
+	for _, p := range found {
+		rows = append(rows, c.row(ctx, p, 0, byID))
+	}
+
+	token, err := c.token(ctx)
+	if err != nil {
+		return err
+	}
+
+	page := c.chrome(ctx, signedIn, actor.ID, token, category.Name)
+	page.Description = category.Description
+	// The canonical is this section's own address. Without it the section pages
+	// and the front page look like the same page with the same posts to a
+	// crawler, and one of them is dropped -- usually not the one you wanted.
+	page.Canonical = c.base + ctx.URL("categories.section", category.Slug)
+
+	return ctx.View("posts.index", views.PostsIndexData{
+		Page:       page,
+		Posts:      rows,
+		NewURL:     ifSignedIn(signedIn, ctx.URL("posts.create")),
+		Sections:   sections,
+		Heading:    category.Name,
+		Standfirst: category.Description,
+	})
+}
+
+// sections builds the navigation bar and the id-to-name map the cards read.
+//
+// A failure is not fatal and does not propagate: the section bar is navigation,
+// and a page that refuses to render because the navigation could not be built is
+// a page that disappears over a nicety. It is logged, and the article is served.
+func (c *PostController) sections(ctx *httpx.Context, actor security.Subject, current string) ([]views.SectionLink, map[string]models.Category) {
+	all, err := c.categories.All(ctx.Ctx(), actor)
+	if err != nil {
+		observability.Log(ctx.Ctx()).Warn("the section bar could not be built", "error", err)
+		return nil, nil
+	}
+
+	counts, err := c.svc.CountByCategory(ctx.Ctx(), actor)
+	if err != nil {
+		observability.Log(ctx.Ctx()).Warn("the section counts could not be read", "error", err)
+	}
+
+	byID := make(map[string]models.Category, len(all))
+	links := make([]views.SectionLink, 0, len(all))
+	for _, ca := range all {
+		byID[ca.ID] = ca
+		// A section with nothing published in it is not shown. It exists, an
+		// administrator can see it, and a reader following a link to an empty
+		// page is a reader who thinks the site is broken.
+		if counts[ca.ID] == 0 {
+			continue
+		}
+		links = append(links, views.SectionLink{
+			Name:    ca.Name,
+			URL:     ctx.URL("categories.section", ca.Slug),
+			Count:   strconv.Itoa(counts[ca.ID]),
+			Current: ca.ID == current,
+		})
+	}
+	return links, byID
 }
 
 // Show renders one record.
@@ -157,27 +267,37 @@ func (c *PostController) Show(ctx *httpx.Context) error {
 		return err
 	}
 
-	// A guest sees the article and not the thread. Comments are written by
-	// people with accounts and read by them, and CommentPolicy says so -- asking
-	// for them here as a guest would be a refusal that costs a query.
-	var thread []models.Comment
-	if signedIn {
-		thread, err = c.comments.ForPost(ctx.Ctx(), actor, found.ID)
-		if err != nil {
-			return c.fail(ctx, err)
-		}
+	// The thread, and everybody reads it -- a blog where you have to sign in to
+	// see what people said is not a blog. What is NOT public is a comment
+	// waiting for review, and that is the query's answer rather than this
+	// handler's: PublicForPost returns what is approved, plus this reader's own.
+	thread, err := c.comments.PublicForPost(ctx.Ctx(), actor, found.ID)
+	if err != nil {
+		return c.fail(ctx, err)
 	}
+
+	// One more read on the counter, and it is deliberately after everything that
+	// could have failed: a page that did not render is not a page anybody read.
+	// It never fails the request -- see PostService.Read.
+	_, byID := c.sections(ctx, actor, found.CategoryID)
+	c.svc.Read(ctx.Ctx(), actor, found)
 
 	return ctx.View("posts.show", views.PostsShowData{
 		Page:     c.article(ctx, actor, signedIn, token, found),
-		Post:     c.row(ctx, found, len(thread)),
-		Comments: c.thread(thread),
+		Post:     c.row(ctx, found, len(thread), byID),
+		Comments: c.thread(ctx, thread),
 
 		// The three addresses a guest does not get. An empty URL draws no
 		// control, so the policy reaches the markup as data rather than as a
 		// question the view asks -- and a button that is not drawn is one
 		// nobody has to check twice on the way in.
-		CommentURL: ifSignedIn(signedIn, ctx.URL("posts.comments", found.ID)),
+		// Signed in AND verified. The policy refuses an unverified account, and
+		// drawing a form that is going to be refused is the worst of the three
+		// answers available -- worse than no form, and worse than a sentence
+		// saying why.
+		CommentURL: ifSignedIn(signedIn && actor.Verified, ctx.URL("posts.comments", found.ID)),
+		Unverified: signedIn && !actor.Verified,
+		ResendURL:  "/auth/verify/resend",
 		EditURL:    ifSignedIn(signedIn, ctx.URL("posts.edit", found.ID)),
 		DeleteURL:  ifSignedIn(signedIn, ctx.URL("posts.destroy", found.ID)),
 	})
@@ -314,7 +434,7 @@ func (c *PostController) token(ctx *httpx.Context) (string, error) {
 // Formatting happens here rather than in the view: a view that formats a
 // time.Time would need the time package, and what a date looks like on screen is
 // a decision about presentation, which is this side of the line.
-func (c *PostController) row(ctx *httpx.Context, p models.Post, comments int) views.PostRow {
+func (c *PostController) row(ctx *httpx.Context, p models.Post, comments int, sections map[string]models.Category) views.PostRow {
 	// A draft has no publication date, and formatting the zero value prints
 	// 0001-01-01 -- a date that looks like data and is the absence of it. The
 	// view reads the empty string as "not published", which is what the badge
@@ -322,6 +442,23 @@ func (c *PostController) row(ctx *httpx.Context, p models.Post, comments int) vi
 	published := ""
 	if !p.PublishedAt.IsZero() {
 		published = p.PublishedAt.Format("2 January 2006")
+	}
+
+	// The section, when the post is in one and the map has it. A post filed
+	// under a category that was deleted keeps its id and shows no chip, which is
+	// the honest answer -- inventing a name for a row that is gone would be
+	// worse than saying nothing.
+	section, sectionURL := "", ""
+	if ca, ok := sections[p.CategoryID]; ok {
+		section = ca.Name
+		sectionURL = ctx.URL("categories.section", ca.Slug)
+	}
+
+	// Nothing rather than "0 reads". A count of zero under a post published a
+	// minute ago says something worse than saying nothing.
+	reads := ""
+	if p.Views > 0 {
+		reads = strconv.Itoa(p.Views)
 	}
 
 	return views.PostRow{
@@ -332,6 +469,9 @@ func (c *PostController) row(ctx *httpx.Context, p models.Post, comments int) vi
 		Excerpt:     excerpt(p.Body),
 		PublishedAt: published,
 		Created:     p.CreatedAt.Format("2 January 2006"),
+		Category:    section,
+		CategoryURL: sectionURL,
+		Views:       reads,
 		// Built from the route name. "/posts/"+p.ID compiles and keeps
 		// compiling after the route moves, and the card links nowhere -- which
 		// is exactly what happened: every card on the listing had an empty href
@@ -353,6 +493,25 @@ func (c *PostController) article(ctx *httpx.Context, actor security.Subject, sig
 	page.Description = excerpt(p.Body)
 	page.Canonical = c.base + ctx.URL("posts.show", p.ID)
 	return page
+}
+
+// displayName is what the header greets somebody by.
+//
+// The session carries an id and not a name, deliberately -- a name in a session
+// is a name that stays wrong after somebody changes it. One lookup per page for
+// the person who is signed in is the price, and it is a single row by primary
+// key.
+//
+// It falls back to the id rather than failing: a header is not worth a 500.
+func (c *PostController) displayName(ctx *httpx.Context, id string) string {
+	if id == "" {
+		return ""
+	}
+	names, err := c.people.Names(ctx.Ctx(), c.tenant, []string{id})
+	if err != nil || names[id] == "" {
+		return id
+	}
+	return names[id]
 }
 
 // reader is who is asking: the signed-in subject, or a declared guest.
@@ -386,20 +545,46 @@ func (c *PostController) chrome(ctx *httpx.Context, signedIn bool, name, token, 
 		AppName:       c.appName,
 		Token:         token,
 		Authenticated: signedIn,
-		UserName:      name,
+		UserName:      c.displayName(ctx, name),
 		HomeURL:       ctx.URL("home"),
 		LoginURL:      "/auth/login",
 		LogoutURL:     "/auth/logout",
+		// Registration is open on this blog, so the layout draws the button.
+		// An application that closes it leaves this empty, and the header stops
+		// offering an address that refuses everybody.
+		RegisterURL: "/auth/register",
 	}
 }
 
 // thread turns the stored comments into rows the markup draws.
-func (c *PostController) thread(found []models.Comment) []views.CommentRow {
+func (c *PostController) thread(ctx *httpx.Context, found []models.Comment) []views.CommentRow {
+	// The author column holds a subject id, and a thread signed with UUIDs is a
+	// thread that looks broken. The names are resolved in ONE query for the
+	// whole page -- twenty comments would otherwise be twenty lookups, on the
+	// page most likely to have twenty rows.
+	ids := make([]string, 0, len(found))
+	for _, m := range found {
+		ids = append(ids, m.Author)
+	}
+	names, err := c.people.Names(ctx.Ctx(), c.tenant, ids)
+	if err != nil {
+		// Not fatal. An article is worth rendering with a thread that names
+		// people badly; it is not worth failing over one.
+		observability.Log(ctx.Ctx()).Warn("the comment authors could not be named", "error", err)
+	}
+
 	rows := make([]views.CommentRow, 0, len(found))
 	for _, m := range found {
+		author := names[m.Author]
+		if author == "" {
+			// An account that was deleted. Saying so is better than printing an
+			// id nobody can look up, and better than printing nothing next to a
+			// comment that is still there.
+			author = "a former reader"
+		}
 		rows = append(rows, views.CommentRow{
 			ID:       m.ID,
-			Author:   m.Author,
+			Author:   author,
 			Body:     m.Body,
 			Created:  m.CreatedAt.Format("2 January 2006"),
 			Approved: m.Approved,

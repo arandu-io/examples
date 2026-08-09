@@ -143,12 +143,14 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 	// each -- two of them would be two policies to keep in step.
 	postService := services.NewPostService(repositories.NewPostRepository(db))
 	commentService := services.NewCommentService(repositories.NewCommentRepository(db))
+	categoryService := services.NewCategoryService(repositories.NewCategoryRepository(db))
 
 	deps := routes.Deps{
-		Home:    controllers.NewHomeController(cfg.App.Name, sessions, csrf),
-		Post:    controllers.NewPostController(postService, commentService, sessions, csrf, cfg.App.Name, cfg.App.URL, cfg.Auth.Tenant),
-		Comment: controllers.NewCommentController(commentService, sessions, csrf),
-		Admin:   controllers.NewAdminController(postService, commentService, sessions, csrf),
+		Home:     controllers.NewHomeController(cfg.App.Name, sessions, csrf),
+		Post:     controllers.NewPostController(postService, commentService, categoryService, authService, sessions, csrf, cfg.App.Name, cfg.App.URL, cfg.Auth.Tenant),
+		Comment:  controllers.NewCommentController(commentService, sessions, csrf),
+		Category: controllers.NewCategoryController(categoryService, sessions, csrf),
+		Admin:    controllers.NewAdminController(postService, commentService, sessions, csrf),
 		// The origin the sitemap builds absolute URLs on. A sitemap of relative
 		// paths is refused by every crawler that reads one, and the value cannot
 		// come from the request: a Host header is what the client sent.
@@ -191,7 +193,7 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 			// framework ships the minimum markup that exists so authentication
 			// could be tested at all; this one has a page. Register one or the
 			// other, never both -- they answer the same path.
-			authui.New(authService, sessions, csrf, mailer, cfg.App.URL, auth.FixedTenant(cfg.Auth.Tenant)),
+			authui.New(authService, sessions, csrf, mailer, fw.AppKey, cfg.App.URL, auth.FixedTenant(cfg.Auth.Tenant)),
 			// The outbox table. A module that records domain events stores them
 			// in the same transaction as the write, and this is what brings the
 			// table those rows land in -- see doc 27.
@@ -242,14 +244,10 @@ func mailTransport(cfg appconfig.Mail) mail.Transport {
 		}
 	case appconfig.MailerArray:
 		return &mail.Array{}
-	case appconfig.MailerResend, appconfig.MailerSendGrid:
-		// The adapters are submodules, because in Go there is no optional
-		// dependency and a provider's client in the core is that client in every
-		// binary. Add the one you use and return it here:
-		//
-		//	go get github.com/arandu-io/mail/resend
-		//	return resend.New(cfg.Key)
-		panic("mail: " + string(cfg.Mailer) + " needs its submodule: go get github.com/arandu-io/mail/" + string(cfg.Mailer))
+	case appconfig.MailerResend:
+		return mail.Resend{Key: cfg.Key}
+	case appconfig.MailerSendGrid:
+		return mail.SendGrid{Key: cfg.Key}
 	default:
 		return mail.Log{}
 	}

@@ -14,7 +14,6 @@ import (
 	"github.com/arandu-io/framework/observability"
 
 	appmail "github.com/arandu-io/examples/app/Mail"
-	"github.com/arandu-io/framework/view"
 )
 
 // The password reset, wired.
@@ -175,40 +174,4 @@ func consume(token string) (string, error) {
 		return entry.email, nil
 	}
 	return "", errors.New("unknown token")
-}
-
-// screen renders one of the kit's pages with a fresh token.
-//
-// Every screen here needs one: they all post, and a page rendered without a
-// token answers 200 and then refuses the submission with 419 -- which reads like
-// a broken session rather than a missing field.
-func (m *Module) screen(w http.ResponseWriter, r *http.Request, name string, data AuthPage) {
-	token, err := m.csrf.Issue(m.sessions.IDFromRequest(r))
-	if err != nil {
-		observability.Log(r.Context()).Error("issuing csrf token", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-
-	title := data.Page.Title
-	data.Page = view.Page{
-		Title:     title,
-		AppName:   "arandu-io/examples",
-		Token:     token,
-		HomeURL:   "/",
-		LoginURL:  "/auth/login",
-		LogoutURL: "/auth/logout",
-	}
-	if data.Page.Title == "" {
-		data.Page.Title = "Password"
-	}
-	data.HasPasswordReset = true
-	data.PasswordEmailURL = "/auth/password/email"
-	data.PasswordRequestURL = "/auth/password"
-	data.PasswordUpdateURL = "/auth/password/update"
-
-	if err := view.NewRenderer().Render(r.Context(), w, http.StatusOK, name, data); err != nil {
-		observability.Log(r.Context()).Error("rendering "+name, "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-	}
 }

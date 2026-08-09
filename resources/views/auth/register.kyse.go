@@ -17,23 +17,28 @@ type RegisterData = authui.AuthPage
 
 @section('content')
 	<div class="mx-auto w-full max-w-md">
-		<section class="card">
-			<header class="border-b px-6 py-4">
-				<h1 class="text-base font-semibold tracking-tight">Register</h1>
-			</header>
+		<header class="mb-8 text-center">
+			<h1 class="headline text-3xl">Create an account</h1>
+			<p class="text-muted-foreground mt-2 text-sm">
+				Reading needs nothing. Commenting needs a confirmed address.
+			</p>
+		</header>
 
+		<section class="card">
 			<form class="flex flex-col gap-4 px-6 py-6" method="post" action="{{ .RegisterURL }}">
 				@csrf
 
 				{!! components.Field(components.FieldProps{
 					Name: "name", Label: "Name",
 					Value: .Name, Error: .NameError,
+					Hint: "What your comments are signed with.",
 					Autocomplete: "name", Required: true, Autofocus: true,
 				}) !!}
 
 				{!! components.Field(components.FieldProps{
 					Name: "email", Label: "Email", Type: "email",
 					Value: .Email, Error: .EmailError,
+					Hint: "We send one link here and nothing else.",
 					Autocomplete: "email", Required: true,
 				}) !!}
 
@@ -50,11 +55,14 @@ type RegisterData = authui.AuthPage
 					Autocomplete: "new-password", Required: true,
 				}) !!}
 
-				<div class="flex items-center justify-between gap-3">
-					<button type="submit" class="btn">Register</button>
-					<a class="text-muted-foreground text-sm hover:underline" href="{{ .LoginURL }}">Already registered?</a>
+				<div>
+					<button type="submit" class="btn">Create the account</button>
 				</div>
 			</form>
 		</section>
+
+		<p class="text-muted-foreground mt-6 text-center text-sm">
+			Already registered? <a class="text-foreground hover:underline" href="{{ .LoginURL }}">Sign in</a>.
+		</p>
 	</div>
 @endsection

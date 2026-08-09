@@ -43,8 +43,9 @@ func (m PasswordReset) Envelope() mail.Envelope {
 // the line of the .kyse.go rather than a blank space in somebody's inbox.
 func (m PasswordReset) Content() mail.Content {
 	return mail.Content{
-		View: "mail.password-reset",
-		Data: m,
+		View:     "mail.password-reset",
+		TextView: "mail.password-reset-text",
+		Data:     m,
 	}
 }
 

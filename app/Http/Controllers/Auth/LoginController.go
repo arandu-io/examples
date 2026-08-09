@@ -44,6 +44,11 @@ type Module struct {
 	// a reset link an attacker chose the destination of.
 	mailer *mail.Mailer
 	base   string
+
+	// signer is what a verification link is made of. The same application key
+	// as the session and the CSRF token, because they are the same secret --
+	// an attacker who has it does not need three.
+	signer *security.Signer
 }
 
 // New returns the module.
@@ -55,7 +60,7 @@ type Module struct {
 // The session store and the CSRF issuer are passed in rather than reached
 // through the service, because a screen is allowed to know about a token and a
 // cookie, and the service is not allowed to expose its own dependencies.
-func New(svc *auth.Service, sessions *security.SessionStore, csrf *security.CSRF, mailer *mail.Mailer, base string, tenant auth.TenantResolver) *Module {
+func New(svc *auth.Service, sessions *security.SessionStore, csrf *security.CSRF, mailer *mail.Mailer, appKey []byte, base string, tenant auth.TenantResolver) *Module {
 	if tenant == nil {
 		tenant = auth.FixedTenant("")
 	}
@@ -66,6 +71,7 @@ func New(svc *auth.Service, sessions *security.SessionStore, csrf *security.CSRF
 		csrf:     csrf,
 		mailer:   mailer,
 		base:     base,
+		signer:   security.NewSigner(appKey),
 		tenant:   tenant,
 	}
 }
@@ -100,5 +106,18 @@ func (m *Module) Routes(r *httpx.Router) {
 	g.Post("/password/email", m.sendPasswordLink)
 	g.Get("/password/reset", m.showPasswordReset)
 	g.Post("/password/update", m.updatePassword)
+
+	// Registration and address verification, in RegisterController.go.
+	//
+	// /verify is the notice and /verify/confirm is the link. Two addresses and
+	// not one with a branch: the notice is reached by a redirect after
+	// registering, and the link arrives from a mail client -- and a GET that
+	// sometimes changes state and sometimes does not is one nobody can cache,
+	// log or reason about.
+	g.Get("/register", m.showRegister)
+	g.Post("/register", m.doRegister)
+	g.Get("/verify", m.showVerifyNotice)
+	g.Get("/verify/confirm", m.verify)
+	g.Post("/verify/resend", m.resendVerification)
 	// arandu:end custom
 }

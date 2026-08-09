@@ -15,13 +15,37 @@ import (
 // -- Find and List included -- takes a security.Grant that only a Policy can
 // issue (RULE 17). The model is data; the Policy is the door.
 type Post struct {
-	ID          string
-	Title       string
-	Slug        string
-	Body        string
+	ID    string
+	Title string
+	Slug  string
+	Body  string
+
+	// CategoryID is the section this post is filed under, or empty for none.
+	//
+	// An id and not a Category. A model that carried the whole record would be a
+	// model that had to be loaded with it, every time, from wherever it came
+	// from -- which is the lazy-loading question, and the answer here is that
+	// there is no lazy loading: the page that shows a section name asks for it.
+	CategoryID string
+
+	// Views is how many times the article was opened. It is a counter and never
+	// read into a decision, so it is incremented with a statement of its own
+	// rather than read, added to and written back -- two readers doing the
+	// latter concurrently record one view.
+	Views int
+
 	PublishedAt time.Time
 	CreatedAt   time.Time
 }
+
+// Published reports whether the post is out.
+//
+// PublishedAt is a time.Time rather than a pointer, so "not published" is the
+// zero value -- and the zero value is written to SQL as 0001-01-01, which is a
+// real date. `WHERE published_at IS NOT NULL` therefore answers true for every
+// draft, which is how a draft reached the sitemap once. A method here so the
+// comparison is written correctly in one place.
+func (p Post) Published() bool { return !p.PublishedAt.IsZero() }
 
 // What can go wrong with a post, declared beside the entity rather than
 // inside the repository.

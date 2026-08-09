@@ -107,6 +107,44 @@ func (s *PostService) Published(ctx context.Context, actor security.Subject, lim
 	return s.repo.Published(ctx, g, limit)
 }
 
+// PublishedInCategory is the public listing narrowed to one section.
+//
+// The same PostPublicList as Published, because it is the same question asked
+// about fewer rows. A permission of its own would be one nobody could grant
+// without granting the wider one anyway.
+func (s *PostService) PublishedInCategory(ctx context.Context, actor security.Subject, categoryID string, limit int) ([]models.Post, error) {
+	g, err := security.Authorize(ctx, s.policy, actor, policies.PostPublicList, models.Post{})
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.PublishedInCategory(ctx, g, categoryID, limit)
+}
+
+// CountByCategory is how many published posts each section holds.
+func (s *PostService) CountByCategory(ctx context.Context, actor security.Subject) (map[string]int, error) {
+	g, err := security.Authorize(ctx, s.policy, actor, policies.PostPublicList, models.Post{})
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.CountByCategory(ctx, g)
+}
+
+// Read records that an article was opened, and never fails a page over it.
+//
+// A counter is not worth a 500. The read that matters already happened by the
+// time this is called, so a failure here is logged and the article is served --
+// which is also why it is not part of Get: a caller that wanted the row and got
+// an error about a counter would have no way to tell the two apart.
+func (s *PostService) Read(ctx context.Context, actor security.Subject, p models.Post) {
+	g, err := security.Authorize(ctx, s.policy, actor, policies.PostView, p)
+	if err != nil {
+		return
+	}
+	if err := s.repo.IncrementViews(ctx, g, p.ID); err != nil {
+		observability.Log(ctx).Warn("the read counter was not incremented", "error", err, "post", p.ID)
+	}
+}
+
 // ListWith is List for a caller that already holds a Grant.
 //
 // There is one of those in this application -- the sitemap, which answers a

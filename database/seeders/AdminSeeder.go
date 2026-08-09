@@ -17,28 +17,53 @@ import (
 //
 // Credentials come from the environment rather than from flags: a password typed
 // as an argument lands in the shell history and in the process list.
+//
+// In development, and only there, both fall back to a known demo pair so that a
+// fresh clone has somebody to sign in as. Outside development the variables are
+// required -- see demoPassword, in ReaderSeeder.go, for the one guard that
+// matters.
 type AdminSeeder struct{}
 
 // Name is how the seeder is addressed on the command line.
 func (AdminSeeder) Name() string { return "AdminSeeder" }
 
+// The demo administrator. The address is on example.com, which RFC 2606
+// reserves: it cannot be registered, so a stray message to it reaches nobody.
+const (
+	adminName       = "Paulo Lima"
+	demoAdminEmail  = "admin@example.com"
+	adminEmailVar   = "ARANDU_ADMIN_EMAIL"
+	adminPasswdVar  = "ARANDU_ADMIN_PASSWORD"
+	developmentOnly = "dev"
+)
+
 // Run creates the administrator, or leaves the existing one alone.
 func (AdminSeeder) Run(ctx context.Context, d Deps) error {
-	email := os.Getenv("ARANDU_ADMIN_EMAIL")
-	password := os.Getenv("ARANDU_ADMIN_PASSWORD")
-	if email == "" || password == "" {
-		return errors.New("set ARANDU_ADMIN_EMAIL and ARANDU_ADMIN_PASSWORD before seeding the administrator")
-	}
 	if d.Auth == nil {
 		return errors.New("the auth service is not wired")
 	}
-
 	tenant := d.Tenant
 	if tenant == "" {
 		return errors.New("the tenant is not wired: seeding into an empty tenant would create a user nobody can log in as")
 	}
 
-	user, err := d.Auth.EnsureAdmin(ctx, tenant, email, password)
+	email := os.Getenv(adminEmailVar)
+	if email == "" {
+		if os.Getenv("APP_ENV") != developmentOnly {
+			return errors.New("set " + adminEmailVar + " and " + adminPasswdVar + " before seeding the administrator")
+		}
+		email = demoAdminEmail
+	}
+
+	password, err := demoPassword(adminPasswdVar)
+	if err != nil {
+		return err
+	}
+
+	// An administrator is created verified. Nobody is going to click a link in
+	// a mailbox that does not exist, and an administrator who cannot moderate
+	// because of it is a first run that ends at the sign-in screen.
+	user, err := d.Auth.EnsureUser(ctx, tenant, adminName, email, password, []string{"admin"}, true)
 	if err != nil {
 		return err
 	}

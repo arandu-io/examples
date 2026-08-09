@@ -30,6 +30,14 @@ type PostsShowData struct {
 	// EditURL and DeleteURL are empty for a reader. Same reason.
 	EditURL   string
 	DeleteURL string
+
+	// Unverified says the reader is signed in but has not confirmed their
+	// address, which is the one case where "no comment form" needs a sentence
+	// rather than a sign-in link -- they ARE signed in, and being shown the
+	// sign-in link again is the most confusing answer available.
+	Unverified bool
+	// ResendURL is where they ask for another confirmation link.
+	ResendURL string
 }
 
 // Compile-time proof that this page fits the layout it extends.
@@ -64,14 +72,24 @@ func (c CommentRow) Badge() string {
 @section('content')
 	<article class="mx-auto w-full max-w-2xl">
 		<header>
-			<h1 class="text-3xl font-semibold tracking-tight">{{ .Post.Title }}</h1>
-			<p class="text-muted-foreground mt-2 text-sm">{{ .Post.Meta() }}</p>
+			<div class="eyebrow flex flex-wrap items-center gap-x-2 gap-y-1">
+				@if(.Post.Category != "")
+					<a class="hover:text-foreground" href="{{ .Post.CategoryURL }}">{{ .Post.Category }}</a>
+					<span aria-hidden="true">&middot;</span>
+				@endif
+				<span>{{ .Post.Meta() }}</span>
+			</div>
+			<h1 class="headline mt-3 text-4xl sm:text-5xl">{{ .Post.Title }}</h1>
 		</header>
 
 		{{-- The body is written by an author, so it is escaped like everything
 		     else. Rendering it raw would be the one hole in a view layer whose
-		     whole claim is that escaping is not a decision anybody makes. --}}
-		<div class="mt-8 text-base leading-7 whitespace-pre-line">{{ .Post.Body }}</div>
+		     whole claim is that escaping is not a decision anybody makes.
+
+		     whitespace-pre-line is what turns the blank lines between paragraphs
+		     into blank lines on the page without a markdown parser -- which
+		     would be a second way to write a page (RULE 9). --}}
+		<div class="prose-body mt-8 whitespace-pre-line">{{ .Post.Body }}</div>
 
 		@if(.EditURL != "")
 			<footer class="mt-10 flex items-center gap-3 border-t pt-6">
@@ -93,7 +111,7 @@ func (c CommentRow) Badge() string {
 	</article>
 
 	<section class="mx-auto mt-16 w-full max-w-2xl border-t pt-10">
-		<h2 class="text-lg font-semibold tracking-tight">
+		<h2 class="headline text-2xl">
 			Comments
 			@if(len(.Comments) > 0)
 				{!! components.Badge(components.BadgeProps{Label: .Post.Comments, Variant: "secondary"}) !!}
@@ -101,19 +119,19 @@ func (c CommentRow) Badge() string {
 		</h2>
 
 		@if(len(.Comments) > 0)
-			<ul class="mt-6 flex flex-col gap-6">
+			<ul class="mt-8 flex flex-col gap-8">
 				@foreach(.Comments as comment)
 					<li class="flex gap-3">
 						{!! components.Avatar(components.AvatarProps{Name: comment.Author, Size: "sm"}) !!}
 						<div class="min-w-0 flex-1">
-							<div class="flex items-center gap-2">
+							<div class="flex flex-wrap items-center gap-2">
 								<span class="text-sm font-medium">{{ comment.Author }}</span>
 								<span class="text-muted-foreground text-xs">{{ comment.Created }}</span>
 								@if(comment.Badge() != "")
 									{!! components.Badge(components.BadgeProps{Label: comment.Badge(), Variant: "outline"}) !!}
 								@endif
 							</div>
-							<p class="mt-1 text-sm whitespace-pre-line">{{ comment.Body }}</p>
+							<p class="mt-1.5 text-sm leading-relaxed whitespace-pre-line">{{ comment.Body }}</p>
 						</div>
 					</li>
 				@endforeach
@@ -147,7 +165,22 @@ func (c CommentRow) Badge() string {
 			</form>
 		@endif
 
-		@if(.CommentURL == "")
+		{{-- Signed in, but the address is not confirmed. Telling this reader to
+		     sign in would be the most confusing answer available: they did. --}}
+		@if(.Unverified)
+			<div class="mt-10">
+				{!! components.Alert(components.AlertProps{
+					Title:   "Confirm your address to comment",
+					Message: "We sent a link when you registered. Reading does not need it; writing does.",
+				}) !!}
+				<form class="mt-4" method="post" action="{{ .ResendURL }}">
+					@csrf
+					<button type="submit" class="btn" data-variant="outline" data-size="sm">Send the link again</button>
+				</form>
+			</div>
+		@endif
+
+		@if(.CommentURL == "" && !.Unverified)
 			<p class="text-muted-foreground mt-10 text-sm">
 				<a class="hover:underline" href="{{ .LoginLink() }}">Sign in</a> to leave a comment.
 			</p>

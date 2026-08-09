@@ -16,7 +16,13 @@ func (DatabaseSeeder) Name() string { return "DatabaseSeeder" }
 func (DatabaseSeeder) Run(ctx context.Context, d Deps) error {
 	for _, seeder := range []Seeder{
 		AdminSeeder{},
+		ReaderSeeder{},
+		// Sections before posts: a post is filed under one, and a section that
+		// does not exist yet cannot be named. Posts before comments, for the
+		// same reason read once more.
+		CategorySeeder{},
 		PostSeeder{},
+		CommentSeeder{},
 	} {
 		if err := seeder.Run(ctx, d); err != nil {
 			return err

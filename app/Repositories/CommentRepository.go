@@ -263,4 +263,46 @@ func (r *CommentRepository) conflict(err error) bool {
 // arandu:begin custom
 // Queries beyond the five above go here, and survive regeneration. Keep the
 // g.Check as the first line of each one.
+
+// PublicForPost is the thread as a reader sees it.
+//
+// Approved, plus anything the reader wrote themselves -- which is what lets
+// somebody see their own comment marked "awaiting review" instead of watching it
+// vanish, and is the single most common complaint about a moderated thread.
+//
+// reader is empty for somebody with no account, and an empty string matches
+// nothing: the author column holds a subject id and is never blank. So the
+// anonymous case needs no second query and no branch.
+//
+// The predicate is in the SQL and not in Go. A filter applied after the rows are
+// read is a filter somebody removes while tidying, and by then the pending
+// comments are already in memory next to the ones being rendered.
+func (r *CommentRepository) PublicForPost(ctx context.Context, g security.Grant, postID, reader string) ([]models.Comment, error) {
+	if err := g.Check(policies.CommentPublicList); err != nil {
+		return nil, err
+	}
+
+	const query = `SELECT ` + commentColumns + `
+		FROM comments
+		WHERE post_id = ? AND (approved = ? OR author = ?)
+		ORDER BY created_at, id
+		LIMIT ?`
+
+	rows, err := r.db.QueryContext(ctx, query, postID, true, reader, commentMaxLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.Comment
+	for rows.Next() {
+		co, err := r.scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, co)
+	}
+	return out, rows.Err()
+}
+
 // arandu:end custom

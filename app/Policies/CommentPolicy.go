@@ -26,6 +26,18 @@ const (
 	CommentUpdate security.Action = "comment.update"
 	// CommentDelete is removing one.
 	CommentDelete security.Action = "comment.delete"
+
+	// CommentPublicList is the thread as a reader sees it: what is approved,
+	// plus their own while it waits.
+	//
+	// A named action rather than CommentList with a filter, and the same
+	// distinction PostPublicList draws for the same reason. The two questions
+	// are different -- "every comment there is" and "what may be shown under
+	// this article" -- and one permission answering both is a permission whose
+	// meaning depends on who is asking. It has its own query, and the query is
+	// what keeps a comment awaiting review out of a stranger's page rather than
+	// a filter somebody removes while tidying.
+	CommentPublicList security.Action = "comment.list.public"
 )
 
 // CommentPolicy is the only authority over who does what with Comment.
@@ -43,15 +55,48 @@ func (CommentPolicy) Can(ctx context.Context, s security.Subject, a security.Act
 
 	// arandu:begin custom
 	//
-	// What this blog allows, and it is four lines because the interesting part
-	// of a comment system is who may moderate rather than who may write.
+	// What this blog allows.
 	//
-	// Anybody signed in may read the thread and add to it. security.Authorize
-	// refuses an anonymous subject before it ever calls this method, so an
-	// unauthenticated reader never reaches here -- the controller answers them
-	// with the article and no form.
+	// Reading is public and writing is not, and the line between them is drawn
+	// three times below rather than once, because they are three different
+	// questions: what a stranger may see, what an account may add, and what a
+	// moderator may do about it.
+	//
+	// A reader with no session arrives here as security.Guest, which is a
+	// subject somebody built on purpose. A Subject nobody filled in is not one,
+	// and Authorize refuses it before this method is called -- an empty subject
+	// is almost always a session that failed to load, and answering an
+	// authorization question about nobody is how a hole opens by accident.
 	switch a {
-	case CommentView, CommentList, CommentCreate:
+	case CommentView, CommentPublicList:
+		// The thread is public. A blog where you have to sign in to READ what
+		// people said is not a blog, and the moderation state is what the query
+		// behind this action protects -- not the login.
+		return nil
+
+	case CommentList:
+		// Every comment there is, moderation queue included. That is the
+		// administrator's, and it is the difference between this action and the
+		// one above.
+		if s.HasRole("admin") {
+			return nil
+		}
+
+	case CommentCreate:
+		// Writing needs a confirmed address, and reading does not.
+		//
+		// It is the cheapest thing that makes a comment section usable: an
+		// account costs nothing to create, so "signed in" is not a bar at all,
+		// and one round trip through an inbox is. It is also the reason to have
+		// a verification flow -- a verified column nothing consults is a column.
+		//
+		// The check is here rather than in the controller because the controller
+		// is not the authority, and because a second write path -- an import, an
+		// API, a job -- would reach the same policy and be refused by the same
+		// line.
+		if !s.Verified {
+			return fmt.Errorf("confirm your email address before commenting")
+		}
 		return nil
 	}
 

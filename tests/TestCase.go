@@ -24,6 +24,7 @@ import (
 	"github.com/arandu-io/framework/config"
 	"github.com/arandu-io/framework/data"
 	"github.com/arandu-io/framework/kernel"
+	"github.com/arandu-io/framework/mail"
 
 	"github.com/arandu-io/examples/bootstrap"
 	appconfig "github.com/arandu-io/examples/config"
@@ -113,8 +114,22 @@ func File(t *testing.T, name string) string {
 // SQLite in a temporary directory, so the tests need nothing installed and two
 // of them cannot see each other's rows. The file goes with t.TempDir.
 func App(t *testing.T) (*arandutest.Client, *data.DB) {
+	client, db, _ := AppWithMailbox(t)
+	return client, db
+}
+
+// AppWithMailbox is App plus what the application sent.
+//
+// The mailer is the array transport, so a test can read the message rather than
+// asserting that a log line happened. That is the difference between proving a
+// verification link works and proving a function was called: the link this
+// returns is the one a person would click, produced by the same code path
+// production takes.
+func AppWithMailbox(t *testing.T) (*arandutest.Client, *data.DB, *mail.Array) {
 	t.Helper()
 
+	// Before appconfig.Load: this is what mailTransport switches on.
+	t.Setenv("MAIL_MAILER", "array")
 	t.Setenv("APP_ENV", "dev")
 	t.Setenv("APP_KEY", "0123456789abcdef0123456789abcdef")
 	t.Setenv("DB_CONNECTION", "sqlite")
@@ -142,5 +157,14 @@ func App(t *testing.T) (*arandutest.Client, *data.DB) {
 	if err := app.Kernel.Boot(context.Background()); err != nil {
 		t.Fatalf("Boot: %v", err)
 	}
-	return arandutest.NewClient(t, app.Kernel.Handler()), db
+
+	box, ok := app.Mail.Transport().(*mail.Array)
+	if !ok {
+		// MAIL_MAILER is set above, so this is a wiring change rather than a
+		// configuration mistake -- and a test that silently got the log
+		// transport would assert nothing about what was sent.
+		t.Fatalf("the test mailer is %s and not the array transport: nothing can read what was sent",
+			app.Mail.Transport().Name())
+	}
+	return arandutest.NewClient(t, app.Kernel.Handler()), db, box
 }

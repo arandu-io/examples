@@ -17,11 +17,21 @@ type LoginData = authui.AuthPage
 
 @section('content')
 	<div class="mx-auto w-full max-w-md">
-		<section class="card">
-			<header class="border-b px-6 py-4">
-				<h1 class="text-base font-semibold tracking-tight">Login</h1>
-			</header>
+		<header class="mb-8 text-center">
+			<h1 class="headline text-3xl">Sign in</h1>
+			<p class="text-muted-foreground mt-2 text-sm">To write, to comment, or to moderate.</p>
+		</header>
 
+		{{-- The one-shot message a redirect left behind: a confirmed address, a
+		     password just changed. It is above the form because it is about what
+		     already happened, not about what to type. --}}
+		@if(.Status != "")
+			<div class="mb-6">
+				{!! components.Alert(components.AlertProps{Title: .Status}) !!}
+			</div>
+		@endif
+
+		<section class="card">
 			{{-- hx-target and hx-swap on the form itself: a rejected login answers
 			     422 with this form and its messages, and the swap puts it back
 			     where it was without a page load. --}}
@@ -47,12 +57,18 @@ type LoginData = authui.AuthPage
 				</label>
 
 				<div class="flex items-center justify-between gap-3">
-					<button type="submit" class="btn">Login</button>
+					<button type="submit" class="btn">Sign in</button>
 					@if(.HasPasswordReset)
 						<a class="text-muted-foreground text-sm hover:underline" href="{{ .PasswordRequestURL }}">Forgot your password?</a>
 					@endif
 				</div>
 			</form>
 		</section>
+
+		@if(.RegisterURL != "")
+			<p class="text-muted-foreground mt-6 text-center text-sm">
+				No account? <a class="text-foreground hover:underline" href="{{ .RegisterURL }}">Create one</a>.
+			</p>
+		@endif
 	</div>
 @endsection
