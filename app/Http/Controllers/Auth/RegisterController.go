@@ -49,7 +49,7 @@ const verifyPurpose = "verify-email"
 
 // showRegister draws the sign-up form.
 func (m *Module) showRegister(w http.ResponseWriter, r *http.Request) {
-	m.screen(w, r, "auth.register", AuthPage{Page: page("Create an account")})
+	m.screen(w, r, "auth.register", AuthPage{Page: m.page(r, "Create an account")})
 }
 
 // doRegister validates, creates the user and sends the verification link.
@@ -97,7 +97,7 @@ func (m *Module) doRegister(w http.ResponseWriter, r *http.Request) {
 // showVerifyNotice is the "check your inbox" page.
 func (m *Module) showVerifyNotice(w http.ResponseWriter, r *http.Request) {
 	m.screen(w, r, "auth.verify", AuthPage{
-		Page:                  page("Confirm your address"),
+		Page:                  m.page(r, "Confirm your address"),
 		VerificationResendURL: "/auth/verify/resend",
 		Resent:                r.URL.Query().Get("resent") == "1",
 	})
@@ -120,7 +120,7 @@ func (m *Module) verify(w http.ResponseWriter, r *http.Request) {
 			status = "That link has expired. Sign in and we will send another."
 		}
 		m.screen(w, r, "auth.verify", AuthPage{
-			Page:       page("Confirm your address"),
+			Page:       m.page(r, "Confirm your address"),
 			EmailError: status,
 		})
 		return
@@ -130,7 +130,7 @@ func (m *Module) verify(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		observability.Log(r.Context()).Error("marking an address verified", "error", err)
 		m.screen(w, r, "auth.verify", AuthPage{
-			Page:       page("Confirm your address"),
+			Page:       m.page(r, "Confirm your address"),
 			EmailError: "That link is not valid.",
 		})
 		return
@@ -144,7 +144,7 @@ func (m *Module) verify(w http.ResponseWriter, r *http.Request) {
 		message = "That address was already confirmed. Sign in."
 	}
 	m.screen(w, r, "auth.login", AuthPage{
-		Page:   page("Sign in"),
+		Page:   m.page(r, "Sign in"),
 		Status: message,
 	})
 }
@@ -192,8 +192,9 @@ func (m *Module) sendVerification(r *http.Request, u auth.User) {
 	link := m.base + "/auth/verify/confirm?token=" + token
 
 	if err := m.mailer.ToAddress(mailAddress(u)).Send(r.Context(), appmail.VerifyEmail{
-		Name: firstWord(u.Name),
-		Link: link,
+		Name:      firstWord(u.Name),
+		Link:      link,
+		BrandName: m.appName,
 	}); err != nil {
 		observability.Log(r.Context()).Error("sending the verification link",
 			"error", err, "user", u)
@@ -206,7 +207,7 @@ func (m *Module) sendVerification(r *http.Request, u auth.User) {
 // address because one box was wrong is how a sign-up form loses somebody.
 func (m *Module) rejectedRegistration(w http.ResponseWriter, r *http.Request, in auth.RegisterRequest, errs validation.Errors) {
 	m.screenStatus(w, r, http.StatusUnprocessableEntity, "auth.register", AuthPage{
-		Page:  page("Create an account"),
+		Page:  m.page(r, "Create an account"),
 		Name:  in.Name,
 		Email: in.Email,
 

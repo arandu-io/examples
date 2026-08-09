@@ -24,11 +24,16 @@ import (
 // next morning" -- is a dead link; too long and a forwarded message stays live.
 const verifyTTL = 24 * time.Hour
 
-// page is the chrome. Title in, everything else fixed.
-func page(title string) view.Page {
+// page is the chrome. The title and the path in, everything else fixed.
+//
+// The name used to be a literal here and a different literal in
+// LoginController_handlers.go, and neither was the one in the configuration --
+// three names for one application, on three screens of one kit.
+func (m *Module) page(r *http.Request, title string) view.Page {
 	return view.Page{
 		Title:     title,
-		AppName:   "Arandu",
+		AppName:   m.appName,
+		Path:      r.URL.Path,
 		HomeURL:   "/",
 		LoginURL:  "/auth/login",
 		LogoutURL: "/auth/logout",
@@ -59,8 +64,13 @@ func (m *Module) screenStatus(w http.ResponseWriter, r *http.Request, status int
 	}
 
 	if data.Page.Title == "" {
-		data.Page = page("Account")
+		data.Page = m.page(r, "Account")
 	}
+	// The path is the request's, whatever the caller built: a screen rendered
+	// from another handler still has to say which address it is being read at,
+	// or the header offers a link to the page it is on.
+	data.Page.Path = r.URL.Path
+	data.Page.AppName = m.appName
 	data.Page.Token = token
 
 	// The addresses every screen of the kit links to or posts to. They are set

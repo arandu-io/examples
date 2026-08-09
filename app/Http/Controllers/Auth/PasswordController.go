@@ -6,12 +6,14 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/arandu-io/framework/observability"
+	"github.com/arandu-io/framework/security"
 
 	appmail "github.com/arandu-io/examples/app/Mail"
 )
@@ -135,18 +137,41 @@ func (m *Module) updatePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// What is left to do, and it is the one thing this example cannot do for
-	// you: write the new password. The framework's auth service owns the users
-	// table and exposes no SetPassword, deliberately -- changing a credential is
-	// a decision about your rules (a minimum length, a history, a notification),
-	// and a framework that made it would be making it for everybody.
-	//
-	// The token has been consumed by this point, so the link cannot be replayed
-	// while you wire the write.
-	observability.Log(r.Context()).Warn("password reset reached the end of the flow, and this example does not write the password",
-		"email", email, "next", "call your own service here")
+	// The length rule, here and not in the service: how long a password has to
+	// be is a decision about this application, and a framework that made it
+	// would be making it for everybody.
+	if len([]rune(password)) < security.MinPasswordLen {
+		m.screen(w, r, "auth.passwords.reset", AuthPage{
+			Page:          m.page(r, "Choose a new password"),
+			ResetToken:    token,
+			PasswordError: fmt.Sprintf("must be at least %d characters", security.MinPasswordLen),
+		})
+		return
+	}
 
-	redirect(w, r, "/auth/login")
+	// The write. It used to be a log line saying this example did not do it --
+	// which made the whole flow a demonstration that stops one step short of
+	// working, on the screen where stopping short is least acceptable.
+	if _, err := m.auth.SetPassword(r.Context(), m.tenant(r), email, password); err != nil {
+		observability.Log(r.Context()).Error("writing the new password", "error", err)
+		m.screen(w, r, "auth.passwords.reset", AuthPage{
+			Page:       m.page(r, "Choose a new password"),
+			EmailError: "That did not work. Ask for another link.",
+		})
+		return
+	}
+
+	// Every session of that account is left alone, and that is a decision worth
+	// naming: a password reset that does not sign the other sessions out leaves
+	// whoever forced the reset still signed in. Doing it needs a session store
+	// that can be asked "every session of this subject", which the in-memory one
+	// cannot -- see the note at the top of this file about one instance.
+	observability.Log(r.Context()).Info("password reset completed", "email", email)
+
+	m.screen(w, r, "auth.login", AuthPage{
+		Page:   m.page(r, "Sign in"),
+		Status: "Your password has been changed. Sign in with it.",
+	})
 }
 
 // consume checks a token and removes it, so a link works once.

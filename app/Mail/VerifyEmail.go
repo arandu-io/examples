@@ -18,6 +18,10 @@ type VerifyEmail struct {
 	Name string
 	// Link is the signed, expiring address that confirms the account.
 	Link string
+	// BrandName is what the message is signed with. It comes from the
+	// configuration, like the name in the page header: an application with two
+	// names is one nobody recognises in an inbox.
+	BrandName string
 }
 
 // Envelope is who it is from and what it says it is.

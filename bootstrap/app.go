@@ -193,7 +193,7 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 			// framework ships the minimum markup that exists so authentication
 			// could be tested at all; this one has a page. Register one or the
 			// other, never both -- they answer the same path.
-			authui.New(authService, sessions, csrf, mailer, fw.AppKey, cfg.App.URL, auth.FixedTenant(cfg.Auth.Tenant)),
+			authui.New(authService, sessions, csrf, mailer, fw.AppKey, cfg.App.Name, cfg.App.URL, auth.FixedTenant(cfg.Auth.Tenant)),
 			// The outbox table. A module that records domain events stores them
 			// in the same transaction as the write, and this is what brings the
 			// table those rows land in -- see doc 27.

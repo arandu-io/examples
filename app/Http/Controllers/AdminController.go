@@ -190,6 +190,7 @@ func (c *AdminController) chrome(ctx *httpx.Context, actor security.Subject, tok
 			// a signed-in administrator, and a crawler that reached it would
 			// index a sign-in redirect.
 			Token:         token,
+			Path:          ctx.Request.URL.Path,
 			AppName:       "Admin",
 			Authenticated: true,
 			UserName:      actor.ID,

@@ -70,6 +70,7 @@ func (c *HomeController) Index(ctx *httpx.Context) error {
 		// empty and the link is not drawn -- a link to a route nobody
 		// registered is a 404 the layout put there.
 		Page: view.Page{
+			Path:          ctx.Request.URL.Path,
 			AppName:       c.appName,
 			Title:         c.appName,
 			Token:         token,

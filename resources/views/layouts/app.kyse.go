@@ -9,7 +9,7 @@ import (
 )
 
 <!doctype html>
-<html lang="en" class="h-full">
+<html lang="en">
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
@@ -48,8 +48,18 @@ import (
 	<script src="{{ view.URL("basecoat.bundle.js") }}" defer></script>
 	<script src="{{ view.URL("theme.js") }}"></script>
 </head>
-<body hx-boost="true" hx-headers='{"X-CSRF-Token": "{{ .CSRFToken() }}"}' class="bg-background text-foreground min-h-full antialiased">
-	<div class="flex min-h-full flex-col">
+<body hx-boost="true" hx-headers='{"X-CSRF-Token": "{{ .CSRFToken() }}"}' class="bg-background text-foreground antialiased">
+	{{-- min-h-dvh, not min-h-full.
+	     A percentage min-height resolves against the parent's HEIGHT, and body
+	     had min-height rather than height -- so its computed height was auto,
+	     the percentage resolved against nothing, and the footer stopped
+	     wherever the content did. On a short page it floated in the middle of
+	     the viewport.
+
+	     dvh is the dynamic viewport height: it follows the mobile browser's URL
+	     bar showing and hiding, which svh and lvh each get wrong in one of the
+	     two states. --}}
+	<div class="flex min-h-dvh flex-col">
 		{{-- The masthead. The mark is an <img> and not an inline SVG: it is a
 		     drawing with forty colours in it, and the version of this that
 		     pastes it into every page would put twelve kilobytes on the wire
@@ -70,11 +80,19 @@ import (
 					     is the only reason any of them is in this file. A door you
 					     go in and a door you come out of look alike in words and do
 					     not look alike in a glyph. --}}
+					{{-- The page you are on is not offered as a link.
+					     A header with "Sign in" on the sign-in page links to what
+					     you are reading, and the one control that would help --
+					     the way across to registering -- is the one it hides.
+					     So the current page drops out and the other one is
+					     promoted from ghost to solid. --}}
 					@if(!.SignedIn())
-						<a href="{{ .LoginLink() }}" class="btn" data-variant="ghost" data-size="sm">
-							{!! icons.SignIn(icons.Props{}) !!} Sign in
-						</a>
-						@if(.RegisterLink() != "")
+						@if(!.IsCurrent(.LoginLink()))
+							<a href="{{ .LoginLink() }}" class="btn" data-variant="ghost" data-size="sm">
+								{!! icons.SignIn(icons.Props{}) !!} Sign in
+							</a>
+						@endif
+						@if(.RegisterLink() != "" && !.IsCurrent(.RegisterLink()))
 							<a href="{{ .RegisterLink() }}" class="btn" data-size="sm">
 								{!! icons.UserPlus(icons.Props{}) !!} Create account
 							</a>
