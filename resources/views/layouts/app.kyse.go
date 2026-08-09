@@ -10,7 +10,8 @@ import "github.com/arandu-io/kyse/components"
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>{{ .PageTitle() }}</title>
-	<link rel="icon" href="/favicon.ico">
+	<link rel="icon" href="/favicon.ico" sizes="any">
+	<link rel="icon" href="/favicon.png" type="image/png">
 
 	{{-- What a page says about itself, written only when the page filled it in.
 	     An empty description is worse than none: a search engine that finds one

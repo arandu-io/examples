@@ -79,7 +79,8 @@ func (c Chrome) ItemClass(item string) string {
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>{{ .PageTitle() }}</title>
-	<link rel="icon" href="/favicon.ico">
+	<link rel="icon" href="/favicon.ico" sizes="any">
+	<link rel="icon" href="/favicon.png" type="image/png">
 
 	{{-- The moderation area is not for search engines: it answers only to a
 	     signed-in administrator, so a crawler that reached it would index a
