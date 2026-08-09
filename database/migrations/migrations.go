@@ -30,6 +30,7 @@ func All() []kernel.Migration {
 		// arandu:begin custom
 		createPostsTable,
 		createCommentsTable,
+		addViewsToPosts,
 		// arandu:end custom
 	}
 }

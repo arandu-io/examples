@@ -30,10 +30,17 @@ go.work.sum
 # SQLite lives here in development. The file is never committed: the schema is
 # database/migrations, and a committed database disagrees with them by the
 # second day.
-database/*.sqlite
-database/*.sqlite-shm
-database/*.sqlite-wal
-database/*.db
+# Anywhere, not just under database/.
+#
+# DB_DATABASE is a path, and a value without one -- "arandu_blog" -- puts the
+# file in the project root, where a rule scoped to database/ does not see it.
+# Three of them were committed that way: the database, its -shm and its -wal.
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+database/arandu*
+!database/*.go
 
 # The compiled views.
 #
