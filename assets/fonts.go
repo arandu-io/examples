@@ -16,9 +16,9 @@ import (
 	"github.com/arandu-io/kyse/fonts"
 )
 
-//go:embed fonts/young-serif-400-latin.woff2
+//go:embed fonts/montserrat-400-800-latin.woff2
 var display0 []byte
 
 func init() {
-	fonts.Register("young-serif-400-latin.woff2", display0)
+	fonts.Register("montserrat-400-800-latin.woff2", display0)
 }

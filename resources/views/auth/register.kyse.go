@@ -20,7 +20,7 @@ type RegisterData = authui.AuthPage
 	<div class="mx-auto w-full max-w-md">
 		<header class="mb-8 text-center">
 			<span class="auth-mark">{!! icons.UserPlus(icons.Props{}) !!}</span>
-			<h1 class="headline mt-4 text-3xl">Create an account</h1>
+			<h1 class="headline headline-lg mt-4">Create an account</h1>
 			<p class="text-muted-foreground mt-2 text-sm">
 				Reading needs nothing. Commenting needs a confirmed address.
 			</p>

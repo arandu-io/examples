@@ -157,18 +157,56 @@
  * the views for one reason -- a heading that is styled in nine templates is a
  * heading that is styled eight ways after the tenth edit. */
 @layer components {
-  /* A headline. Serif, tight, and balanced across its lines: a two-line title
-   * that breaks after one word is the most common ugly thing on a blog. */
+  /* A headline.
+   *
+   * Montserrat is a geometric sans: wide, large x-height, round bowls. Two
+   * things it needs that a serif does not, and without them it reads as the
+   * default it very nearly is.
+   *
+   * Weight. At 400 it is anonymous -- its character is in the heavier cuts, so
+   * a headline is 700 and the variable file carries up to 800.
+   *
+   * Tracking. Geometric letterforms are drawn with even sidebearings, which is
+   * right at 16px and loose at 48. The negative tracking below is applied by
+   * size rather than once: a headline and a card title need different amounts,
+   * and one value is wrong for one of them.
+   *
+   * balance is what stops a two-line title breaking after one word, which is
+   * the most common ugly thing on a blog. */
   .headline {
     font-family: var(--font-display);
-    font-weight: 600;
+    font-weight: 700;
     letter-spacing: -0.02em;
-    line-height: 1.1;
+    line-height: 1.12;
     text-wrap: balance;
   }
 
+  /* Tracking tightens as the type grows. Optical, not linear: the eye reads
+   * space between letters relative to their height, so the same em value that
+   * looks right at 20px looks airy at 48. */
+  .headline-xl {
+    font-size: clamp(2.25rem, 1.4rem + 3.2vw, 3.75rem);
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    line-height: 1.02;
+  }
+  .headline-lg {
+    font-size: clamp(1.75rem, 1.2rem + 2vw, 2.5rem);
+    letter-spacing: -0.03em;
+    line-height: 1.08;
+  }
+  .headline-sm {
+    font-size: 1.1875rem;
+    letter-spacing: -0.015em;
+    line-height: 1.25;
+  }
+
   /* The standfirst under a headline: the sentence that says what the piece is,
-   * one step down in weight and one step up in measure. */
+   * one step down in weight and one step up in measure.
+   *
+   * It stays on the body face. A geometric sans at 17px across 58 characters is
+   * tiring to read -- the even rhythm that makes it good at 48px is what makes
+   * it monotonous at 17. */
   .standfirst {
     color: var(--muted-foreground);
     font-size: 1.0625rem;
@@ -189,12 +227,19 @@
     margin-top: 1.25em;
   }
 
-  /* The small caps line above a headline: the section, the date, the count. */
+  /* The small caps line above a headline: the section, the date, the count.
+   *
+   * On the display face and tracked OPEN, which is the inverse of the headline
+   * and for the same reason. Uppercase at 11px is drawn with sidebearings meant
+   * for lowercase at 16, so it sets too tight; the headline is the opposite
+   * problem at the opposite size. A geometric sans makes both worse than a
+   * serif does, because there is no stroke contrast to break up the rhythm. */
   .eyebrow {
     color: var(--muted-foreground);
+    font-family: var(--font-display);
     font-size: 0.6875rem;
     font-weight: 600;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
   }
 
@@ -242,9 +287,12 @@
     border: 1px solid var(--border);
     border-radius: 9999px;
     display: inline-flex;
+    font-family: var(--font-display);
     font-size: 0.8125rem;
+    font-weight: 500;
     gap: 0.375rem;
-    padding: 0.25rem 0.75rem;
+    letter-spacing: -0.005em;
+    padding: 0.3125rem 0.8125rem;
     transition: background-color 120ms ease, border-color 120ms ease;
     white-space: nowrap;
   }
@@ -282,6 +330,15 @@
     height: 2.25rem;
     width: 2.25rem;
     object-fit: contain;
+  }
+
+  /* The wordmark beside it. Tracked tight and set heavy, so the two read as one
+   * object rather than as a drawing with a caption. */
+  .brand-word {
+    font-family: var(--font-display);
+    font-size: 1.0625rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
   }
 
   /* The rule under the masthead: the mark's four colours, in its proportions.

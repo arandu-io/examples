@@ -62,7 +62,7 @@ import (
 			<nav class="mx-auto flex h-16 max-w-5xl items-center justify-between gap-4 px-6">
 				<a href="{{ .HomeLink() }}" class="flex items-center gap-2.5">
 					<img src="/logo.png" alt="" width="32" height="32" class="brand-mark" loading="eager" decoding="async">
-					<span class="headline text-lg">{{ .BrandName() }}</span>
+					<span class="brand-word">{{ .BrandName() }}</span>
 				</a>
 				<div class="flex items-center gap-2 text-sm">
 					{!! components.ThemeToggle() !!}

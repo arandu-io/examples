@@ -20,7 +20,7 @@ type VerifyData = authui.AuthPage
 	<div class="mx-auto w-full max-w-md">
 		<header class="mb-8 text-center">
 			<span class="auth-mark">{!! icons.EnvelopeSimple(icons.Props{}) !!}</span>
-			<h1 class="headline mt-4 text-3xl">Check your inbox</h1>
+			<h1 class="headline headline-lg mt-4">Check your inbox</h1>
 			<p class="text-muted-foreground mt-2 text-sm">
 				One link, and the account is yours.
 			</p>

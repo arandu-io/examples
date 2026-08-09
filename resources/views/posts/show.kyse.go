@@ -87,7 +87,7 @@ func (c CommentRow) Badge() string {
 					<span class="meta-fact">{!! icons.ChatCircle(icons.Props{}) !!} {{ .Post.Comments }}</span>
 				@endif
 			</div>
-			<h1 class="headline mt-3 text-4xl sm:text-5xl">{{ .Post.Title }}</h1>
+			<h1 class="headline headline-xl mt-3">{{ .Post.Title }}</h1>
 		</header>
 
 		{{-- The body is written by an author, so it is escaped like everything
@@ -123,7 +123,7 @@ func (c CommentRow) Badge() string {
 	</article>
 
 	<section class="mx-auto mt-16 w-full max-w-2xl border-t pt-10">
-		<h2 class="headline flex items-center gap-2 text-2xl">
+		<h2 class="headline headline-lg flex items-center gap-2">
 			{!! icons.ChatCircle(icons.Props{}) !!}
 			Comments
 			@if(len(.Comments) > 0)

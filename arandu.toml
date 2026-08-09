@@ -25,7 +25,7 @@
 # A floor, not a pin: a newer CLI is always fine. Raise it when the project
 # starts using something a released CLI cannot compile.
 [arandu]
-aru = "v0.26.2"
+aru = "v0.27.0"
 
 [tools]
 tailwindcss = "v4.3.3"
@@ -40,12 +40,13 @@ tailwindcss = "v4.3.3"
 # to the network for numbers already known.
 
 [fonts.display]
-family = "Young Serif"
-weight = "400"
+family = "Montserrat"
+weight = "400..800"
 subsets = "latin"
+category = "Sans Serif"
 license = "ofl"
-files = "young-serif-400-latin.woff2|U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD|a46a84bfaa83"
-ascent = "104.60"
-descent = "36.60"
+files = "montserrat-400-800-latin.woff2|U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD|6438d7b8ea9c"
+ascent = "96.80"
+descent = "25.10"
 line_gap = "0.00"
-size_adjust = "96.15"
+size_adjust = "100.96"

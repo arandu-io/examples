@@ -169,7 +169,7 @@ func (r PostRow) HasComments() bool {
 @section('content')
 	<header class="flex items-end justify-between gap-6">
 		<div>
-			<h1 class="headline text-4xl sm:text-5xl">{{ .Heading }}</h1>
+			<h1 class="headline headline-xl">{{ .Heading }}</h1>
 			@if(.Standfirst != "")
 				<p class="standfirst mt-3">{{ .Standfirst }}</p>
 			@endif
@@ -218,7 +218,7 @@ func (r PostRow) HasComments() bool {
 				@endif
 			</div>
 
-			<h2 class="headline mt-3 text-3xl sm:text-4xl">
+			<h2 class="headline headline-lg mt-3">
 				<a class="hover:underline" href="{{ .Lead().URL }}">{{ .Lead().Title }}</a>
 			</h2>
 			<p class="standfirst mt-3">{{ .Lead().Excerpt }}</p>
@@ -247,7 +247,7 @@ func (r PostRow) HasComments() bool {
 								<span class="meta-fact">{!! icons.ChatCircle(icons.Props{}) !!} {{ post.Comments }}</span>
 							@endif
 						</div>
-						<h3 class="headline text-xl group-hover:underline">{{ post.Title }}</h3>
+						<h3 class="headline headline-sm group-hover:underline">{{ post.Title }}</h3>
 						<p class="text-muted-foreground text-sm leading-relaxed">{{ post.Excerpt }}</p>
 					</a>
 				</li>
