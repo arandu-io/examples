@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -111,3 +112,77 @@ func tracked(t *testing.T) []string {
 	}
 	return names
 }
+
+// TestANullableColumnIsNotScannedIntoAPlainValue.
+//
+// Every column added by a later migration is nullable -- the rule the migrations
+// state in their own doc comments, because during a rollout the previous binary
+// is still inserting rows that know nothing about it. A scan that reads such a
+// column straight into an int, a string or a bool answers
+// "converting NULL to int is unsupported" on every read of the table, for every
+// row written before the migration and every row the old binary writes during
+// the rollout.
+//
+// It happened here: posts.views was added nullable and scanned into a plain int,
+// two lines below category_id, which had been given sql.NullString for exactly
+// this reason with the reason written above it.
+//
+// This reads the ALTER statements out of the migrations and the scan out of the
+// repository, so it fails when the next column is added without its pair.
+func TestANullableColumnIsNotScannedIntoAPlainValue(t *testing.T) {
+	const root = "../.."
+
+	added := map[string]bool{}
+	migrations, err := filepath.Glob(filepath.Join(root, "database", "migrations", "*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range migrations {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range addColumn.FindAllStringSubmatch(string(body), -1) {
+			// A column with a DEFAULT is never NULL, so a plain scan is correct.
+			if !strings.Contains(strings.ToUpper(m[0]), "DEFAULT") {
+				added[m[2]] = true
+			}
+		}
+	}
+	if len(added) == 0 {
+		t.Skip("no nullable column is added by any migration")
+	}
+
+	repos, err := filepath.Glob(filepath.Join(root, "app", "Repositories", "*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range repos {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(body)
+		for column := range added {
+			field := "&" + "p." + exportedName(column)
+			if strings.Contains(text, field) {
+				t.Errorf("%s scans the nullable column %q straight into a field (%s).\n"+
+					"Read it through sql.Null... the way the column beside it is read, or give the column a DEFAULT.",
+					filepath.Base(path), column, field)
+			}
+		}
+	}
+}
+
+// exportedName turns a column name into the Go field the generator would emit.
+func exportedName(column string) string {
+	parts := strings.Split(column, "_")
+	for i, p := range parts {
+		if p != "" {
+			parts[i] = strings.ToUpper(p[:1]) + p[1:]
+		}
+	}
+	return strings.Join(parts, "")
+}
+
+var addColumn = regexp.MustCompile(`(?i)ALTER TABLE (\w+) ADD COLUMN (\w+)[^;]*;`)

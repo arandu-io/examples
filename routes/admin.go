@@ -4,19 +4,31 @@ import (
 	"net/http"
 
 	"github.com/arandu-io/framework/httpx"
+	"github.com/arandu-io/framework/httpx/middleware"
 )
 
 // adminRoutes registers the moderation area.
 //
 // An area rather than a prefix, and the difference is the group: every route
-// below shares one prefix and one middleware, so a handler somebody adds next
-// month is protected by having been added here rather than by having remembered.
+// below shares one prefix and the same middleware, so a handler somebody adds
+// next month is protected by having been added here rather than by having
+// remembered.
 //
 // It is a file of its own because that is what makes the boundary visible. A
 // dozen /admin/... lines mixed into the public table is a table where nobody can
 // tell at a glance what is behind a check and what is not.
 func adminRoutes(r *httpx.Router, d Deps) {
-	admin := r.Group("/admin", adminOnly)
+	// Two middlewares and they do two different jobs. adminOnly is about the
+	// response -- crawlers and caches. RequireRole is about who: it keeps the
+	// area to accounts carrying the role, and sends somebody with no session to
+	// the sign-in screen instead of answering 403 at a person who has not been
+	// asked to identify themselves yet.
+	//
+	// It still decides nothing about a comment. CommentPolicy does, on every
+	// handler below, and a signed-in administrator whose policy refuses them is
+	// refused by the policy -- which is the arrangement that survives somebody
+	// adding a route here next month and forgetting everything but the group.
+	admin := r.Group("/admin", adminOnly, middleware.RequireRole(d.Sessions, "admin"))
 
 	admin.Action("GET", "/{$}", d.Admin.Index).Name("admin.index")
 	admin.Action("GET", "/comments", d.Admin.Comments).Name("admin.comments")

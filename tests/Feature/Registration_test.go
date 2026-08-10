@@ -86,7 +86,11 @@ func TestTheVerificationLinkIsSignedAndScoped(t *testing.T) {
 		// A well-formed token signed by nobody.
 		"dTE.9999999999.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 	} {
-		body := client.Get("/auth/verify/confirm?token=" + token).OK().Body()
+		// 422 and not 200. HTMX swaps the fragment of either, so a refused link
+		// answered 200 leaves the browser, the log and every dashboard agreeing
+		// that a forged token confirmed an address.
+		body := client.Get("/auth/verify/confirm?token=" + token).
+			Status(http.StatusUnprocessableEntity).Body()
 		if !strings.Contains(body, "not valid") && !strings.Contains(body, "expired") {
 			t.Errorf("the token %q was not refused: %s", token, first200(body))
 		}

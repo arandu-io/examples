@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/arandu-io/framework/httpx"
@@ -57,4 +58,52 @@ func TestTheBrowserGetsThisProjectsStylesheet(t *testing.T) {
 func sum(b []byte) string {
 	h := md5.Sum(b)
 	return hex.EncodeToString(h[:])
+}
+
+// TestTheStylesheetCarriesTheClassesTheMarkupRenders is the guard for the half
+// of the pipeline the test above cannot see.
+//
+// That one proves the browser is served this project's stylesheet. It says
+// nothing about what is inside it, and for weeks the answer was: not the classes
+// the components render. Tailwind reads class names only out of the files an
+// @source names, resources/css/app.css can only name directories of this
+// project, and the components are an imported module (ADR 0027) whose source
+// lives in the module cache. So .text-destructive appeared zero times in 193 KB
+// of compiled CSS while components.Field wrote it on the error line of every
+// form: a rejected sign-in drew "that password is wrong" in the same colour as
+// the label above it. The theme picker's swatches were `size-3 rounded-full`
+// spans with no rule for either, which is a span of no size -- an empty menu
+// with six invisible entries.
+//
+// Nothing failed. The build was green, `aru view:build` reported success, and
+// the page rendered. That is why this test exists and why it names the class
+// rather than the component: the class is what has to reach the file.
+func TestTheStylesheetCarriesTheClassesTheMarkupRenders(t *testing.T) {
+	css, err := os.ReadFile("app.css")
+	if err != nil {
+		t.Fatalf("assets/app.css is missing: it is committed so that `go build` works on a fresh clone: %v", err)
+	}
+	stylesheet := string(css)
+
+	for _, want := range []struct {
+		class  string
+		drawn  string
+		broken string
+	}{
+		{".text-destructive", "the validation message under a components.Field",
+			"a rejected form explains itself in the body colour, so nothing on the screen says which field was refused"},
+		{".w-44", "the menu of components.ThemeToggle",
+			"the theme menu has no width and collapses onto its trigger"},
+		{".size-3", "each colour swatch of components.ThemeToggle",
+			"the swatches have no size, so the menu offers six choices with nothing to look at"},
+		{".rounded-full", "each colour swatch of components.ThemeToggle",
+			"the swatches are squares"},
+		{".min-h-dvh", "the page column in layouts/app",
+			"a short page stops at its content and the footer floats halfway up the window"},
+	} {
+		if !strings.Contains(stylesheet, want.class) {
+			t.Errorf("%s is not in the compiled stylesheet, and it is what draws %s: %s.\nRun `aru view:build`, and if that does not put it there, the file it is written in is not one the stylesheet declares as a source.",
+				want.class, want.drawn, want.broken)
+		}
+	}
 }

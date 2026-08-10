@@ -155,6 +155,11 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 		// paths is refused by every crawler that reads one, and the value cannot
 		// come from the request: a Host header is what the client sent.
 		Sitemap: controllers.NewSitemapController(postService, cfg.Auth.Tenant, cfg.App.URL),
+		// What the route guards read. The same store the pipeline and the
+		// controllers were given, and it has to be: two stores over one key
+		// would agree about the signature and disagree about which sessions
+		// exist.
+		Sessions: sessions,
 	}
 
 	k := kernel.New(fw)

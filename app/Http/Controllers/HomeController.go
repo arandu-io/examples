@@ -29,8 +29,16 @@ type HomeController struct {
 	sessions *security.SessionStore
 	csrf     *security.CSRF
 
-	// nav draws the header, the same way on every screen. See chrome.go.
-	nav navigation
+	// people and tenant are how the id in a session becomes a name to greet.
+	// A session carries an id and not a name on purpose -- a name kept in one
+	// stays wrong after somebody changes theirs -- so the header costs one
+	// lookup by primary key, and the page greeted people with a UUID until it
+	// had somewhere to make it.
+	//
+	// The tenant is whose rows are read (RULE 14). It comes from the
+	// configuration, through bootstrap/app.go, and never from the request.
+	people *auth.Service
+	tenant string
 }
 
 // NewHomeController returns the controller. bootstrap/app.go builds it and hands
@@ -38,7 +46,7 @@ type HomeController struct {
 func NewHomeController(appName string, sessions *security.SessionStore, csrf *security.CSRF, people *auth.Service, tenant string) *HomeController {
 	return &HomeController{
 		appName: appName, sessions: sessions, csrf: csrf,
-		nav: navigation{appName: appName, people: people, tenant: tenant},
+		people: people, tenant: tenant,
 	}
 }
 
@@ -69,17 +77,15 @@ func (c *HomeController) Index(ctx *httpx.Context) error {
 	}
 
 	// arandu:begin custom
-	page := c.nav.page(ctx, subject, signedIn, token, c.appName)
-	page.HomeURL = "/"
+	// The header, from the one helper this application draws every header with.
+	// navigation adds what the kit cannot know: the reader's own area and, only
+	// for somebody the policy would let in, the moderation queue. It resolves
+	// the name through the same service the kit's version does, so this page and
+	// the other six greet the same person the same way.
+	page := navigation{appName: c.appName, people: c.people, tenant: c.tenant}.
+		page(ctx, subject, signedIn, token, c.appName)
 
 	return ctx.View("home", authui.AuthPage{
-		// view.Page is the chrome the layout draws, embedded rather than
-		// repeated, and it is filled by one helper so that a screen cannot draw
-		// half of it. This one used to build the literal itself: it greeted the
-		// signed-in person with the UUID out of their session, offered no way to
-		// create an account, and hid the password reset -- all three describing
-		// a kit that ships only the sign-in handler, which stopped being true
-		// when this application wired the whole of it.
 		Page: page,
 
 		// The reset is wired: PasswordController answers /auth/password, mails

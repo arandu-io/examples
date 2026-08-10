@@ -18,7 +18,16 @@ type VerifyEmailData = appmail.VerifyEmail
      mailui builds the table, the inline styles and the hidden preheader that a
      mail client needs -- Outlook renders with Word, Gmail strips <style>, and an
      external stylesheet is not fetched at all. Writing that by hand per message
-     is how two messages from one application stop looking alike. --}}
+     is how two messages from one application stop looking alike.
+
+     The brand is a field and never a word typed here: this file is published
+     into your project by a starter kit, and a name in the markup is the kit's
+     name going out on your mail.
+
+     Everything inside the block below is yours and survives a republish: the
+     wording, the heading and the footer are what this application says, not what
+     the kit says. --}}
+{{-- arandu:begin custom --}}
 {!! mailui.Layout(mailui.LayoutProps{
 	Brand:     .BrandName,
 	Heading:   "Confirm your email address",
@@ -29,3 +38,4 @@ type VerifyEmailData = appmail.VerifyEmail
 		mailui.Fallback(.Link),
 	Footer: "If you did not create this account, ignore this message. Nothing was activated and the address will not be written to again.",
 }) !!}
+{{-- arandu:end custom --}}

@@ -5,6 +5,8 @@ import (
 	"github.com/arandu-io/framework/modules/auth"
 	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/framework/view"
+
+	authui "github.com/arandu-io/examples/app/Http/Controllers/Auth"
 )
 
 // navigation is what the header is drawn from, in one place.
@@ -39,43 +41,46 @@ type navigation struct {
 // two links that depend on who is asking are decided here too, from the subject
 // the caller already holds: the markup never asks about a role, because a second
 // place that decides authorization is the place that gets it wrong.
+//
+// What the sign-in screens and this blog's screens share comes from
+// authui.Chrome, which is the starter kit's own header. Restating those six
+// fields here would be a second place that decides what a header is (RULE 9),
+// and the kit republishes HomeController without a flag -- so the two would drift
+// on the one screen where drift is most visible. What is added below is what the
+// kit cannot know about: this application's own areas.
 func (n navigation) page(ctx *httpx.Context, actor security.Subject, signedIn bool, token, title string) view.Page {
-	return view.Page{
-		Title:         title,
+	page := authui.Chrome(authui.ChromeProps{
 		AppName:       n.appName,
+		Title:         title,
+		Path:          ctx.Request.URL.Path,
 		Token:         token,
 		Authenticated: signedIn,
 		UserName:      n.displayName(ctx, actor.ID),
-		Path:          ctx.Request.URL.Path,
-		HomeURL:       ctx.URL("home"),
-		LoginURL:      "/auth/login",
-		LogoutURL:     "/auth/logout",
-		// Registration is open on this blog, so the layout draws the button. An
-		// application that closes it leaves this empty, and the header stops
-		// offering an address that refuses everybody.
-		RegisterURL: "/auth/register",
+	})
 
-		// The reader's own area, and -- only for somebody the policy would let
-		// in -- the moderation queue. A non-administrator gets the empty string
-		// and no link, rather than a link that answers 403.
-		PanelURL: ifSignedIn(signedIn, "/dashboard"),
-		AdminURL: ifSignedIn(signedIn && actor.HasRole("admin"), "/admin/"),
-	}
+	// The named route rather than the literal the kit assumes: this application
+	// registers its front page under a name, and a rename has to move the link
+	// with it.
+	page.HomeURL = ctx.URL("home")
+
+	// The reader's own area, and -- only for somebody the policy would let in --
+	// the moderation queue. A non-administrator gets the empty string and no
+	// link, rather than a link that answers 403.
+	page.PanelURL = ifSignedIn(signedIn, "/dashboard")
+	page.AdminURL = ifSignedIn(signedIn && actor.HasRole("admin"), "/admin/")
+
+	return page
 }
 
 // displayName turns the id a session carries into something to greet.
 //
-// One lookup per page for the person who is signed in, by primary key. It falls
-// back to the id rather than failing: a header is not worth a 500.
+// Through authui.SignedInName, which is the kit's own, for the reason page goes
+// through authui.Chrome: this was a third copy of one lookup -- the kit's screens
+// had one, HomeController had one, this had one -- and three copies are three
+// answers to "what does the header say when the lookup fails". Only one of them
+// keeps the page rendering, and it is not the one somebody writes in a hurry.
 func (n navigation) displayName(ctx *httpx.Context, id string) string {
-	if id == "" || n.people == nil {
-		return ""
-	}
-	names, err := n.people.Names(ctx.Ctx(), n.tenant, []string{id})
-	if err != nil || names[id] == "" {
-		return id
-	}
-	return names[id]
+	return authui.SignedInName(ctx.Ctx(), n.people, n.tenant, id)
 }
 
 // reader is who is asking: the signed-in subject, or a declared guest.

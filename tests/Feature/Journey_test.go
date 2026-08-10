@@ -96,7 +96,14 @@ func TestSomebodyArrivesAndEndsUpCommenting(t *testing.T) {
 	}
 
 	// 8. They sign out, forget the password, and reset it.
-	client.Post("/auth/logout", nil)
+	//
+	// The answer is asserted rather than ignored. Signing out posts a form, so
+	// it needs the CSRF token off the last page loaded -- and when there is no
+	// such page the answer is 419 and the session survives. That happened here,
+	// silently, for as long as the test client kept a signed-out cookie beside
+	// the live one: the sign-out failed, the client stayed signed in, and
+	// nothing downstream noticed.
+	client.Post("/auth/logout", nil).Status(303).RedirectsTo("/auth/login")
 
 	client.Get("/auth/password").OK()
 	client.Post("/auth/password/email", map[string]string{"email": email}).
@@ -108,11 +115,29 @@ func TestSomebodyArrivesAndEndsUpCommenting(t *testing.T) {
 		t.Fatalf("no reset token in the message:\n%s", reset.Text)
 	}
 
+	// The screen the link leads to knows which address it was sent to, and fills
+	// the field in. It asked for one, marked it Required, and filled in nothing:
+	// the person had to retype the address the message had just been sent to.
+	form := client.Get("/auth/password/reset?token=" + token[1]).OK().Body()
+	if !strings.Contains(form, email) {
+		t.Errorf("the reset form does not carry the address the link was sent to:\n%s", form)
+	}
+
 	const changed = "the-second-password"
+	client.Post("/auth/password/update", map[string]string{
+		"token": token[1], "email": email,
+		"password": changed, "password_confirmation": changed,
+	}).OK().See("has been changed")
+
+	// And the link is spent. It carries a fingerprint of the password it was
+	// minted against, so changing the password is what kills it -- no row was
+	// written when it went out and none had to be deleted now. A forwarded
+	// message, or one read out of that mailbox next month, is not a way back in.
 	client.Get("/auth/password/reset?token=" + token[1]).OK()
 	client.Post("/auth/password/update", map[string]string{
-		"token": token[1], "password": changed, "password_confirmation": changed,
-	}).OK().See("has been changed")
+		"token": token[1], "email": email,
+		"password": "a-third-password-entirely", "password_confirmation": "a-third-password-entirely",
+	}).Status(422).See("Ask for another one")
 
 	// 9. The new password works and the old one does not. This is what used to
 	//    be a log line saying the example did not write the password.
@@ -120,10 +145,101 @@ func TestSomebodyArrivesAndEndsUpCommenting(t *testing.T) {
 	client.Post("/auth/login", map[string]string{"email": email, "password": changed}).
 		RedirectsTo("/")
 
-	client.Post("/auth/logout", nil)
+	// A rendered page first: the body of the redirect a sign-in answers with
+	// carries no CSRF token, and the sign-out form is what carries one.
+	client.Get("/").OK()
+	client.Post("/auth/logout", nil).Status(303).RedirectsTo("/auth/login")
+
 	client.Get("/auth/login").OK()
 	client.Post("/auth/login", map[string]string{"email": email, "password": password}).
 		Status(401)
+}
+
+// A reset ends every session of the account, and that is the point of having
+// one: the person asking for a reset is often asking because somebody else is
+// signed in as them. A reset that leaves those sessions open leaves whoever
+// forced it exactly where they were, holding a cookie that still works.
+//
+// It is asserted from the session that did the resetting, because that one is
+// covered by the same rule: the link arrives in an inbox, and there is no
+// session on that request worth keeping.
+func TestAPasswordResetEndsTheSessionsThatWereAlreadyOpen(t *testing.T) {
+	client, db, box := tests.AppWithMailbox(t)
+
+	const email = "grace.hopper@example.com"
+	signInAs(t, client, db, "Grace Hopper", "")
+	client.Get("/dashboard").OK()
+
+	client.Get("/auth/password").OK()
+	client.Post("/auth/password/email", map[string]string{"email": email}).OK()
+
+	sent, _ := box.Last()
+	token := resetToken.FindStringSubmatch(sent.Text + sent.HTML)
+	if token == nil {
+		t.Fatalf("no reset token in the message:\n%s", sent.Text)
+	}
+
+	const changed = "a-completely-new-password"
+	client.Get("/auth/password/reset?token=" + token[1]).OK()
+	client.Post("/auth/password/update", map[string]string{
+		"token": token[1], "email": email,
+		"password": changed, "password_confirmation": changed,
+	}).OK().See("has been changed")
+
+	res := client.Get("/dashboard")
+	res.Status(303)
+	if got := res.Header("Location"); got != "/auth/login" {
+		t.Errorf("the session that was open before the reset still opens the dashboard (sent to %q): whoever "+
+			"forced the reset is still signed in", got)
+	}
+}
+
+// The confirmation screen, from the outside: it has a route, the route has a
+// handler, and the form it draws posts somewhere.
+//
+// It had none of the three. PasswordConfirmURL was declared, read by
+// auth/passwords/confirm.kyse.go and assigned nowhere, so the form rendered
+// action="" and posted to itself -- into a 404 -- while the command that
+// publishes it printed "every screen has a route and every route has a handler".
+func TestTheConfirmationScreenHasARouteAndPostsSomewhere(t *testing.T) {
+	client, db := tests.App(t)
+	signInAs(t, client, db, "Grace Hopper", "")
+
+	body := client.Get("/auth/password/confirm").OK().Body()
+
+	if strings.Contains(body, `action=""`) {
+		t.Error("the confirmation form posts to nowhere: PasswordConfirmURL is not filled in")
+	}
+	if !strings.Contains(body, "/auth/password/confirm") {
+		t.Errorf("the confirmation form does not post to the address that answers it:\n%s", body)
+	}
+}
+
+func TestConfirmingWithTheRightPasswordIsAcceptedAndTheWrongOneIsNot(t *testing.T) {
+	client, db := tests.App(t)
+	signInAs(t, client, db, "Grace Hopper", "")
+
+	client.Get("/auth/password/confirm").OK()
+	client.Post("/auth/password/confirm", map[string]string{"password": "not-the-password"}).
+		Status(401).See("not the password")
+
+	client.Get("/auth/password/confirm").OK()
+	client.Post("/auth/password/confirm", map[string]string{"password": "a-password-that-passes"}).
+		Status(303)
+}
+
+// Nobody signed in has a password to confirm on. The screen is behind the
+// session guard, so a guest is sent to sign in rather than to a form that would
+// have to invent an answer.
+func TestTheConfirmationScreenIsNotOpenToSomebodyWithNoSession(t *testing.T) {
+	client, _ := tests.App(t)
+
+	res := client.Get("/auth/password/confirm")
+
+	res.Status(303)
+	if got := res.Header("Location"); got != "/auth/login" {
+		t.Errorf("a visitor with no session was sent to %q, want the sign-in screen", got)
+	}
 }
 
 // TestTheHeaderDoesNotLinkToThePageYouAreOn.
@@ -165,7 +281,10 @@ func header(body string) string {
 
 var (
 	journeyLink = regexp.MustCompile(`https?://[^\s]*?/auth/verify/confirm\?token=[A-Za-z0-9_.\-]+`)
-	resetToken  = regexp.MustCompile(`/auth/password/reset\?token=([A-Za-z0-9_\-]+)`)
+	// The dot is part of the token, not the end of a sentence: a signed token is
+	// payload.expiry.signature. Without it this matched the first segment only,
+	// and the test would report "that link is not valid" for a link that was.
+	resetToken = regexp.MustCompile(`/auth/password/reset\?token=([A-Za-z0-9_.\-]+)`)
 )
 
 // seedJourneyPost writes one published article to have somewhere to comment.
@@ -276,6 +395,67 @@ func TestTheHeaderOffersOnlyWhatWouldOpen(t *testing.T) {
 
 var uuidInHeader = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-`)
 
+// The guards, from outside, on the routes this application actually registers.
+//
+// They have tests of their own in the framework, and those prove the middleware
+// works. This one proves it is MOUNTED, which is the half that was missing: the
+// route table documented middleware.RequireRole in a comment for months while
+// /dashboard answered 200 to anybody who asked.
+func TestTheDashboardIsNotOpenToSomebodyWithNoSession(t *testing.T) {
+	client, _ := tests.App(t)
+
+	res := client.Get("/dashboard")
+
+	res.Status(303).DontSee("Sign out")
+	if got := res.Header("Location"); got != "/auth/login" {
+		t.Errorf("a visitor with no session was sent to %q, want the sign-in screen", got)
+	}
+}
+
+func TestTheDashboardOpensForSomebodySignedIn(t *testing.T) {
+	client, db := tests.App(t)
+	signInAs(t, client, db, "Grace Hopper", "")
+
+	client.Get("/dashboard").OK()
+}
+
+// The guest guard, on both screens that exist to bring somebody in. Rendering
+// either of them to a person who has a session reads to them as having been
+// signed out, and what they do next is sign in on top of a session that never
+// went away.
+func TestSomebodySignedInIsSentAwayFromTheScreensThatSignPeopleIn(t *testing.T) {
+	client, db := tests.App(t)
+	signInAs(t, client, db, "Grace Hopper", "")
+
+	for _, path := range []string{"/auth/login", "/auth/register"} {
+		res := client.Get(path)
+		res.Status(303)
+		if got := res.Header("Location"); got != "/" {
+			t.Errorf("%s sent a signed-in person to %q, want /", path, got)
+		}
+	}
+}
+
+// The moderation area, to a reader. 403 and not the sign-in screen: they are
+// signed in, so there is nothing for them to do there -- and not 404 either,
+// because the page exists and pretending otherwise sends them hunting a typo.
+//
+// The Policy is what refuses them the comments themselves, and it still runs.
+// This is the door, not the decision about a record.
+func TestTheModerationAreaIsNotOpenToAReader(t *testing.T) {
+	client, db := tests.App(t)
+	signInAs(t, client, db, "Grace Hopper", "")
+
+	client.Get("/admin/comments").Status(403)
+}
+
+func TestTheModerationAreaOpensForAnAdministrator(t *testing.T) {
+	client, db := tests.App(t)
+	signInAs(t, client, db, "Ada Lovelace", "admin")
+
+	client.Get("/admin/comments").OK()
+}
+
 // signInAs registers somebody, confirms their address and opens a session.
 //
 // The role is written to the row directly. It is not a form field, and it must
@@ -314,4 +494,79 @@ func signInAs(t *testing.T, client *arandutest.Client, db *data.DB, name, role s
 	client.Get("/auth/login").OK()
 	client.Post("/auth/login", map[string]string{"email": email, "password": password}).
 		RedirectsTo("/")
+}
+
+// TestSigningInLandsOnThePageTheGuardTurnedAwayFrom.
+//
+// Every guard writes the address it refused into a signed cookie, and the
+// sign-in handler is the only thing that spends it. The starter kit's handler
+// redirected to "/" instead -- while the framework's own sign-in handler, the
+// one the kit REPLACES, already spent it. So publishing the kit into a project
+// took the behaviour away, in the same shape the missing guest guard had: the
+// guards went on remembering and nothing ever read it.
+//
+// From outside, it is the difference between following a link to one page,
+// signing in, and being there -- and signing in, landing on the front page, and
+// going to find the page again.
+func TestSigningInLandsOnThePageTheGuardTurnedAwayFrom(t *testing.T) {
+	client, db := tests.App(t)
+
+	const (
+		email    = "returning@example.com"
+		password = "a-password-that-passes"
+	)
+
+	client.Get("/auth/register").OK()
+	client.Post("/auth/register", map[string]string{
+		"name": "Grace Hopper", "email": email,
+		"password": password, "password_confirmation": password,
+	}).RedirectsTo("/auth/verify")
+	if _, err := db.ExecContext(context.Background(),
+		`UPDATE users SET verified_at = ? WHERE email = ?`, time.Now(), email); err != nil {
+		t.Fatalf("preparing the account: %v", err)
+	}
+
+	// Registration opens no session, so this is a guest following a link to a
+	// guarded page. The guard turns them away and remembers where they meant to
+	// go -- nothing else in the request knows it by the time a password is typed.
+	client.Get("/dashboard").Status(303)
+
+	client.Get("/auth/login").OK()
+	res := client.Post("/auth/login", map[string]string{"email": email, "password": password})
+
+	res.Status(303)
+	if got := res.Header("Location"); got != "/dashboard" {
+		t.Errorf("signing in sent them to %q, and they were on their way to /dashboard.\n"+
+			"The address the guard remembered was written and never spent, so following a link "+
+			"while signed out ends on the front page with the page still to find.", got)
+	}
+}
+
+// TestTheScreenThatAsksForAPasswordAgainDrawsTheHeaderOfSomebodySignedIn.
+//
+// /auth/password/confirm sits behind the session guard: it is only ever read by
+// somebody who is signed in. Every screen the kit publishes built its chrome
+// through one function that left Authenticated at false, so the layout drew the
+// guest half -- the screen whose entire job is asking somebody to prove they are
+// still there offered them a Login button, a Register button and no way out.
+func TestTheScreenThatAsksForAPasswordAgainDrawsTheHeaderOfSomebodySignedIn(t *testing.T) {
+	client, db := tests.App(t)
+	signInAs(t, client, db, "Grace Hopper", "")
+
+	bar := header(client.Get("/auth/password/confirm").OK().Body())
+	if bar == "" {
+		t.Fatal("the confirmation screen has no header at all")
+	}
+	if !strings.Contains(bar, "Grace Hopper") {
+		t.Errorf("the header does not greet the person it is asking for a password:\n%s", bar)
+	}
+	if uuidInHeader.MatchString(bar) {
+		t.Errorf("the header greets them with the id out of their session:\n%s", bar)
+	}
+	if !strings.Contains(bar, "/auth/logout") {
+		t.Errorf("a signed-in person is offered no way to sign out:\n%s", bar)
+	}
+	if strings.Contains(bar, "/auth/login") || strings.Contains(bar, "/auth/register") {
+		t.Errorf("a signed-in person is offered the guest half of the bar:\n%s", bar)
+	}
 }

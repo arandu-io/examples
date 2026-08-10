@@ -21,6 +21,11 @@ type VerifyEmail struct {
 	// BrandName is what the message is signed with. It comes from the
 	// configuration, like the name in the page header: an application with two
 	// names is one nobody recognises in an inbox.
+	//
+	// It is a field and not a literal in the view because the view is published
+	// by a starter kit. A word typed into the markup here is the kit's word, and
+	// it went out on the verification mail of every project that ran the
+	// command -- branded with the name of the framework rather than with theirs.
 	BrandName string
 }
 

@@ -8,6 +8,8 @@ package routes
 
 import (
 	"github.com/arandu-io/framework/httpx"
+	"github.com/arandu-io/framework/httpx/middleware"
+	"github.com/arandu-io/framework/security"
 
 	controllers "github.com/arandu-io/examples/app/Http/Controllers"
 	"github.com/arandu-io/examples/public"
@@ -25,6 +27,12 @@ type Deps struct {
 	Category *controllers.CategoryController
 	Admin    *controllers.AdminController
 	Sitemap  *controllers.SitemapController
+
+	// Sessions is what the route guards read. It is here rather than reached
+	// through a controller because a guard runs BEFORE the controller: it is a
+	// property of the route, and the route table is what says which addresses
+	// have one.
+	Sessions *security.SessionStore
 }
 
 // Web registers the browser-facing routes.
@@ -34,12 +42,17 @@ type Deps struct {
 // leave a dead href behind:
 //
 //	r.Get("/", handler).Name("home")
-//	r.Action("GET", "/dashboard", ctrl.Index).Name("dashboard")
+//	r.Action("GET", "/dashboard", ctrl.Index, middleware.RequireAuth(d.Sessions)).Name("dashboard")
 //	r.Resource("invoices", invoiceController)      // the seven REST routes
-//	admin := r.Group("/admin", middleware.RequireRole("admin"))
+//	admin := r.Group("/admin", middleware.RequireRole(d.Sessions, "admin"))
 //
 // Resource registers only the actions the controller implements, so a route that
 // exists is a route that answers.
+//
+// The guard belongs on the route and not inside the handler. A check written in
+// the controller is a check the next handler does not have, and it is written
+// where nobody reading the table can see it -- this file is what says which
+// addresses are open.
 func Web(r *httpx.Router, d Deps) {
 	// "/{$}" and not "/". This is the one place Go's router does not behave the
 	// way it conventionally does: a pattern ending in a slash matches every path below
@@ -53,7 +66,17 @@ func Web(r *httpx.Router, d Deps) {
 	// says "you are logged in" to the people who are and nothing to the people
 	// who are not is a front page for nobody.
 	r.Action("GET", "/{$}", d.Post.Index).Name("home")
-	r.Action("GET", "/dashboard", d.Home.Index).Name("dashboard")
+
+	// The screen somebody lands on after signing in, and it is for them alone.
+	// It used to answer 200 to anybody: the controller reads the session, treats
+	// a failure to load one as the anonymous case, and renders -- which is right
+	// for a landing page and wrong for this one. The guard is what makes the
+	// difference, and it is on the route because that is where a reader of this
+	// file can see it.
+	//
+	// It decides nothing beyond "there is a session". What this person may read
+	// is still the Policy's answer, on every service call the screen makes.
+	r.Action("GET", "/dashboard", d.Home.Index, middleware.RequireAuth(d.Sessions)).Name("dashboard")
 
 	// The fixed names the outside world asks for: /favicon.ico, which the layout
 	// links, and /robots.txt, which a crawler fetches without being told to.
