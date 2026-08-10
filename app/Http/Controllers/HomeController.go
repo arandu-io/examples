@@ -95,3 +95,5 @@ func (c *HomeController) Index(ctx *httpx.Context) error {
 	})
 	// arandu:end custom
 }
+
+// muda
