@@ -88,7 +88,7 @@ func (f CommentForm) ApprovedAttr() string {
 			Label: "Post id",
 			Type:  "text",
 			Value: .Form.PostId,
-			Error: .FieldError("post_id"),
+			Page: .,
 			Required: true,
 		}) !!}
 
@@ -97,7 +97,7 @@ func (f CommentForm) ApprovedAttr() string {
 			Label: "Author",
 			Type:  "text",
 			Value: .Form.Author,
-			Error: .FieldError("author"),
+			Page: .,
 			Required: true,
 		}) !!}
 
@@ -105,7 +105,7 @@ func (f CommentForm) ApprovedAttr() string {
 			Name:  "body",
 			Label: "Body",
 			Value: .Form.Body,
-			Error: .FieldError("body"),
+			Page: .,
 			Rows:  6,
 			Required: true,
 		}) !!}

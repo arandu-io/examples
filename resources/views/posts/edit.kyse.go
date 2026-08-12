@@ -61,7 +61,7 @@ var _ view.Layout = PostsEditData{}
 			Label: "Title",
 			Type:  "text",
 			Value: .Form.Title,
-			Error: .FieldError("title"),
+			Page: .,
 			Required: true,
 		}) !!}
 
@@ -70,7 +70,7 @@ var _ view.Layout = PostsEditData{}
 			Label: "Slug",
 			Type:  "text",
 			Value: .Form.Slug,
-			Error: .FieldError("slug"),
+			Page: .,
 			Required: true,
 		}) !!}
 
@@ -78,7 +78,7 @@ var _ view.Layout = PostsEditData{}
 			Name:  "body",
 			Label: "Body",
 			Value: .Form.Body,
-			Error: .FieldError("body"),
+			Page: .,
 			Rows:  6,
 			Required: true,
 		}) !!}
@@ -88,7 +88,7 @@ var _ view.Layout = PostsEditData{}
 			Label: "Published at",
 			Type:  "datetime-local",
 			Value: .Form.PublishedAt,
-			Error: .FieldError("published_at"),
+			Page: .,
 		}) !!}
 
 		<div class="flex items-center gap-3">

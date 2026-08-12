@@ -61,7 +61,7 @@ var _ view.Layout = CategoriesEditData{}
 			Label: "Name",
 			Type:  "text",
 			Value: .Form.Name,
-			Error: .FieldError("name"),
+			Page: .,
 			Required: true,
 		}) !!}
 
@@ -70,7 +70,7 @@ var _ view.Layout = CategoriesEditData{}
 			Label: "Slug",
 			Type:  "text",
 			Value: .Form.Slug,
-			Error: .FieldError("slug"),
+			Page: .,
 			Required: true,
 		}) !!}
 
@@ -78,7 +78,7 @@ var _ view.Layout = CategoriesEditData{}
 			Name:  "description",
 			Label: "Description",
 			Value: .Form.Description,
-			Error: .FieldError("description"),
+			Page: .,
 			Rows:  6,
 		}) !!}
 

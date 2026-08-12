@@ -78,7 +78,7 @@ type CategoryForm struct {
 			Label: "Name",
 			Type:  "text",
 			Value: .Form.Name,
-			Error: .FieldError("name"),
+			Page: .,
 			Required: true,
 		}) !!}
 
@@ -87,7 +87,7 @@ type CategoryForm struct {
 			Label: "Slug",
 			Type:  "text",
 			Value: .Form.Slug,
-			Error: .FieldError("slug"),
+			Page: .,
 			Required: true,
 		}) !!}
 
@@ -95,7 +95,7 @@ type CategoryForm struct {
 			Name:  "description",
 			Label: "Description",
 			Value: .Form.Description,
-			Error: .FieldError("description"),
+			Page: .,
 			Rows:  6,
 		}) !!}
 

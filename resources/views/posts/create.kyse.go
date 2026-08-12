@@ -80,7 +80,7 @@ type PostForm struct {
 			Label: "Title",
 			Type:  "text",
 			Value: .Form.Title,
-			Error: .FieldError("title"),
+			Page: .,
 			Required: true,
 		}) !!}
 
@@ -89,7 +89,7 @@ type PostForm struct {
 			Label: "Slug",
 			Type:  "text",
 			Value: .Form.Slug,
-			Error: .FieldError("slug"),
+			Page: .,
 			Required: true,
 		}) !!}
 
@@ -97,7 +97,7 @@ type PostForm struct {
 			Name:  "body",
 			Label: "Body",
 			Value: .Form.Body,
-			Error: .FieldError("body"),
+			Page: .,
 			Rows:  6,
 			Required: true,
 		}) !!}
@@ -107,7 +107,7 @@ type PostForm struct {
 			Label: "Published at",
 			Type:  "datetime-local",
 			Value: .Form.PublishedAt,
-			Error: .FieldError("published_at"),
+			Page: .,
 		}) !!}
 
 		<div class="flex items-center gap-3">

@@ -61,7 +61,7 @@ var _ view.Layout = CommentsEditData{}
 			Label: "Post id",
 			Type:  "text",
 			Value: .Form.PostId,
-			Error: .FieldError("post_id"),
+			Page: .,
 			Required: true,
 		}) !!}
 
@@ -70,7 +70,7 @@ var _ view.Layout = CommentsEditData{}
 			Label: "Author",
 			Type:  "text",
 			Value: .Form.Author,
-			Error: .FieldError("author"),
+			Page: .,
 			Required: true,
 		}) !!}
 
@@ -78,7 +78,7 @@ var _ view.Layout = CommentsEditData{}
 			Name:  "body",
 			Label: "Body",
 			Value: .Form.Body,
-			Error: .FieldError("body"),
+			Page: .,
 			Rows:  6,
 			Required: true,
 		}) !!}

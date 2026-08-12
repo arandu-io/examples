@@ -32,28 +32,28 @@ type RegisterData = authui.AuthPage
 
 				{!! components.Field(components.FieldProps{
 					Name: "name", Label: "Name",
-					Value: .Name, Error: .NameError,
+					Value: .Name, Page: .,
 					Hint: "What your comments are signed with.",
 					Autocomplete: "name", Required: true, Autofocus: true,
 				}) !!}
 
 				{!! components.Field(components.FieldProps{
 					Name: "email", Label: "Email", Type: "email",
-					Value: .Email, Error: .EmailError,
+					Value: .Email, Page: .,
 					Hint: "We send one link here and nothing else.",
 					Autocomplete: "email", Required: true,
 				}) !!}
 
 				{!! components.Field(components.FieldProps{
 					Name: "password", Label: "Password", Type: "password",
-					Error: .PasswordError,
+					Page: .,
 					Hint: "At least twelve characters.",
 					Autocomplete: "new-password", Required: true,
 				}) !!}
 
 				{!! components.Field(components.FieldProps{
 					Name: "password_confirmation", Label: "Confirm password", Type: "password",
-					Error: .PasswordConfirmationError,
+					Page: .,
 					Autocomplete: "new-password", Required: true,
 				}) !!}
 
