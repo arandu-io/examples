@@ -1,7 +1,7 @@
 package controllers
 
 import (
-	"github.com/arandu-io/framework/httpx"
+	"github.com/arandu-io/framework/http"
 	"github.com/arandu-io/framework/modules/auth"
 	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/framework/view"
@@ -48,7 +48,7 @@ type navigation struct {
 // and the kit republishes HomeController without a flag -- so the two would drift
 // on the one screen where drift is most visible. What is added below is what the
 // kit cannot know about: this application's own areas.
-func (n navigation) page(ctx *httpx.Context, actor security.Subject, signedIn bool, token, title string) view.Page {
+func (n navigation) page(ctx *http.Context, actor security.Subject, signedIn bool, token, title string) view.Page {
 	page := authui.Chrome(authui.ChromeProps{
 		AppName:       n.appName,
 		Title:         title,
@@ -79,7 +79,7 @@ func (n navigation) page(ctx *httpx.Context, actor security.Subject, signedIn bo
 // had one, HomeController had one, this had one -- and three copies are three
 // answers to "what does the header say when the lookup fails". Only one of them
 // keeps the page rendering, and it is not the one somebody writes in a hurry.
-func (n navigation) displayName(ctx *httpx.Context, id string) string {
+func (n navigation) displayName(ctx *http.Context, id string) string {
 	return authui.SignedInName(ctx.Ctx(), n.people, n.tenant, id)
 }
 
@@ -88,7 +88,7 @@ func (n navigation) displayName(ctx *httpx.Context, id string) string {
 // The tenant of a guest is the application's, from configuration. A visitor
 // cannot choose whose rows they read (RULE 14), and it is not suspended because
 // nobody signed in.
-func (n navigation) reader(ctx *httpx.Context, sessions *security.SessionStore) (security.Subject, bool) {
+func (n navigation) reader(ctx *http.Context, sessions *security.SessionStore) (security.Subject, bool) {
 	if actor, err := sessions.Load(ctx.Ctx(), ctx.Request); err == nil {
 		return actor, true
 	}

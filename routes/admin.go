@@ -3,8 +3,8 @@ package routes
 import (
 	"net/http"
 
-	"github.com/arandu-io/framework/httpx"
-	"github.com/arandu-io/framework/httpx/middleware"
+	fhttp "github.com/arandu-io/framework/http"
+	"github.com/arandu-io/framework/http/middleware"
 )
 
 // adminRoutes registers the moderation area.
@@ -17,7 +17,7 @@ import (
 // It is a file of its own because that is what makes the boundary visible. A
 // dozen /admin/... lines mixed into the public table is a table where nobody can
 // tell at a glance what is behind a check and what is not.
-func adminRoutes(r *httpx.Router, d Deps) {
+func adminRoutes(r *fhttp.Router, d Deps) {
 	// Two middlewares and they do two different jobs. adminOnly is about the
 	// response -- crawlers and caches. RequireRole is about who: it keeps the
 	// area to accounts carrying the role, and sends somebody with no session to

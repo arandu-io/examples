@@ -7,8 +7,8 @@
 package routes
 
 import (
-	"github.com/arandu-io/framework/httpx"
-	"github.com/arandu-io/framework/httpx/middleware"
+	"github.com/arandu-io/framework/http"
+	"github.com/arandu-io/framework/http/middleware"
 	"github.com/arandu-io/framework/security"
 
 	controllers "github.com/arandu-io/examples/app/Http/Controllers"
@@ -53,7 +53,7 @@ type Deps struct {
 // the controller is a check the next handler does not have, and it is written
 // where nobody reading the table can see it -- this file is what says which
 // addresses are open.
-func Web(r *httpx.Router, d Deps) {
+func Web(r *http.Router, d Deps) {
 	// "/{$}" and not "/". This is the one place Go's router does not behave the
 	// way it conventionally does: a pattern ending in a slash matches every path below
 	// it, so "GET /" would answer for /anything -- including the 404s, and

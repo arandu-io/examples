@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/arandu-io/framework/httpx"
+	fhttp "github.com/arandu-io/framework/http"
 	"github.com/arandu-io/framework/security"
 
 	models "github.com/arandu-io/examples/app/Models"
@@ -59,7 +59,7 @@ type sitemap struct {
 }
 
 // Index writes the sitemap.
-func (c *SitemapController) Index(ctx *httpx.Context) error {
+func (c *SitemapController) Index(ctx *fhttp.Context) error {
 	// The same guest a reader is. PostPolicy allows the published listing and
 	// refuses PostList, so what comes back is what a visitor is allowed to see.
 	found, err := c.posts.Published(ctx.Ctx(), security.Guest(c.tenant), 1000)

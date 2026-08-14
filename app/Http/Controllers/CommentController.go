@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	"github.com/arandu-io/framework/data"
-	"github.com/arandu-io/framework/httpx"
+	fhttp "github.com/arandu-io/framework/http"
 	"github.com/arandu-io/framework/modules/auth"
 	"github.com/arandu-io/framework/observability"
 	"github.com/arandu-io/framework/security"
@@ -21,7 +21,7 @@ import (
 // CommentController answers the seven routes of the comments resource.
 //
 // It is thin on purpose: read the request, call the service, render. There is no
-// repository here and there cannot be one -- httpx.Context carries no database
+// repository here and there cannot be one -- fhttp.Context carries no database
 // handle, so a controller that reached the data layer would be a controller that
 // skipped the service, and therefore skipped the policy.
 type CommentController struct {
@@ -46,18 +46,18 @@ func NewCommentController(svc *services.CommentService, sessions *security.Sessi
 		nav: navigation{appName: appName, people: people, tenant: tenant}}
 }
 
-// Compile-time proof of the seven actions httpx.Router.Resource looks for. It
+// Compile-time proof of the seven actions fhttp.Router.Resource looks for. It
 // registers the ones the controller implements and nothing else, so a route that
 // exists is a route that answers -- and a renamed method fails the build here
 // rather than answering 404 in production.
 var (
-	_ httpx.Indexer   = (*CommentController)(nil)
-	_ httpx.Creator   = (*CommentController)(nil)
-	_ httpx.Storer    = (*CommentController)(nil)
-	_ httpx.Shower    = (*CommentController)(nil)
-	_ httpx.Editor    = (*CommentController)(nil)
-	_ httpx.Updater   = (*CommentController)(nil)
-	_ httpx.Destroyer = (*CommentController)(nil)
+	_ fhttp.Indexer   = (*CommentController)(nil)
+	_ fhttp.Creator   = (*CommentController)(nil)
+	_ fhttp.Storer    = (*CommentController)(nil)
+	_ fhttp.Shower    = (*CommentController)(nil)
+	_ fhttp.Editor    = (*CommentController)(nil)
+	_ fhttp.Updater   = (*CommentController)(nil)
+	_ fhttp.Destroyer = (*CommentController)(nil)
 )
 
 // commentPerPage is how many records the listing asks for when the request
@@ -66,7 +66,7 @@ var (
 const commentPerPage = 25
 
 // Index renders the listing.
-func (c *CommentController) Index(ctx *httpx.Context) error {
+func (c *CommentController) Index(ctx *fhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -118,7 +118,7 @@ func (c *CommentController) Index(ctx *httpx.Context) error {
 }
 
 // Show renders one record.
-func (c *CommentController) Show(ctx *httpx.Context) error {
+func (c *CommentController) Show(ctx *fhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -144,7 +144,7 @@ func (c *CommentController) Show(ctx *httpx.Context) error {
 }
 
 // Create renders the empty form.
-func (c *CommentController) Create(ctx *httpx.Context) error {
+func (c *CommentController) Create(ctx *fhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -161,7 +161,7 @@ func (c *CommentController) Create(ctx *httpx.Context) error {
 }
 
 // Store takes the submitted form.
-func (c *CommentController) Store(ctx *httpx.Context) error {
+func (c *CommentController) Store(ctx *fhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -201,7 +201,7 @@ func (c *CommentController) Store(ctx *httpx.Context) error {
 }
 
 // Edit renders the form filled in.
-func (c *CommentController) Edit(ctx *httpx.Context) error {
+func (c *CommentController) Edit(ctx *fhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -224,7 +224,7 @@ func (c *CommentController) Edit(ctx *httpx.Context) error {
 }
 
 // Update writes the submitted form onto the stored record.
-func (c *CommentController) Update(ctx *httpx.Context) error {
+func (c *CommentController) Update(ctx *fhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -254,7 +254,7 @@ func (c *CommentController) Update(ctx *httpx.Context) error {
 }
 
 // Destroy removes the record.
-func (c *CommentController) Destroy(ctx *httpx.Context) error {
+func (c *CommentController) Destroy(ctx *fhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -266,14 +266,14 @@ func (c *CommentController) Destroy(ctx *httpx.Context) error {
 }
 
 // actor is who is acting, from the session and never from the request body.
-func (c *CommentController) actor(ctx *httpx.Context) (security.Subject, error) {
+func (c *CommentController) actor(ctx *fhttp.Context) (security.Subject, error) {
 	return c.sessions.Load(ctx.Ctx(), ctx.Request)
 }
 
 // signIn sends an unauthenticated visitor to the sign-in screen. Under HTMX the
 // redirect becomes HX-Redirect, so the browser navigates instead of nesting the
 // whole page inside a fragment.
-func (c *CommentController) signIn(ctx *httpx.Context) error {
+func (c *CommentController) signIn(ctx *fhttp.Context) error {
 	return ctx.Redirect("/auth/login")
 }
 
@@ -283,7 +283,7 @@ func (c *CommentController) signIn(ctx *httpx.Context) error {
 // and every hx- request read it off the page data. A page rendered without one
 // answers 200 and then refuses the next write with 419, which reads like a
 // broken session rather than a missing field.
-func (c *CommentController) token(ctx *httpx.Context) (string, error) {
+func (c *CommentController) token(ctx *fhttp.Context) (string, error) {
 	return c.csrf.Issue(c.sessions.IDFromRequest(ctx.Request))
 }
 
@@ -320,7 +320,7 @@ func (c *CommentController) form(co models.Comment) views.CommentForm {
 // was typed -- so a rejected submission comes back filled in rather than blank --
 // and the errors parsing itself found. A number that is not a number is rejected
 // here, naming the field, rather than reaching the service as a silent zero.
-func (c *CommentController) input(ctx *httpx.Context) (requests.StoreComment, views.CommentForm, validation.Errors) {
+func (c *CommentController) input(ctx *fhttp.Context) (requests.StoreComment, views.CommentForm, validation.Errors) {
 	errs := validation.Errors{}
 
 	in := requests.StoreComment{
@@ -347,7 +347,7 @@ func (c *CommentController) input(ctx *httpx.Context) (requests.StoreComment, vi
 
 // rejectedCreate re-renders the creation form with its errors, as the 422
 // fragment HTMX swaps back in.
-func (c *CommentController) rejectedCreate(ctx *httpx.Context, actor security.Subject, form views.CommentForm, errs validation.Errors) error {
+func (c *CommentController) rejectedCreate(ctx *fhttp.Context, actor security.Subject, form views.CommentForm, errs validation.Errors) error {
 	token, err := c.token(ctx)
 	if err != nil {
 		return err
@@ -360,7 +360,7 @@ func (c *CommentController) rejectedCreate(ctx *httpx.Context, actor security.Su
 }
 
 // rejectedEdit re-renders the edit form with its errors.
-func (c *CommentController) rejectedEdit(ctx *httpx.Context, actor security.Subject, form views.CommentForm, errs validation.Errors) error {
+func (c *CommentController) rejectedEdit(ctx *fhttp.Context, actor security.Subject, form views.CommentForm, errs validation.Errors) error {
 	token, err := c.token(ctx)
 	if err != nil {
 		return err
@@ -378,7 +378,7 @@ func (c *CommentController) rejectedEdit(ctx *httpx.Context, actor security.Subj
 // response. Why a policy said no is information about the system, and it belongs
 // in the log. Anything unrecognized is returned, and the router turns it into
 // the error page in development and a 500 in production.
-func (c *CommentController) fail(ctx *httpx.Context, err error) error {
+func (c *CommentController) fail(ctx *fhttp.Context, err error) error {
 	switch {
 	case errors.Is(err, security.ErrForbidden):
 		observability.Log(ctx.Ctx()).Warn("authorization denied", "error", err)

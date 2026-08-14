@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	"github.com/arandu-io/framework/data"
-	"github.com/arandu-io/framework/httpx"
+	fhttp "github.com/arandu-io/framework/http"
 	"github.com/arandu-io/framework/modules/auth"
 	"github.com/arandu-io/framework/observability"
 	"github.com/arandu-io/framework/security"
@@ -21,7 +21,7 @@ import (
 // CategoryController answers the seven routes of the categories resource.
 //
 // It is thin on purpose: read the request, call the service, render. There is no
-// repository here and there cannot be one -- httpx.Context carries no database
+// repository here and there cannot be one -- fhttp.Context carries no database
 // handle, so a controller that reached the data layer would be a controller that
 // skipped the service, and therefore skipped the policy.
 type CategoryController struct {
@@ -46,18 +46,18 @@ func NewCategoryController(svc *services.CategoryService, sessions *security.Ses
 		nav: navigation{appName: appName, people: people, tenant: tenant}}
 }
 
-// Compile-time proof of the seven actions httpx.Router.Resource looks for. It
+// Compile-time proof of the seven actions fhttp.Router.Resource looks for. It
 // registers the ones the controller implements and nothing else, so a route that
 // exists is a route that answers -- and a renamed method fails the build here
 // rather than answering 404 in production.
 var (
-	_ httpx.Indexer   = (*CategoryController)(nil)
-	_ httpx.Creator   = (*CategoryController)(nil)
-	_ httpx.Storer    = (*CategoryController)(nil)
-	_ httpx.Shower    = (*CategoryController)(nil)
-	_ httpx.Editor    = (*CategoryController)(nil)
-	_ httpx.Updater   = (*CategoryController)(nil)
-	_ httpx.Destroyer = (*CategoryController)(nil)
+	_ fhttp.Indexer   = (*CategoryController)(nil)
+	_ fhttp.Creator   = (*CategoryController)(nil)
+	_ fhttp.Storer    = (*CategoryController)(nil)
+	_ fhttp.Shower    = (*CategoryController)(nil)
+	_ fhttp.Editor    = (*CategoryController)(nil)
+	_ fhttp.Updater   = (*CategoryController)(nil)
+	_ fhttp.Destroyer = (*CategoryController)(nil)
 )
 
 // categoryPerPage is how many records the listing asks for when the request
@@ -66,7 +66,7 @@ var (
 const categoryPerPage = 25
 
 // Index renders the listing.
-func (c *CategoryController) Index(ctx *httpx.Context) error {
+func (c *CategoryController) Index(ctx *fhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -118,7 +118,7 @@ func (c *CategoryController) Index(ctx *httpx.Context) error {
 }
 
 // Show renders one record.
-func (c *CategoryController) Show(ctx *httpx.Context) error {
+func (c *CategoryController) Show(ctx *fhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -144,7 +144,7 @@ func (c *CategoryController) Show(ctx *httpx.Context) error {
 }
 
 // Create renders the empty form.
-func (c *CategoryController) Create(ctx *httpx.Context) error {
+func (c *CategoryController) Create(ctx *fhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -161,7 +161,7 @@ func (c *CategoryController) Create(ctx *httpx.Context) error {
 }
 
 // Store takes the submitted form.
-func (c *CategoryController) Store(ctx *httpx.Context) error {
+func (c *CategoryController) Store(ctx *fhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -184,7 +184,7 @@ func (c *CategoryController) Store(ctx *httpx.Context) error {
 }
 
 // Edit renders the form filled in.
-func (c *CategoryController) Edit(ctx *httpx.Context) error {
+func (c *CategoryController) Edit(ctx *fhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -207,7 +207,7 @@ func (c *CategoryController) Edit(ctx *httpx.Context) error {
 }
 
 // Update writes the submitted form onto the stored record.
-func (c *CategoryController) Update(ctx *httpx.Context) error {
+func (c *CategoryController) Update(ctx *fhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -236,7 +236,7 @@ func (c *CategoryController) Update(ctx *httpx.Context) error {
 }
 
 // Destroy removes the record.
-func (c *CategoryController) Destroy(ctx *httpx.Context) error {
+func (c *CategoryController) Destroy(ctx *fhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -248,14 +248,14 @@ func (c *CategoryController) Destroy(ctx *httpx.Context) error {
 }
 
 // actor is who is acting, from the session and never from the request body.
-func (c *CategoryController) actor(ctx *httpx.Context) (security.Subject, error) {
+func (c *CategoryController) actor(ctx *fhttp.Context) (security.Subject, error) {
 	return c.sessions.Load(ctx.Ctx(), ctx.Request)
 }
 
 // signIn sends an unauthenticated visitor to the sign-in screen. Under HTMX the
 // redirect becomes HX-Redirect, so the browser navigates instead of nesting the
 // whole page inside a fragment.
-func (c *CategoryController) signIn(ctx *httpx.Context) error {
+func (c *CategoryController) signIn(ctx *fhttp.Context) error {
 	return ctx.Redirect("/auth/login")
 }
 
@@ -265,7 +265,7 @@ func (c *CategoryController) signIn(ctx *httpx.Context) error {
 // and every hx- request read it off the page data. A page rendered without one
 // answers 200 and then refuses the next write with 419, which reads like a
 // broken session rather than a missing field.
-func (c *CategoryController) token(ctx *httpx.Context) (string, error) {
+func (c *CategoryController) token(ctx *fhttp.Context) (string, error) {
 	return c.csrf.Issue(c.sessions.IDFromRequest(ctx.Request))
 }
 
@@ -300,7 +300,7 @@ func (c *CategoryController) form(ca models.Category) views.CategoryForm {
 // was typed -- so a rejected submission comes back filled in rather than blank --
 // and the errors parsing itself found. A number that is not a number is rejected
 // here, naming the field, rather than reaching the service as a silent zero.
-func (c *CategoryController) input(ctx *httpx.Context) (requests.StoreCategory, views.CategoryForm, validation.Errors) {
+func (c *CategoryController) input(ctx *fhttp.Context) (requests.StoreCategory, views.CategoryForm, validation.Errors) {
 	errs := validation.Errors{}
 
 	in := requests.StoreCategory{
@@ -325,7 +325,7 @@ func (c *CategoryController) input(ctx *httpx.Context) (requests.StoreCategory, 
 
 // rejectedCreate re-renders the creation form with its errors, as the 422
 // fragment HTMX swaps back in.
-func (c *CategoryController) rejectedCreate(ctx *httpx.Context, actor security.Subject, form views.CategoryForm, errs validation.Errors) error {
+func (c *CategoryController) rejectedCreate(ctx *fhttp.Context, actor security.Subject, form views.CategoryForm, errs validation.Errors) error {
 	token, err := c.token(ctx)
 	if err != nil {
 		return err
@@ -338,7 +338,7 @@ func (c *CategoryController) rejectedCreate(ctx *httpx.Context, actor security.S
 }
 
 // rejectedEdit re-renders the edit form with its errors.
-func (c *CategoryController) rejectedEdit(ctx *httpx.Context, actor security.Subject, form views.CategoryForm, errs validation.Errors) error {
+func (c *CategoryController) rejectedEdit(ctx *fhttp.Context, actor security.Subject, form views.CategoryForm, errs validation.Errors) error {
 	token, err := c.token(ctx)
 	if err != nil {
 		return err
@@ -356,7 +356,7 @@ func (c *CategoryController) rejectedEdit(ctx *httpx.Context, actor security.Sub
 // response. Why a policy said no is information about the system, and it belongs
 // in the log. Anything unrecognized is returned, and the router turns it into
 // the error page in development and a 500 in production.
-func (c *CategoryController) fail(ctx *httpx.Context, err error) error {
+func (c *CategoryController) fail(ctx *fhttp.Context, err error) error {
 	switch {
 	case errors.Is(err, security.ErrForbidden):
 		observability.Log(ctx.Ctx()).Warn("authorization denied", "error", err)

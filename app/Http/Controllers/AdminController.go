@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/arandu-io/framework/data"
-	"github.com/arandu-io/framework/httpx"
+	fhttp "github.com/arandu-io/framework/http"
 	"github.com/arandu-io/framework/observability"
 	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/framework/view"
@@ -41,18 +41,18 @@ func NewAdminController(posts *services.PostService, comments *services.CommentS
 }
 
 // actor is who is asking, from the session cookie and never from the request.
-func (c *AdminController) actor(ctx *httpx.Context) (security.Subject, error) {
+func (c *AdminController) actor(ctx *fhttp.Context) (security.Subject, error) {
 	return c.sessions.Load(ctx.Ctx(), ctx.Request)
 }
 
 // signIn sends an unauthenticated visitor to the sign-in screen.
-func (c *AdminController) signIn(ctx *httpx.Context) error {
+func (c *AdminController) signIn(ctx *fhttp.Context) error {
 	return ctx.Redirect("/auth/login")
 }
 
 // token issues a CSRF token for the session rendering the page. Every form in
 // the area posts, so every screen needs one.
-func (c *AdminController) token(ctx *httpx.Context) (string, error) {
+func (c *AdminController) token(ctx *fhttp.Context) (string, error) {
 	return c.csrf.Issue(c.sessions.IDFromRequest(ctx.Request))
 }
 
@@ -61,7 +61,7 @@ func (c *AdminController) token(ctx *httpx.Context) (string, error) {
 // Forbidden is 403 and not 404: somebody signed in who is not an administrator
 // asked for a page that exists, and pretending otherwise would send them
 // looking for a typo.
-func (c *AdminController) fail(ctx *httpx.Context, err error) error {
+func (c *AdminController) fail(ctx *fhttp.Context, err error) error {
 	if errors.Is(err, security.ErrForbidden) {
 		observability.Log(ctx.Ctx()).Warn("authorization denied", "error", err)
 		return ctx.Status(http.StatusForbidden)
@@ -73,7 +73,7 @@ func (c *AdminController) fail(ctx *httpx.Context, err error) error {
 }
 
 // Index is the dashboard: what is waiting, and what there is.
-func (c *AdminController) Index(ctx *httpx.Context) error {
+func (c *AdminController) Index(ctx *fhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -118,7 +118,7 @@ func (c *AdminController) Index(ctx *httpx.Context) error {
 }
 
 // Comments is the moderation queue.
-func (c *AdminController) Comments(ctx *httpx.Context) error {
+func (c *AdminController) Comments(ctx *fhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -153,7 +153,7 @@ func (c *AdminController) Comments(ctx *httpx.Context) error {
 }
 
 // Approve publishes one comment and returns to the queue.
-func (c *AdminController) Approve(ctx *httpx.Context) error {
+func (c *AdminController) Approve(ctx *fhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -165,7 +165,7 @@ func (c *AdminController) Approve(ctx *httpx.Context) error {
 }
 
 // Destroy removes one comment and returns to the queue.
-func (c *AdminController) Destroy(ctx *httpx.Context) error {
+func (c *AdminController) Destroy(ctx *fhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -182,7 +182,7 @@ func (c *AdminController) Destroy(ctx *httpx.Context) error {
 // It is built here rather than in the layout because the layout is markup and
 // this is a decision -- which page you are on is something the router knows and
 // a template would have to guess at by comparing paths.
-func (c *AdminController) chrome(ctx *httpx.Context, actor security.Subject, token, current string) admin.Chrome {
+func (c *AdminController) chrome(ctx *fhttp.Context, actor security.Subject, token, current string) admin.Chrome {
 	return admin.Chrome{
 		Page: view.Page{
 			Title: current + " · Admin",
