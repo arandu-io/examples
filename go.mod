@@ -7,16 +7,13 @@ require (
 	github.com/arandu-io/database/pgx v0.1.0
 	github.com/arandu-io/database/sqlite v0.1.0
 	github.com/arandu-io/framework v0.26.0
+	github.com/arandu-io/hesape v0.4.0
+	github.com/arandu-io/joaju v0.3.0
 	github.com/arandu-io/queue v0.3.0
 )
 
 require (
-	github.com/arandu-io/hesape v0.4.0 // indirect
-	github.com/arandu-io/joaju v0.2.0 // indirect
-)
-
-require (
-	github.com/arandu-io/kyse v0.7.0
+	github.com/arandu-io/kyse v0.8.0
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect

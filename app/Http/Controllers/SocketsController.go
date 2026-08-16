@@ -79,12 +79,16 @@ func NewSocketsController(counter *joaju.Counter, metrics policies.SocketMetrics
 // to depend on -- and the day it becomes exported this line is the one that
 // changes.
 //
-// As of joaju v0.2.0 this row reads zero however busy the server is: the two
-// events exist on the Observer interface, joaju.Counter implements them, and
-// nothing in the server or the protocol calls them yet. The card is drawn anyway,
-// and the number in it is the true one -- what the counter holds. A screen that
-// hid the row until the number moved would be a screen that shows nothing on the
-// day the events start firing and nobody notices.
+// This row reads zero however busy the server is, and that is a decision rather
+// than a gap waiting on a release. joaju/protocol.go documents it: only one of
+// the two events could honestly be announced -- a frame a client sends reaches
+// the protocol, while a frame a client receives is usually written by a channel
+// delivering a broadcast, which the protocol never sees. Counting one side would
+// show a server that receives a thousand messages and sends none, and a number
+// wrong in a knowable direction is worse than the zero it replaces.
+//
+// The card is drawn anyway, because the number in it is the true one: what the
+// counter holds. Hiding the row would hide the decision too.
 const messageTotals = "*"
 
 // Index draws the two cards: connections per tenant, and the message totals.
