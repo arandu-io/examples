@@ -30,8 +30,8 @@ type navigation struct {
 	// somebody changes it.
 	people *auth.Service
 
-	// tenant is whose rows a guest reads (RULE 14), and the tenant the name
-	// lookup runs in.
+	// tenant is whose rows a guest reads, and the tenant the name lookup
+	// runs in.
 	tenant string
 }
 
@@ -44,10 +44,10 @@ type navigation struct {
 //
 // What the sign-in screens and this blog's screens share comes from
 // authui.Chrome, which is the starter kit's own header. Restating those six
-// fields here would be a second place that decides what a header is (RULE 9),
-// and the kit republishes HomeController without a flag -- so the two would drift
-// on the one screen where drift is most visible. What is added below is what the
-// kit cannot know about: this application's own areas.
+// fields here would be a second place that decides what a header is, and the kit
+// republishes HomeController without a flag -- so the two would drift on the one
+// screen where drift is most visible. What is added below is what the kit cannot
+// know about: this application's own areas.
 func (n navigation) page(ctx *http.Context, actor security.Subject, signedIn bool, token, title string) view.Page {
 	page := authui.Chrome(authui.ChromeProps{
 		AppName:       n.appName,
@@ -75,10 +75,9 @@ func (n navigation) page(ctx *http.Context, actor security.Subject, signedIn boo
 // displayName turns the id a session carries into something to greet.
 //
 // Through authui.SignedInName, which is the kit's own, for the reason page goes
-// through authui.Chrome: this was a third copy of one lookup -- the kit's screens
-// had one, HomeController had one, this had one -- and three copies are three
-// answers to "what does the header say when the lookup fails". Only one of them
-// keeps the page rendering, and it is not the one somebody writes in a hurry.
+// through authui.Chrome: a copy here would be a second answer to "what does the
+// header say when the lookup fails". Only one answer keeps the page rendering,
+// and it is not the one somebody writes in a hurry.
 func (n navigation) displayName(ctx *http.Context, id string) string {
 	return authui.SignedInName(ctx.Ctx(), n.people, n.tenant, id)
 }
@@ -86,8 +85,8 @@ func (n navigation) displayName(ctx *http.Context, id string) string {
 // reader is who is asking: the signed-in subject, or a declared guest.
 //
 // The tenant of a guest is the application's, from configuration. A visitor
-// cannot choose whose rows they read (RULE 14), and it is not suspended because
-// nobody signed in.
+// cannot choose whose rows they read, and it is not suspended because nobody
+// signed in.
 func (n navigation) reader(ctx *http.Context, sessions *security.SessionStore) (security.Subject, bool) {
 	if actor, err := sessions.Load(ctx.Ctx(), ctx.Request); err == nil {
 		return actor, true

@@ -1,11 +1,11 @@
 // Package tests is the base every test in this project builds on.
 //
-// It is tests/TestCase.php, in the shape Go allows: a package the suites import
-// rather than a class they extend. What belongs here is what more than one suite
-// needs -- booting the application, opening a database, reading a file from the
-// project root -- and nothing else. A helper used by one test belongs beside it.
+// It is a package the suites import rather than a base class they extend. What
+// belongs here is what more than one suite needs -- booting the application,
+// opening a database, reading a file from the project root -- and nothing else.
+// A helper used by one test belongs beside it.
 //
-// The two suites are the Laravel ones and they mean the same thing:
+// The two suites mean what their names say:
 //
 //	tests/Feature/  boots the application and makes a request
 //	tests/Unit/     checks one thing without booting anything
@@ -78,9 +78,9 @@ func Kernel(t *testing.T, env config.Env) *kernel.Kernel {
 // Root is the project root, from inside a suite directory.
 //
 // The tests that read a file -- the Dockerfile, the workflow, arandu.toml -- run
-// two directories down from it now, and a relative path written from the old
-// location silently reads nothing: os.ReadFile returns an error the test
-// reports as "the file does not say X", which is true and misleading.
+// two directories down from it, and a relative path written from anywhere else
+// silently reads nothing: os.ReadFile returns an error the test reports as "the
+// file does not say X", which is true and misleading.
 func Root(t *testing.T) string {
 	t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", ".."))
@@ -106,7 +106,7 @@ func File(t *testing.T, name string) string {
 // App boots the whole application on a throwaway SQLite database, migrated, and
 // returns a browser for it.
 //
-// It is Laravel's RefreshDatabase and $this->get() in one call, and it is the
+// It is a migrated database and a client for it in one call, and it is the
 // difference between a feature test worth writing and one nobody writes: every
 // alternative starts with twelve lines of environment, connection and migration
 // that have nothing to do with what is being proved.

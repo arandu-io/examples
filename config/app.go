@@ -1,9 +1,9 @@
 // Package config is this application's configuration, one file per domain: ten
 // files, named after what they configure.
 //
-// The difference is the one that matters: there is no config("app.name") lookup.
-// Every setting is a field of a typed struct, so a wrong key is a compile error
-// instead of a nil that surfaces on the first request that happens to need it.
+// There is no config("app.name") lookup. Every setting is a field of a typed
+// struct, so a wrong key is a compile error instead of a nil that surfaces on
+// the first request that happens to need it.
 //
 // The framework parses what the kernel itself needs (APP_KEY, APP_ENV, the
 // database block) and this package parses the rest. Config carries both, so
@@ -24,7 +24,7 @@ import (
 type Config struct {
 	// Framework is what kernel.New takes. It is not a copy of the fields below:
 	// the kernel validates APP_KEY, APP_ENV and the connection at boot, and this
-	// package never re-reads them (RULE 9).
+	// package never re-reads them.
 	Framework framework.Config
 
 	App         App

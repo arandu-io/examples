@@ -9,11 +9,10 @@ import (
 // Post is the entity. It has no persistence methods: this is not Active
 // Record, and a type that can save itself can save itself from anywhere.
 //
-// Coming from an ORM, this is the difference that costs the most to find late:
-// there is no Post::find, no ->save() and no query builder on this type.
-// The table is reached by PostRepository, and every method of a repository
-// -- Find and List included -- takes a security.Grant that only a Policy can
-// issue (RULE 17). The model is data; the Policy is the door.
+// There is no Find, no Save and no query builder on this type. The table is
+// reached by PostRepository, and every method of a repository -- Find and
+// List included -- takes a security.Grant that only a Policy can issue. The
+// model is data; the Policy is the door.
 type Post struct {
 	ID    string
 	Title string

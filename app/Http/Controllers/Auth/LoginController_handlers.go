@@ -40,12 +40,11 @@ func (m *Module) doLogin(w http.ResponseWriter, r *http.Request) {
 		Password: r.PostFormValue("password"),
 	}
 
-	// The box on the form, read here and nowhere else. The screen has drawn it
-	// since the first version of this kit and nothing read it: AuthPage.Remember
-	// was never assigned, so RememberAttribute() always answered "" and the box
-	// did not even survive a rejected sign-in -- somebody who mistyped their
-	// password had to tick it again, having no way to know it had been ignored
-	// the first time.
+	// The box on the form, read here and nowhere else. The screen draws it
+	// whether or not anything reads it: leave AuthPage.Remember unassigned and
+	// RememberAttribute() answers "" forever, so the box does not survive a
+	// rejected sign-in -- somebody who mistyped their password ticks it again,
+	// with no way to know it was ignored the first time.
 	remember := r.PostFormValue("remember") != ""
 
 	if errs := in.Validate(); errs.Any() {
@@ -108,12 +107,9 @@ func (m *Module) doLogin(w http.ResponseWriter, r *http.Request) {
 	// thing that knows: by the time a password has been typed, the request that
 	// was refused is gone.
 	//
-	// This used to be "/", and the framework's own sign-in handler already ended
-	// this way -- so publishing the kit TOOK THE FEATURE AWAY from the project it
-	// was published into, in the same shape as the guest guard did. The guards
-	// went on writing the address on every refusal and nothing ever spent it:
-	// somebody who followed a link to one invoice signed in, landed on the front
-	// page, and went to find it again.
+	// Answering with "/" instead would leave the address the guards write on
+	// every refusal unspent: somebody who followed a link to one invoice would
+	// sign in, land on the front page, and go looking for it again.
 	//
 	// The destination is proved local by the store, which is why this is one line
 	// and not a check. An unchecked one would be an open redirect on the one
@@ -139,7 +135,7 @@ func (m *Module) doLogout(w http.ResponseWriter, r *http.Request) {
 //
 // fhttp.Redirect is where that branch already lives -- HX-Redirect for an HTMX
 // request, 303 with a Location for everything else. Restating it here would be a
-// second way to redirect, and the second one is the one that drifts (RULE 9).
+// second way to redirect, and the second one is the one that drifts.
 func redirect(w http.ResponseWriter, r *http.Request, to string) {
 	fhttp.Redirect(w, r, to)
 }

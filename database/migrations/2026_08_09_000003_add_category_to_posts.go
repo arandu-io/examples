@@ -7,7 +7,7 @@ import "github.com/arandu-io/framework/kernel"
 // A migration is immutable once published, so this is a second one rather than
 // an edit to createPostsTable: changing an applied id changes nothing on a
 // database that already ran it, and leaves two schemas in the world under one
-// name (RULE 16).
+// name.
 //
 // The column is nullable, and that is the same rule read forwards. During a
 // rollout the previous binary is still inserting posts that know nothing about

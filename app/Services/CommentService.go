@@ -78,8 +78,8 @@ func (s *CommentService) List(ctx context.Context, actor security.Subject, q dat
 // forwards.
 //
 // It goes through Authorize like every other read. A comment thread is exactly
-// the query where "it is only a listing" gets said, and docs/26 refuses it:
-// a read path without a policy is a tenant leak with a technical name.
+// the query where "it is only a listing" gets said, and it is refused all the
+// same: a read path without a policy is a tenant leak with a technical name.
 func (s *CommentService) ForPost(ctx context.Context, actor security.Subject, postID string) ([]models.Comment, error) {
 	g, err := security.Authorize(ctx, s.policy, actor, policies.CommentList, models.Comment{})
 	if err != nil {

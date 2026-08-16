@@ -9,9 +9,8 @@ import (
 // TestAReaderWithNoAccountSeesThePublishedPosts is what this blog exists to
 // demonstrate, written the way an application should write it.
 //
-// It is a feature test in the Laravel sense: it boots the application and makes
-// requests, and what it proves is a decision that lives in a policy rather than
-// in this file.
+// It is a feature test: it boots the application and makes requests, and what it
+// proves is a decision that lives in a policy rather than in this file.
 func TestAReaderWithNoAccountSeesThePublishedPosts(t *testing.T) {
 	guest, _ := tests.App(t)
 
@@ -48,8 +47,7 @@ func TestAWriteWithoutATokenIsRefused(t *testing.T) {
 	// exactly the request an attacker makes.
 	c, _ := tests.App(t)
 	c.Post("/auth/login", map[string]string{"email": "you@example.test"}).
-		// 419, not 403. It is the status Laravel answers a missing token with, and
-		// the distinction is worth keeping: 403 is "you may not", 419 is "your
-		// page is stale, load it again".
+		// 419, not 403, and the distinction is worth keeping: 403 is "you may
+		// not", 419 is "your page is stale, load it again".
 		Status(419)
 }

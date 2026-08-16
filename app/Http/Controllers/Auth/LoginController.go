@@ -4,9 +4,8 @@
 // that moment on: edit it, delete what you do not want, restyle it. Nothing in
 // the framework imports it back.
 //
-// Not "aru make:auth". That command does not exist and will not: the artisan
-// dropped its equivalent at version 6, for the reason RULE 3 repeats -- two
-// ways to install one scaffolding diverge, and the second one is the one nobody
+// Not "aru make:auth". That command does not exist and will not: two ways to
+// install one scaffolding diverge, and the second one is the one nobody
 // maintains.
 //
 // The authentication itself stays in the framework's auth module -- password
@@ -112,10 +111,9 @@ func (m *Module) Name() string { return "authui" }
 // already signed in, which reads to them as having been signed out.
 //
 // The framework's auth module guards its own minimal sign-in screen the same
-// way, and this method replaces that one. The guard was missing here while it
-// was already there, so publishing the kit TOOK A GUARD AWAY from the project
-// it was published into -- and publishing again over a project that had added
-// one by hand took it away a second time.
+// way, and this method replaces that one. Leaving the guard off here would take
+// it away from the project the kit is published into -- and take it away again
+// on every republish over a project that had added one by hand.
 func (m *Module) Routes(r *http.Router) {
 	g := r.Group("/auth")
 
@@ -129,8 +127,8 @@ func (m *Module) Routes(r *http.Router) {
 
 	// arandu:begin custom
 	// The password reset, in PasswordController.go. The kit publishes the three
-	// screens and stops there (ADR 0022): the handlers write to your users
-	// table and send through your mailer, so they are yours.
+	// screens and stops there: the handlers write to your users table and send
+	// through your mailer, so they are yours.
 	g.Get("/password", m.showPasswordRequest)
 	g.Post("/password/email", m.sendPasswordLink)
 	g.Get("/password/reset", m.showPasswordReset)

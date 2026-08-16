@@ -21,7 +21,7 @@ func dockerfile(t *testing.T) string {
 	t.Helper()
 	body, err := os.ReadFile(filepath.Join(tests.Root(t), "Dockerfile"))
 	if err != nil {
-		t.Fatalf("the skeleton has no Dockerfile, and doc 17 says it does: %v", err)
+		t.Fatalf("the skeleton must ship a Dockerfile, and this one has none: %v", err)
 	}
 	return string(body)
 }
@@ -59,9 +59,9 @@ func TestTheContainerDoesNotRunAsRoot(t *testing.T) {
 	}
 }
 
-// TestTheImageDoesNotMigrateAtBoot is RULE 16, checked where it would be
-// violated. With N replicas starting together, N migrations race -- and the
-// tempting place to put `aru migrate` is exactly the entrypoint.
+// TestTheImageDoesNotMigrateAtBoot checks the rule where it would be broken.
+// With N replicas starting together, N migrations race -- and the tempting place
+// to put `aru migrate` is exactly the entrypoint.
 func TestTheImageDoesNotMigrateAtBoot(t *testing.T) {
 	body := dockerfile(t)
 

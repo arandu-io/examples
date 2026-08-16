@@ -139,8 +139,7 @@ func TestSomebodyArrivesAndEndsUpCommenting(t *testing.T) {
 		"password": "a-third-password-entirely", "password_confirmation": "a-third-password-entirely",
 	}).Status(422).See("Ask for another one")
 
-	// 9. The new password works and the old one does not. This is what used to
-	//    be a log line saying the example did not write the password.
+	// 9. The new password works and the old one does not.
 	client.Get("/auth/login").OK()
 	client.Post("/auth/login", map[string]string{"email": email, "password": changed}).
 		RedirectsTo("/")
@@ -305,15 +304,14 @@ func seedJourneyPost(t *testing.T, db *data.DB) string {
 
 // TestTheHeaderSaysWhoYouAre.
 //
-// The navigation used to be six struct literals per controller, and they
-// drifted: /categories drew a brand linking to href="", a "Sign in" button that
-// reloaded the page you were already reading, no way to create an account, and
-// the guest half of the bar shown to a signed-in administrator. Every one of
-// those is a field somebody forgot to fill in.
+// A struct literal per controller drifts: a brand linking to href="", a "Sign
+// in" button that reloads the page you were already reading, no way to create an
+// account, the guest half of the bar shown to a signed-in administrator. Every
+// one of those is a field somebody forgot to fill in.
 //
 // So this asserts the header from the three sides it has: a guest, a reader,
-// and an administrator -- on a screen from each controller, because the defect
-// was never in the layout. It was in who filled it in.
+// and an administrator -- on a screen from each controller, because a defect
+// like that is never in the layout. It is in who filled it in.
 func TestTheHeaderSaysWhoYouAre(t *testing.T) {
 	client, db := tests.App(t)
 	post := seedJourneyPost(t, db)

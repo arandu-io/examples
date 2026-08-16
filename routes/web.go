@@ -88,11 +88,11 @@ func Web(r *http.Router, d Deps) {
 	r.Action("GET", "/{$}", d.Post.Index).Name("home")
 
 	// The screen somebody lands on after signing in, and it is for them alone.
-	// It used to answer 200 to anybody: the controller reads the session, treats
-	// a failure to load one as the anonymous case, and renders -- which is right
-	// for a landing page and wrong for this one. The guard is what makes the
-	// difference, and it is on the route because that is where a reader of this
-	// file can see it.
+	// Without the guard it answers 200 to anybody: the controller reads the
+	// session, treats a failure to load one as the anonymous case, and renders --
+	// which is right for a landing page and wrong for this one. The guard is what
+	// makes the difference, and it is on the route because that is where a reader
+	// of this file can see it.
 	//
 	// It decides nothing beyond "there is a session". What this person may read
 	// is still the Policy's answer, on every service call the screen makes.
@@ -140,8 +140,8 @@ func Web(r *http.Router, d Deps) {
 	// mounted. They exist for a socket server running as a separate process,
 	// which has to be told over HTTP what to broadcast; this application holds
 	// the broker in memory, so publishing here is a method call. Mounting them
-	// would be a second way to do the one thing (RULE 9), and it would be the
-	// slower one.
+	// would be a second way to do the one thing, and it would be the slower
+	// one.
 	//
 	// Two middlewares, and both are about what joaju needs from the pipeline
 	// rather than about who may connect -- that is SocketConnectPolicy's answer,
@@ -199,9 +199,9 @@ func withSubject(sessions *security.SessionStore) http.Middleware {
 //
 // It is a stopgap and it says so: the fix is one line in joaju's ws.Upgrader,
 // and when that lands this middleware comes off the route rather than being
-// kept as a second way to reach the connection (RULE 9). It is on this one route
-// and never in the global pipeline -- every other handler in this application
-// wants the wrapper exactly as it is.
+// kept as a second way to reach the connection. It is on this one route and
+// never in the global pipeline -- every other handler in this application wants
+// the wrapper exactly as it is.
 //
 // It is also not enough in development, and that is a second defect in a second
 // place. APP_ENV=dev adds the framework's live-reload middleware, whose

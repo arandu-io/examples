@@ -28,7 +28,7 @@ func scheduleList(sched *scheduler.Module) error {
 	s := sched.Scheduler()
 	if s == nil {
 		fmt.Println("no scheduled tasks.")
-		fmt.Println("A module declares them with Schedule() []kernel.Task -- see doc 16.")
+		fmt.Println("A module declares them with Schedule() []kernel.Task.")
 		return nil
 	}
 

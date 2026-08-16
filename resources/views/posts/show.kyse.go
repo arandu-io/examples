@@ -96,7 +96,7 @@ func (c CommentRow) Badge() string {
 
 		     whitespace-pre-line is what turns the blank lines between paragraphs
 		     into blank lines on the page without a markdown parser -- which
-		     would be a second way to write a page (RULE 9). --}}
+		     would be a second way to write a page. --}}
 		<div class="prose-body mt-8 whitespace-pre-line">{{ .Post.Body }}</div>
 
 		@if(.EditURL != "")

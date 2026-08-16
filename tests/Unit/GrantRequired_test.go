@@ -36,7 +36,7 @@ func TestRepositoryWithoutGrantDoesNotCompile(t *testing.T) {
 	}
 }
 
-// TestEveryMethodRequiresItsGrant is RULE 17: reading is not an exception.
+// TestEveryMethodRequiresItsGrant proves that reading is not an exception.
 //
 // It is easy to believe authorization is about writes. It is not -- List and
 // Find are where a tenant reads another tenant's rows, and a framework that

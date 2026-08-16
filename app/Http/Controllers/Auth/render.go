@@ -51,11 +51,11 @@ type ChromeProps struct {
 // the controllers of the application around them.
 //
 // It is exported because HomeController is not in this package and draws the
-// same header. That controller used to build a view.Page literal of its own and
-// the two drifted: the landing page greeted a signed-in visitor with the UUID
-// out of their session, offered no way to create an account, and hid a password
-// reset this kit had already wired. Every one of those is a field somebody
-// forgot, and there is no way to forget a field you do not fill in.
+// same header. A view.Page literal built there instead would drift from this
+// one: the landing page greeting a signed-in visitor with the UUID out of their
+// session, offering no way to create an account, and hiding a password reset
+// this kit already wired. Every one of those is a field somebody forgot, and
+// there is no way to forget a field you do not fill in.
 func Chrome(p ChromeProps) view.Page {
 	return view.Page{
 		Title:         p.Title,
@@ -101,19 +101,18 @@ func SignedInName(ctx context.Context, people *auth.Service, tenant, id string) 
 
 // page is the chrome for one of this package's screens.
 //
-// The title and the path in, everything else from Chrome. The name used to be a
-// literal here and a different literal in LoginController_handlers.go, and
-// neither was the one in the configuration -- three names for one application,
-// on three screens of one kit.
+// The title and the path in, everything else from Chrome. The name comes from
+// the configuration and from nowhere else: a literal here and another literal in
+// a handler are three names for one application, on three screens of one kit.
 //
 // Who is asking is read here, from the session and never from the request. The
-// layout draws one half of its navigation or the other from Authenticated, and
-// this function left both fields at their zero value: every screen of the kit
-// told a signed-in person they were a guest. Two of them are only ever reached
-// WITH a session -- /auth/password/confirm sits behind middleware.RequireAuth,
-// and the verify notice is where an unverified account is sent -- so the screen
-// whose whole job is to ask somebody for their password offered them a "Login"
-// button, a "Register" button and no way to sign out.
+// layout draws one half of its navigation or the other from Authenticated, so
+// leaving that field at its zero value tells a signed-in person they are a
+// guest. Two of these screens are only ever reached WITH a session --
+// /auth/password/confirm sits behind middleware.RequireAuth, and the verify
+// notice is where an unverified account is sent -- so the screen whose whole job
+// is to ask somebody for their password would offer them a "Login" button, a
+// "Register" button and no way to sign out.
 func (m *Module) page(r *http.Request, title string) view.Page {
 	subject, err := m.sessions.Load(r.Context(), r)
 
@@ -123,8 +122,8 @@ func (m *Module) page(r *http.Request, title string) view.Page {
 		Path:    r.URL.Path,
 
 		Authenticated: err == nil,
-		// The tenant is the session's and not the resolver's (RULE 14): both are
-		// this application's rather than the caller's, but only one of them is the
+		// The tenant is the session's and not the resolver's: both are this
+		// application's rather than the caller's, but only one of them is the
 		// tenant this id belongs to. Under a host-based resolver they differ the
 		// moment a session is carried to another customer's host, and the lookup
 		// would then run in a tenant that never held the account.

@@ -12,11 +12,10 @@ import (
 // arandu.toml pins the binaries `aru view:build` downloads, and every project
 // made with `aru new` receives this exact file.
 //
-// It used to pin templ, with a comment saying the CLI fetches it. It does not:
-// the view engine is kyse, which is code inside `aru` rather than a release on
-// somebody's GitHub (ADR 0020). A pin for a tool nobody downloads is worse than
-// no pin -- it is a version number people maintain, upgrade and argue about for
-// a build step that does not exist.
+// The view engine is kyse, which is code inside `aru` rather than a release
+// fetched from somewhere, so it is not pinned here. A pin for a tool nobody
+// downloads is worse than no pin -- it is a version number people maintain,
+// upgrade and argue about for a build step that does not exist.
 
 // tools parses the [tools] table. The format is the subset `aru` reads: a
 // section header and key = "value" lines.
@@ -56,7 +55,7 @@ func TestTheToolchainPinsOnlyWhatIsDownloaded(t *testing.T) {
 
 	if version, found := pinned["templ"]; found {
 		t.Errorf("arandu.toml still pins templ %q, and nothing downloads it: "+
-			"the view engine is kyse, which ships inside `aru` (ADR 0020)", version)
+			"the view engine is kyse, which ships inside `aru`", version)
 	}
 	if pinned["tailwindcss"] == "" {
 		t.Error("arandu.toml does not pin tailwindcss, and it is the one binary `aru view:build` fetches")

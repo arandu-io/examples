@@ -80,12 +80,12 @@ func NewSocketsController(counter *joaju.Counter, metrics policies.SocketMetrics
 // changes.
 //
 // This row reads zero however busy the server is, and that is a decision rather
-// than a gap waiting on a release. joaju/protocol.go documents it: only one of
-// the two events could honestly be announced -- a frame a client sends reaches
-// the protocol, while a frame a client receives is usually written by a channel
-// delivering a broadcast, which the protocol never sees. Counting one side would
-// show a server that receives a thousand messages and sends none, and a number
-// wrong in a knowable direction is worse than the zero it replaces.
+// than a gap waiting on a release: only one of the two events could honestly be
+// announced -- a frame a client sends reaches the protocol, while a frame a
+// client receives is usually written by a channel delivering a broadcast, which
+// the protocol never sees. Counting one side would show a server that receives a
+// thousand messages and sends none, and a number wrong in a knowable direction
+// is worse than the zero it replaces.
 //
 // The card is drawn anyway, because the number in it is the true one: what the
 // counter holds. Hiding the row would hide the decision too.
@@ -104,9 +104,8 @@ func (c *SocketsController) Index(ctx *fhttp.Context) error {
 
 	// The authorization, and it is not ceremony: nothing below this line touches
 	// a database, so this call is the ONLY thing standing between a session and
-	// the numbers of every tenant in the process. RULE 17 has no exception for
-	// reads, and a read with no policy behind it is the leak with a technical
-	// name.
+	// the numbers of every tenant in the process. A read is no exception, and a
+	// read with no policy behind it is the leak with a technical name.
 	//
 	// The Grant it issues carries the operator's own tenant, which is what marks
 	// their row in a table that crosses tenants. The counter itself takes no

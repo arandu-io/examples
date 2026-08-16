@@ -24,8 +24,8 @@ func TestUserSeederCreatesAndReplaces(t *testing.T) {
 
 	// The sign-in screen is for people who are not signed in: the guest guard
 	// sends anybody else to the front page. So each attempt below starts where a
-	// person starts, which means leaving the previous session first -- this test
-	// used to walk back to the form still signed in, which no browser does.
+	// person starts, which means leaving the previous session first -- walking
+	// back to the form still signed in is not something a browser does.
 	//
 	// A rendered page first, because the sign-out form is what carries the CSRF
 	// token and the body of a redirect carries none. The answer is asserted: a

@@ -119,10 +119,9 @@ func (r *CommentRepository) List(ctx context.Context, g security.Grant, q data.Q
 // ForPost is the thread of one post, oldest first.
 //
 // A method of its own rather than a Filter on data.Query. data.Query has no
-// filter -- the field was removed because nothing implemented it, and adding one
-// back would be a query builder, which RULE 9 refuses. A predicate the
-// application needs is a method here, with its SQL visible and its parameters
-// bound.
+// filter, and adding one back would be a query builder -- which is the one thing
+// a repository exists to avoid. A predicate the application needs is a method
+// here, with its SQL visible and its parameters bound.
 func (r *CommentRepository) ForPost(ctx context.Context, g security.Grant, postID string) ([]models.Comment, error) {
 	if err := g.Check(policies.CommentList); err != nil {
 		return nil, err

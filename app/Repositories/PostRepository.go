@@ -261,13 +261,12 @@ func (r *PostRepository) scan(row interface{ Scan(dest ...any) error }) (models.
 	// is what keeps those rows readable -- a plain *string scan of a NULL is an
 	// error, on every post that existed before categories did.
 	p.CategoryID = category.String
-	// Same story as the column above, and it was missed here: views arrived in
-	// 2026_08_09_000001 as a nullable column with no default, and this scan read
-	// it straight into an int. Every post written before that migration -- and
-	// every post the PREVIOUS binary inserted during the rollout, because it does
-	// not know the column exists -- answered "converting NULL to int is
-	// unsupported" on every read of this table. That is the failure RULE 16 is
-	// written to prevent, in the showcase that demonstrates it.
+	// Same story as the column above: views arrived in 2026_08_09_000001 as a
+	// nullable column with no default, and this scan read it straight into an int.
+	// Every post written before that migration -- and every post the PREVIOUS
+	// binary inserted during the rollout, because it does not know the column
+	// exists -- answered "converting NULL to int is unsupported" on every read of
+	// this table.
 	p.Views = int(views.Int64)
 	return p, nil
 }

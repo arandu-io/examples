@@ -41,8 +41,8 @@ type PostsIndexData struct {
 // Lead is the article at the top, and Rest is everything under it.
 //
 // Two methods rather than an index in the template, because kyse has no index
-// and should not grow one for this (RULE 15). What the pair buys is the shape a
-// front page has: one piece given room, the others in a list -- which is the
+// and should not grow one for this. What the pair buys is the shape a front
+// page has: one piece given room, the others in a list -- which is the
 // difference between a blog and a table of blog.
 //
 // Lead returns the zero value on an empty page, and the template asks len()
@@ -81,7 +81,7 @@ type SectionLink struct {
 //
 // A method and not a conditional attribute in the template, because a
 // conditional attribute has no directive and inventing one would grow the DSL
-// for a single case (RULE 15). What does not fit a directive is written in Go.
+// for a single case. What does not fit a directive is written in Go.
 func (s SectionLink) Aria() string {
 	if s.Current {
 		return "page"

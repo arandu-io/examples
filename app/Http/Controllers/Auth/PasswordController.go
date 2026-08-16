@@ -19,26 +19,26 @@ import (
 // The password screens: forgetting one, choosing a new one, and typing the
 // current one again before something that matters.
 //
-// The kit publishes the three and stops there, on purpose (ADR 0022): the
-// handlers write to your users table, send through your mailer and decide your
-// rules, so they are the application's. This is that application's.
+// The kit publishes the three and stops there, on purpose: the handlers write to
+// your users table, send through your mailer and decide your rules, so they are
+// the application's. This is that application's.
 //
 // # The link is signed, and stored nowhere
 //
-// This used to be a package-level map of hashed tokens, and it said of itself
-// that it was right for one instance and wrong for two. It was worse than that.
-// A restart threw away every link in flight; behind a load balancer a link only
-// worked on the replica that issued it; every address anybody typed inserted an
-// entry that left only when that exact token was presented, so nothing swept
-// what nobody clicked; and asking twice left two live links.
+// A stored table of hashed tokens would be right for one instance and wrong for
+// two, and worse than that: a restart throws away every link in flight; behind a
+// load balancer a link only works on the replica that issued it; every address
+// anybody types inserts an entry that leaves only when that exact token is
+// presented, so nothing sweeps what nobody clicked; and asking twice leaves two
+// live links.
 //
-// What replaced it is what ADR 0032 already described. The token carries the
-// tenant, the account, the address it was mailed to and a fingerprint of the
-// password the account had when it was minted (auth.ResetPayload), signed with
-// the application key (security.Signer). Nothing is written when the mail goes
-// out. The fingerprint is what makes it single use without a row to delete:
-// changing the password changes the hash, so the link that was just used and
-// every earlier one stop verifying at the same instant.
+// The token instead carries the tenant, the account, the address it was mailed
+// to and a fingerprint of the password the account had when it was minted
+// (auth.ResetPayload), signed with the application key (security.Signer).
+// Nothing is written when the mail goes out. The fingerprint is what makes it
+// single use without a row to delete: changing the password changes the hash, so
+// the link that was just used and every earlier one stop verifying at the same
+// instant.
 //
 // The purpose is part of the signature, so a verification link is not a reset
 // link even though the same key signed both.
@@ -48,9 +48,9 @@ import (
 // Asking for a link answers with the same message whether the address is
 // registered or not. The alternative is an oracle: a form that says "no such
 // account" confirms which addresses exist, one request at a time. The account is
-// looked up before anything is sent -- it used to mail whatever was typed, which
-// made this endpoint a way to send mail from this application's domain, to an
-// address of the caller's choosing, as often as they asked.
+// looked up before anything is sent: mailing whatever was typed would make this
+// endpoint a way to send mail from this application's domain, to an address of
+// the caller's choosing, as often as they asked.
 
 // resetPurpose scopes the signature. Changing this string invalidates every link
 // already in an inbox, which is the correct behaviour for a change of meaning
@@ -78,10 +78,10 @@ func (m *Module) showPasswordRequest(w http.ResponseWriter, r *http.Request) {
 //
 // The lookup is auth.Service.FindForReset, which takes a unit of the throttle's
 // budget before it reads the users table. That is the same throttle the sign-in
-// screen is behind and not a second counter (RULE 9), keyed apart from it for one
-// reason: somebody who has just got their password wrong five times is exactly
-// the person who clicks this, and a shared count would refuse them the recovery
-// at the one moment they want it.
+// screen is behind and not a second counter, keyed apart from it for one reason:
+// somebody who has just got their password wrong five times is exactly the
+// person who clicks this, and a shared count would refuse them the recovery at
+// the one moment they want it.
 func (m *Module) sendPasswordLink(w http.ResponseWriter, r *http.Request) {
 	email := strings.TrimSpace(r.PostFormValue("email"))
 
@@ -174,11 +174,11 @@ func (m *Module) showPasswordReset(w http.ResponseWriter, r *http.Request) {
 
 // updatePassword checks everything, then changes the password.
 //
-// The order is the whole point. This used to consume the token first, so a
-// password two characters too short burned the link -- and the form it re-drew
-// handed back a token that no longer existed, which reads as the application
-// losing the reset rather than as a rule about length. Nothing is consumed until
-// the input is known to be acceptable.
+// The order is the whole point. Consuming the token first would burn the link on
+// a password two characters too short -- and the form it re-draws would hand back
+// a token that no longer exists, which reads as the application losing the reset
+// rather than as a rule about length. Nothing is consumed until the input is
+// known to be acceptable.
 func (m *Module) updatePassword(w http.ResponseWriter, r *http.Request) {
 	token := r.PostFormValue("token")
 	email := strings.TrimSpace(r.PostFormValue("email"))
@@ -205,9 +205,9 @@ func (m *Module) updatePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// The tenant is not passed and must not be: it is inside the payload, signed.
-	// Resolving it from the host at this point is what let a link minted for one
-	// customer change the password of the account with that address at another
-	// (RULE 14).
+	// Resolving it from the host at this point is what would let a link minted for
+	// one customer change the password of the account with that address at
+	// another.
 	u, err := m.auth.ResetPassword(r.Context(), payload, email, password)
 	if err != nil {
 		if errors.Is(err, auth.ErrResetLinkSpent) {
@@ -230,12 +230,12 @@ func (m *Module) updatePassword(w http.ResponseWriter, r *http.Request) {
 		observability.Log(r.Context()).Error("signing the account's other sessions out", "error", err)
 	}
 
-	// It does NOT open a session, and Laravel's does. The link arrives in an
-	// inbox: signing somebody in on the strength of it hands the account to
-	// whoever else can read that mailbox, or read the message once it has been
-	// forwarded -- and having just ended every other session, opening one from a
-	// mail link would be the only session left and the least proven. It is the
-	// same decision the verification link makes (ADR 0032). The cost is one form.
+	// It does NOT open a session. The link arrives in an inbox: signing somebody
+	// in on the strength of it hands the account to whoever else can read that
+	// mailbox, or read the message once it has been forwarded -- and having just
+	// ended every other session, opening one from a mail link would be the only
+	// session left and the least proven. It is the same decision the verification
+	// link makes. The cost is one form.
 	m.screen(w, r, "auth.login", AuthPage{
 		Page:   m.page(r, "Sign in"),
 		Email:  u.Email,

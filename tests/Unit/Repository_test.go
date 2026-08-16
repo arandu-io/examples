@@ -13,8 +13,8 @@ import (
 // What the repository is allowed to contain, checked by reading the files rather
 // than by trusting a name.
 //
-// Every rule here exists because something got committed. A pattern written for
-// one shape of mistake misses the next one, and the next one is what ships.
+// Each check reads for a shape of mistake rather than for a name. A pattern
+// written for one shape misses the next one, and the next one is what ships.
 
 // sqliteMagic is the first sixteen bytes of every SQLite file, whatever it is
 // called. https://sqlite.org/fileformat.html
@@ -22,10 +22,10 @@ var sqliteMagic = []byte("SQLite format 3\x00")
 
 // TestNoDatabaseIsTracked.
 //
-// Three were, twice: arandu_blog, arandu_blog-shm and arandu_blog-wal. The file
-// has no extension -- the path in DATABASE_URL was a bare name, which SQLite reads
-// relative to wherever the process started -- so *.sqlite missed it, *.db
-// missed it, and database/* missed it because it was in the project root.
+// A bare name in DATABASE_URL -- arandu_blog, plus its -shm and -wal -- is a
+// file with no extension, which SQLite writes relative to wherever the process
+// started. So *.sqlite misses it, *.db misses it, and database/* misses it
+// because it lands in the project root.
 //
 // This reads the first bytes of every tracked file instead. A database cannot
 // hide behind a name nobody predicted, because it is not the name being read.
@@ -122,10 +122,6 @@ func tracked(t *testing.T) []string {
 // "converting NULL to int is unsupported" on every read of the table, for every
 // row written before the migration and every row the old binary writes during
 // the rollout.
-//
-// It happened here: posts.views was added nullable and scanned into a plain int,
-// two lines below category_id, which had been given sql.NullString for exactly
-// this reason with the reason written above it.
 //
 // This reads the ALTER statements out of the migrations and the scan out of the
 // repository, so it fails when the next column is added without its pair.

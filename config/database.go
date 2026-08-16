@@ -6,7 +6,7 @@ import (
 	framework "github.com/arandu-io/framework/config"
 )
 
-// Database is what config/database.php holds.
+// Database is the connection this application opens, and how its pool behaves.
 //
 // The connection itself is not re-read here. The framework already parsed
 // DB_CONNECTION and the rest, validated them and built the DSN, and a second

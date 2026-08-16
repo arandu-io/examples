@@ -16,13 +16,13 @@ import (
 	_ "github.com/arandu-io/examples/assets"
 )
 
-// TestTheBrowserGetsThisProjectsStylesheet is the regression guard for a whole
-// pipeline whose output nobody consumed.
+// TestTheBrowserGetsThisProjectsStylesheet guards a whole pipeline whose output
+// nothing is obliged to consume.
 //
-// `aru view:build` ran Tailwind over resources/css/app.css and wrote
-// assets/app.css, and nothing embedded it. The browser kept receiving the
-// framework's default -- byte for byte, same md5 -- so every class written in a
-// view of this project was absent from the page, with no error anywhere.
+// `aru view:build` runs Tailwind over resources/css/app.css and writes
+// assets/app.css. If nothing embeds it, the browser receives the framework's
+// default instead -- byte for byte, same md5 -- and every class written in a
+// view of this project is absent from the page, with no error anywhere.
 //
 // The check is the md5 of what comes over HTTP against the md5 of the file on
 // disk. Anything weaker passes in the broken state: the framework's default is
@@ -64,20 +64,18 @@ func sum(b []byte) string {
 // of the pipeline the test above cannot see.
 //
 // That one proves the browser is served this project's stylesheet. It says
-// nothing about what is inside it, and for weeks the answer was: not the classes
-// the components render. Tailwind reads class names only out of the files an
-// @source names, resources/css/app.css can only name directories of this
-// project, and the components are an imported module (ADR 0027) whose source
-// lives in the module cache. So .text-destructive appeared zero times in 193 KB
-// of compiled CSS while components.Field wrote it on the error line of every
-// form: a rejected sign-in drew "that password is wrong" in the same colour as
-// the label above it. The theme picker's swatches were `size-3 rounded-full`
-// spans with no rule for either, which is a span of no size -- an empty menu
-// with six invisible entries.
+// nothing about what is inside it. Tailwind reads class names only out of the
+// files an @source names, resources/css/app.css can only name directories of
+// this project, and the components are an imported module whose source lives in
+// the module cache -- so a class only a component writes can be absent from the
+// compiled CSS while every form renders it. Without .text-destructive, a
+// rejected sign-in draws "that password is wrong" in the same colour as the
+// label above it; without a rule for `size-3 rounded-full`, the theme picker's
+// swatches are spans of no size, an empty menu with six invisible entries.
 //
-// Nothing failed. The build was green, `aru view:build` reported success, and
-// the page rendered. That is why this test exists and why it names the class
-// rather than the component: the class is what has to reach the file.
+// Nothing fails when that happens. The build is green, `aru view:build` reports
+// success, and the page renders. That is why this test exists and why it names
+// the class rather than the component: the class is what has to reach the file.
 func TestTheStylesheetCarriesTheClassesTheMarkupRenders(t *testing.T) {
 	css, err := os.ReadFile("app.css")
 	if err != nil {

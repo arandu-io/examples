@@ -167,7 +167,7 @@ func (c *PostController) Index(ctx *fhttp.Context) error {
 //
 // It reuses posts.index rather than having a view of its own. The two pages
 // differ by a heading and a filter, and a second template would be a second
-// place to fix the card the next time a card changes (RULE 9).
+// place to fix the card the next time a card changes.
 func (c *PostController) Section(ctx *fhttp.Context) error {
 	actor, signedIn := c.nav.reader(ctx, c.sessions)
 
@@ -482,9 +482,8 @@ func (c *PostController) row(ctx *fhttp.Context, p models.Post, comments int, se
 		CategoryURL: sectionURL,
 		Views:       reads,
 		// Built from the route name. "/posts/"+p.ID compiles and keeps
-		// compiling after the route moves, and the card links nowhere -- which
-		// is exactly what happened: every card on the listing had an empty href
-		// until this line existed.
+		// compiling after the route moves, and every card on the listing then
+		// links nowhere.
 		URL:      ctx.URL("posts.show", p.ID),
 		Comments: strconv.Itoa(comments),
 	}

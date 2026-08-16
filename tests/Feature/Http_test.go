@@ -23,10 +23,9 @@ import (
 //
 // It boots the whole application on a throwaway database rather than the
 // kernel-only helper the rest of this file uses, because the landing page of
-// this blog is the post listing and a listing reads a table. It used to use
-// tests.Kernel, which points at a connection that does not exist: the day "/"
-// stopped being a static page, this test started asserting that the error page
-// renders.
+// this blog is the post listing and a listing reads a table. tests.Kernel points
+// at a connection that does not exist, so a page that reads one would assert
+// only that the error page renders.
 func TestTheLandingPageRenders(t *testing.T) {
 	client, _ := tests.App(t)
 
@@ -36,21 +35,15 @@ func TestTheLandingPageRenders(t *testing.T) {
 	if !strings.Contains(body, "<!doctype html>") {
 		t.Error("the layout did not render around the page")
 	}
-	// The application name, and not a literal from the page.
+	// The application name, and not a literal from the page. A literal belongs to
+	// one landing page, and the starter kit replaces that page along with the
+	// layout and the controller -- so this would fail in every project that
+	// published the kit, for something the person did not break.
 	//
-	// This used to assert "Hello world", a phrase of the skeleton's own landing
-	// page -- and the starter kit replaces that page, along with the layout and
-	// the controller, exactly as `php artisan ui bootstrap --auth` does. The
-	// test then failed in every project that ran the command, on its first push,
-	// for something the person did not break.
-	//
-	// The app name survives the swap because both controllers pass it, and it
-	// still proves what this test is for: a value the controller was given
-	// reached the rendered page. A weaker assertion -- that the body is not
-	// empty -- would pass with the error page.
-	// APP_NAME is not set by tests.App, so the configuration default is what the
-	// controller was handed. What is proved here is that the value travelled --
-	// a weaker assertion, that the body is not empty, would pass with the error
+	// The app name survives the swap because both controllers pass it. APP_NAME
+	// is not set by tests.App, so the configuration default is what the
+	// controller was handed. What is proved here is that the value travelled -- a
+	// weaker assertion, that the body is not empty, would pass with the error
 	// page.
 	if !strings.Contains(body, "og:site_name") {
 		t.Error("the application name the controller was given did not reach the page")
@@ -62,10 +55,10 @@ func TestTheLandingPageRenders(t *testing.T) {
 	}
 }
 
-// TestTheRootRouteDoesNotSwallowEveryPath is the one place Go's router does not
-// behave like Laravel's: "GET /" matches every path below it, so the landing
-// page would answer for unknown URLs -- with 200, hiding the 404 and shadowing
-// any route that is not mounted in this environment.
+// TestTheRootRouteDoesNotSwallowEveryPath guards a property of Go's router:
+// "GET /" matches every path below it, so the landing page would answer for
+// unknown URLs -- with 200, hiding the 404 and shadowing any route that is not
+// mounted in this environment.
 func TestTheRootRouteDoesNotSwallowEveryPath(t *testing.T) {
 	k := tests.Kernel(t, config.EnvDev)
 
@@ -96,7 +89,7 @@ func TestTheHomeRouteIsAddressableByName(t *testing.T) {
 	}
 }
 
-// TestLoginFormIsServedWithACSRFToken is the phase 1 claim in one request: the
+// TestLoginFormIsServedWithACSRFToken proves the whole path in one request: the
 // application boots, routes, and hands the browser a token bound to its session.
 func TestLoginFormIsServedWithACSRFToken(t *testing.T) {
 	k := tests.Kernel(t, config.EnvDev)

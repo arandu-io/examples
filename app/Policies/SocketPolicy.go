@@ -18,8 +18,8 @@ import (
 // through as a public one.
 //
 // The tenant is NOT in this string. joaju puts it there, from the Grant, before
-// any policy sees the name (RULE 14) -- a channel name written with a tenant in
-// it would be a client choosing whose events it hears.
+// any policy sees the name -- a channel name written with a tenant in it would be
+// a client choosing whose events it hears.
 const ModerationChannel = broadcasting.PrivateChannelPrefix + "moderation"
 
 // AdminRole is the role the moderation area is kept to.
@@ -94,9 +94,9 @@ func (p SocketConnectPolicy) Can(_ context.Context, s security.Subject, a securi
 // hear.
 //
 // It runs for every channel, on every subscription, including the resubscription
-// a client makes after a reconnect. Subscribing is a read, and RULE 17 opens no
-// exception for reads -- a channel no policy ever saw is a channel whose contents
-// nobody decided anybody could have.
+// a client makes after a reconnect. Subscribing is a read, and a read is not an
+// exception -- a channel no policy ever saw is a channel whose contents nobody
+// decided anybody could have.
 //
 // # The signature the Pusher protocol carries is ignored, and that is the design
 //
@@ -104,9 +104,9 @@ func (p SocketConnectPolicy) Can(_ context.Context, s security.Subject, a securi
 // This application does not read it. It has a front door of its own -- the
 // session cookie, loaded before joaju sees the request -- so the subject on this
 // call was already identified once, and a signature that could ALSO allow a
-// subscription would be a second way to prove who is asking (RULE 9). The
-// signature is the fallback for a socket server standing alone with no session
-// to read, which is what cmd/joaju is and what this application is not.
+// subscription would be a second way to prove who is asking. The signature is
+// the fallback for a socket server standing alone with no session to read, which
+// this application is not.
 type SocketSubscribePolicy struct {
 	// Tenant is checked again here, and not inherited: a Grant issued for
 	// joaju.Connect is a Grant to hold a socket, never a Grant to listen, and a

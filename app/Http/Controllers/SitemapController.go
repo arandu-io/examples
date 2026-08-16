@@ -21,15 +21,15 @@ import (
 //
 // # It holds no system grant, and that is the point
 //
-// It used to. A crawler has no session, Authorize refuses an empty subject
-// before it consults a policy, and the only way to build a listing was
-// security.SystemGrant -- which skips the policy altogether. A public page
-// served with the instrument a scheduled job uses.
+// A crawler has no session, and Authorize refuses an empty subject before it
+// consults a policy -- so the shortcut is security.SystemGrant, which skips the
+// policy altogether and serves a public page with the instrument a scheduled job
+// uses.
 //
-// It reads as a guest now, through PostPolicy, and what that buys is not
+// This reads as a guest instead, through PostPolicy, and what that buys is not
 // tidiness: the sitemap cannot list something the policy would refuse to serve,
-// because one rule answers both questions. A system grant would have listed
-// every draft, and the crawler would have found a redirect behind each one.
+// because one rule answers both questions. A system grant would list every
+// draft, and the crawler would find a redirect behind each one.
 type SitemapController struct {
 	Controller
 

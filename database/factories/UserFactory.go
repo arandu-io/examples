@@ -1,10 +1,9 @@
 // Package factories builds domain objects with sensible values.
 //
 // A seeder or a test says what it cares about and the factory fills the rest.
-// What is different is that nothing here touches the database. A factory
-// returns a value; storing it is a repository call, and a repository call
-// needs a Grant -- so a factory cannot become a back door around the policy
-// that guards the table.
+// Nothing here touches the database: a factory returns a value, storing it is a
+// repository call, and a repository call needs a Grant -- so a factory cannot
+// become a back door around the policy that guards the table.
 package factories
 
 import (
@@ -28,7 +27,7 @@ type UserFactory struct {
 //
 // The tenant is required rather than defaulted. A factory that picks its own
 // would build rows nobody can reach, and the failure would only show up when
-// somebody tried to log in (RULE 14).
+// somebody tried to log in.
 func NewUserFactory(tenant string) UserFactory {
 	return UserFactory{tenant: tenant, roles: []string{models.RoleMember}}
 }
