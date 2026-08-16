@@ -100,6 +100,8 @@ func TestTheStylesheetCarriesTheClassesTheMarkupRenders(t *testing.T) {
 			"the swatches are squares"},
 		{".min-h-dvh", "the page column in layouts/app",
 			"a short page stops at its content and the footer floats halfway up the window"},
+		{".text-right", "every number in a components.StatCard, on admin/sockets",
+			"the counts sit against the left edge under headings that are right-aligned, so no column lines up with the one above it"},
 	} {
 		if !strings.Contains(stylesheet, want.class) {
 			t.Errorf("%s is not in the compiled stylesheet, and it is what draws %s: %s.\nRun `aru view:build`, and if that does not put it there, the file it is written in is not one the stylesheet declares as a source.",

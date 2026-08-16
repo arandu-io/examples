@@ -109,7 +109,7 @@ func (c *AdminController) Index(ctx *fhttp.Context) error {
 	}
 
 	return ctx.View("admin.index", admin.IndexData{
-		Chrome:    c.chrome(ctx, actor, token, "Dashboard"),
+		Chrome:    adminChrome(ctx, actor, token, "Dashboard"),
 		Published: published,
 		Drafts:    drafts,
 		Comments:  len(comments),
@@ -147,7 +147,7 @@ func (c *AdminController) Comments(ctx *fhttp.Context) error {
 	}
 
 	return ctx.View("admin.comments", admin.CommentsData{
-		Chrome:   c.chrome(ctx, actor, token, "Comments"),
+		Chrome:   adminChrome(ctx, actor, token, "Comments"),
 		Comments: rows,
 	})
 }
@@ -176,13 +176,18 @@ func (c *AdminController) Destroy(ctx *fhttp.Context) error {
 	return ctx.Redirect(ctx.URL("admin.comments"))
 }
 
-// chrome is the frame every screen of the area shares: the layout's state plus
-// which item of the sidebar is the current one.
+// adminChrome is the frame every screen of the area shares: the layout's state
+// plus which item of the sidebar is the current one.
 //
 // It is built here rather than in the layout because the layout is markup and
 // this is a decision -- which page you are on is something the router knows and
 // a template would have to guess at by comparing paths.
-func (c *AdminController) chrome(ctx *fhttp.Context, actor security.Subject, token, current string) admin.Chrome {
+//
+// A function and not a method, because the area has two controllers now and the
+// sidebar has to be the same on every screen of it. A second copy of these
+// twelve fields is a sidebar that loses an item on one page and nobody notices
+// until somebody cannot find it.
+func adminChrome(ctx *fhttp.Context, actor security.Subject, token, current string) admin.Chrome {
 	return admin.Chrome{
 		Page: view.Page{
 			Title: current + " · Admin",
@@ -201,5 +206,6 @@ func (c *AdminController) chrome(ctx *fhttp.Context, actor security.Subject, tok
 		Dashboard: ctx.URL("admin.index"),
 		Posts:     ctx.URL("posts.index"),
 		Comments:  ctx.URL("admin.comments"),
+		Sockets:   ctx.URL("admin.sockets"),
 	}
 }

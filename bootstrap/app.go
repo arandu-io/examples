@@ -27,10 +27,12 @@ import (
 	"github.com/arandu-io/framework/scheduler"
 	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/framework/view"
+	"github.com/arandu-io/joaju"
 	"github.com/arandu-io/queue"
 
 	controllers "github.com/arandu-io/examples/app/Http/Controllers"
 	authui "github.com/arandu-io/examples/app/Http/Controllers/Auth"
+	policies "github.com/arandu-io/examples/app/Policies"
 	providers "github.com/arandu-io/examples/app/Providers"
 	repositories "github.com/arandu-io/examples/app/Repositories"
 	services "github.com/arandu-io/examples/app/Services"
@@ -145,12 +147,19 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 	commentService := services.NewCommentService(repositories.NewCommentRepository(db))
 	categoryService := services.NewCategoryService(repositories.NewCategoryRepository(db))
 
+	socket, socketCounts := buildSocket(cfg.Auth.Tenant)
+
 	deps := routes.Deps{
 		Home:     controllers.NewHomeController(cfg.App.Name, sessions, csrf, authService, cfg.Auth.Tenant),
 		Post:     controllers.NewPostController(postService, commentService, categoryService, authService, sessions, csrf, cfg.App.Name, cfg.App.URL, cfg.Auth.Tenant),
 		Comment:  controllers.NewCommentController(commentService, sessions, csrf, cfg.App.Name, authService, cfg.Auth.Tenant),
 		Category: controllers.NewCategoryController(categoryService, sessions, csrf, cfg.App.Name, authService, cfg.Auth.Tenant),
 		Admin:    controllers.NewAdminController(postService, commentService, sessions, csrf),
+		// The operator's screen, and the socket server it reads. Both come from
+		// buildSocket, and they have to: the controller draws the counter the
+		// server was built with, and a second counter would read zero forever.
+		Sockets: controllers.NewSocketsController(socketCounts, policies.SocketMetricsPolicy{Tenant: cfg.Auth.Tenant}, sessions, csrf),
+		Socket:  socket,
 		// The origin the sitemap builds absolute URLs on. A sitemap of relative
 		// paths is refused by every crawler that reads one, and the value cannot
 		// come from the request: a Host header is what the client sent.
@@ -230,6 +239,69 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 	k.Register(sched)
 
 	return App{Kernel: k, Auth: authService, Scheduler: sched, Queue: queueStore, Mail: mailer}
+}
+
+// The two identifiers joaju's routes carry. They are not credentials.
+//
+// SocketAppKey is the {appKey} of GET /app/{appKey} -- the address a browser
+// opens, so it is in every page that connects and secret from nobody. SocketAppID
+// is the {appId} of the HTTP API, which this application does not mount (see
+// routes/web.go). They are constants rather than configuration because a value
+// nothing keeps secret and nothing varies is configuration for its own sake, and
+// because joaju has no app secret at all: this application authenticates at its
+// own front door, and the socket server reads the subject that door left behind.
+const (
+	SocketAppID  = "examples"
+	SocketAppKey = "examples-app-key"
+)
+
+// buildSocket wires the realtime server and the counter that watches it.
+//
+// It answers two values because they are one decision. joaju.Counter is a
+// joaju.Observer, and it counts nothing unless the server was built with it --
+// a server without one reads zero for the life of the process, and the screen
+// that draws those zeros looks exactly like a screen of a quiet deployment. So
+// the counter is created here, handed to ServerConfig.Observer AND to the
+// protocol (the two halves are announced from different places: sockets by the
+// server, channels by the protocol), and handed back for controllers.SocketsController
+// to read.
+//
+// The broker is the same value in two places for the same kind of reason: the
+// protocol reaches channels through it, and the server's own routes do too.
+//
+// There is no Relay. A relay is what makes several instances agree on who is
+// connected where, and this is one process -- with one, every number on the
+// operator's screen would be an answer for the fleet instead of for this binary,
+// and there is no fleet. It is the field to fill in the day there is one.
+func buildSocket(tenant string) (*joaju.Server, *joaju.Counter) {
+	counts := joaju.NewCounter()
+	broker := joaju.NewMemoryBroker()
+
+	// Both policies are this application's, in app/Policies, beside the policy
+	// that decides who may read a comment. Who may open a socket and who may
+	// hear a channel are business rules of the application that holds them, and
+	// joaju refuses to start without both rather than defaulting to something
+	// that admits everybody.
+	subscribe := policies.SocketSubscribePolicy{Tenant: tenant}
+
+	server, err := joaju.NewServer(joaju.ServerConfig{
+		AppID:     SocketAppID,
+		AppKey:    SocketAppKey,
+		Broker:    broker,
+		Connect:   policies.SocketConnectPolicy{Tenant: tenant},
+		Subscribe: subscribe,
+		Protocol:  joaju.NewPusher(broker, subscribe, joaju.PusherConfig{Observer: counts}),
+		Observer:  counts,
+	})
+	if err != nil {
+		// A config joaju refuses is a wiring mistake in the lines above, and it
+		// is refused at boot for the reason mailTransport refuses an unknown
+		// transport there: an application that starts without the piece it was
+		// built with is one that finds out from a customer.
+		panic("bootstrap: the socket server could not be built: " + err.Error())
+	}
+
+	return server, counts
 }
 
 // mailTransport picks the transport the configuration asked for.

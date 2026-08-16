@@ -33,6 +33,14 @@ func adminRoutes(r *fhttp.Router, d Deps) {
 	admin.Action("GET", "/{$}", d.Admin.Index).Name("admin.index")
 	admin.Action("GET", "/comments", d.Admin.Comments).Name("admin.comments")
 
+	// The socket counts, behind the same two middlewares as everything above --
+	// which is the floor and not the decision. What is different about this one
+	// is what it reads: the numbers of every tenant in the process, not this
+	// tenant's records. SocketMetricsPolicy is what allows that, on an action
+	// named for the crossing, and it runs in the handler like every other policy
+	// in this area. See SocketsController.
+	admin.Action("GET", "/sockets", d.Sockets.Index).Name("admin.sockets")
+
 	// Both change something, so both are POST. A moderation action reachable by
 	// GET is one a crawler fires by following a link, and "approve" is exactly
 	// the word a crawler would follow.

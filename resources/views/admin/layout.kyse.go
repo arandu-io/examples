@@ -27,6 +27,7 @@ type AdminLayout interface {
 	DashboardURL() string
 	PostsURL() string
 	CommentsURL() string
+	SocketsURL() string
 }
 
 // Chrome is what every screen of the moderation area hands this layout.
@@ -46,17 +47,24 @@ type Chrome struct {
 	Current string
 
 	// Where the sidebar points. They are fields, and the interface asks for
-	// methods, so the three below are what bridges them -- a field and a method
+	// methods, so the four below are what bridges them -- a field and a method
 	// cannot share a name in Go.
 	Dashboard string
 	Posts     string
 	Comments  string
+	// Sockets is the operator's screen: what the socket server is holding right
+	// now. It is in this sidebar because it answers only to the same signed-in
+	// administrator every other item here does, and nowhere else because a
+	// number about the process is not something a reader is shown.
+	Sockets string
 }
 
-// DashboardURL, PostsURL and CommentsURL are where the sidebar points.
+// DashboardURL, PostsURL, CommentsURL and SocketsURL are where the sidebar
+// points.
 func (c Chrome) DashboardURL() string { return c.Dashboard }
 func (c Chrome) PostsURL() string     { return c.Posts }
 func (c Chrome) CommentsURL() string  { return c.Comments }
+func (c Chrome) SocketsURL() string   { return c.Sockets }
 
 // Compile-time proof that this frame fits the layout above.
 var _ AdminLayout = Chrome{}
@@ -102,6 +110,7 @@ func (c Chrome) ItemClass(item string) string {
 				<a class="{{ .ItemClass("Dashboard") }}" href="{{ .DashboardURL() }}">Dashboard</a>
 				<a class="{{ .ItemClass("Comments") }}" href="{{ .CommentsURL() }}">Comments</a>
 				<a class="{{ .ItemClass("Posts") }}" href="{{ .PostsURL() }}">Posts</a>
+				<a class="{{ .ItemClass("Sockets") }}" href="{{ .SocketsURL() }}">Sockets</a>
 			</nav>
 
 			<form class="mt-6" method="post" action="{{ .LogoutLink() }}">
