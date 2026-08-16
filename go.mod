@@ -3,9 +3,9 @@ module github.com/arandu-io/examples
 go 1.26
 
 require (
-	github.com/arandu-io/database v0.2.0
-	github.com/arandu-io/database/pgx v0.1.0
-	github.com/arandu-io/database/sqlite v0.1.0
+	github.com/arandu-io/database v0.3.0
+	github.com/arandu-io/database/pgx v0.2.0
+	github.com/arandu-io/database/sqlite v0.2.0
 	github.com/arandu-io/framework v0.26.0
 	github.com/arandu-io/hesape v0.4.0
 	github.com/arandu-io/joaju v0.3.0
