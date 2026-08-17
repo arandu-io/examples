@@ -5,9 +5,10 @@
 // struct, so a wrong key is a compile error instead of a nil that surfaces on
 // the first request that happens to need it.
 //
-// The framework parses what the kernel itself needs (APP_KEY, APP_ENV, the
-// database block) and this package parses the rest. Config carries both, so
-// there is one value to pass around and one place to look.
+// The framework parses what the application is and what the kernel itself
+// needs -- the key, the environment, the URL, the time zone, the connection --
+// and this package parses the rest. Config carries both, so there is one value
+// to pass around and one place to look.
 package config
 
 import (
@@ -16,16 +17,18 @@ import (
 	"strings"
 	"time"
 
-	framework "github.com/arandu-io/framework/config"
+	"github.com/arandu-io/framework/foundation/bootstrap"
+	hconfig "github.com/arandu-io/hesape/config"
 )
 
 // Config is the whole configuration of this application: one field per file in
 // this directory, plus what the framework parsed for the kernel.
 type Config struct {
-	// Framework is what kernel.New takes. It is not a copy of the fields below:
-	// the kernel validates APP_KEY, APP_ENV and the connection at boot, and this
+	// Framework is what kernel.New takes: one struct per component, filled from
+	// the environment once. It is not a copy of the fields below -- the kernel
+	// validates the key, the environment and the connection at boot, and this
 	// package never re-reads them.
-	Framework framework.Config
+	Framework bootstrap.Configuration
 
 	App         App
 	Auth        Auth
@@ -44,7 +47,7 @@ type App struct {
 	// Name appears in the page title, in the log and in outgoing mail.
 	Name string
 	// Env gates everything that must never run outside development.
-	Env framework.Env
+	Env hconfig.Env
 	// URL is the canonical address, used to build absolute links from a job or
 	// a scheduled task, where there is no request to read the host from.
 	URL string
@@ -57,12 +60,12 @@ type App struct {
 }
 
 // IsDev reports whether the debug surface is allowed to exist.
-func (a App) IsDev() bool { return a.Env == framework.EnvDev }
+func (a App) IsDev() bool { return a.Env.Is(hconfig.EnvDev) }
 
 // Load reads the environment and returns the whole configuration, or the first
 // error. It fails at boot, never on a request.
 func Load() (Config, error) {
-	base, err := framework.Load()
+	base, err := bootstrap.LoadConfiguration()
 	if err != nil {
 		return Config{}, err
 	}
@@ -75,11 +78,17 @@ func Load() (Config, error) {
 // It is separate from Load so a test can supply a configuration without an
 // environment: the test writes the framework part it cares about and gets the
 // ten domains filled from their defaults.
-func From(base framework.Config) Config {
+//
+// The base has to be a validated one -- what Load returns, or one a test built
+// and put through App.Validate. The URL and the time zone are read off it
+// parsed rather than re-read from the environment, and neither is set on a base
+// nobody validated.
+func From(base bootstrap.Configuration) Config {
+	session := loadSession(base)
 	return Config{
 		Framework:   base,
 		App:         loadApp(base),
-		Auth:        loadAuth(),
+		Auth:        loadAuth(session.TTL),
 		Cache:       loadCache(base),
 		Database:    loadDatabase(base),
 		Filesystems: loadFilesystems(),
@@ -87,18 +96,18 @@ func From(base framework.Config) Config {
 		Mail:        loadMail(base),
 		Queue:       loadQueue(),
 		Services:    loadServices(),
-		Session:     loadSession(base),
+		Session:     session,
 	}
 }
 
-func loadApp(base framework.Config) App {
+func loadApp(base bootstrap.Configuration) App {
 	return App{
-		Name:     base.AppName,
-		Env:      base.Env,
-		URL:      env("APP_URL", "http://localhost:8080"),
-		HTTPAddr: base.HTTPAddr,
-		Timezone: env("APP_TIMEZONE", "UTC"),
-		Locale:   env("APP_LOCALE", "en"),
+		Name:     base.App.Name,
+		Env:      base.App.Env,
+		URL:      base.App.URL.String(),
+		HTTPAddr: base.App.HTTPAddr,
+		Timezone: base.App.Timezone.String(),
+		Locale:   base.App.Locale,
 	}
 }
 

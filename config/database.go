@@ -3,20 +3,21 @@ package config
 import (
 	"time"
 
-	framework "github.com/arandu-io/framework/config"
+	"github.com/arandu-io/framework/foundation/bootstrap"
+	"github.com/arandu-io/hesape/database"
 )
 
 // Database is the connection this application opens, and how its pool behaves.
 //
 // The connection itself is not re-read here. The framework already parsed
-// DB_CONNECTION and the rest, validated them and built the DSN, and a second
-// parse in the application would be a second answer to the same question. This
-// struct carries that value and adds what only the application decides: how big
-// the pool is and how long a connection lives.
+// DATABASE_URL, validated it and built the DSN, and a second parse in the
+// application would be a second answer to the same question. This struct
+// carries that value and adds what only the application decides: how big the
+// pool is and how long a connection lives.
 type Database struct {
 	// Connection is the engine and its credentials, as the framework parsed
 	// them. Hand it to the adapter; never build a DSN by hand.
-	Connection framework.DatabaseConfig
+	Connection database.Config
 
 	// MaxOpenConns caps the connections in flight. Zero means unlimited, which
 	// is how a burst of traffic turns into "too many connections" on the server
@@ -32,7 +33,7 @@ type Database struct {
 	ConnMaxLifetime time.Duration
 }
 
-func loadDatabase(base framework.Config) Database {
+func loadDatabase(base bootstrap.Configuration) Database {
 	return Database{
 		Connection:      base.Database,
 		MaxOpenConns:    envInt("DB_MAX_OPEN_CONNS", 25),

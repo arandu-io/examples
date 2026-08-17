@@ -27,8 +27,10 @@ type Auth struct {
 	// PasswordResetTTL is how long a reset link stays valid.
 	PasswordResetTTL time.Duration
 
-	// SessionTTL is how long a signed-in session lasts. It comes from the
-	// framework configuration, which is what the session store was built with.
+	// SessionTTL is how long a signed-in session lasts. It is Session.TTL, which
+	// is what the session store was built with: a login that expired for the
+	// store and not for this value is a login half the application still
+	// believes in.
 	SessionTTL time.Duration
 }
 
@@ -39,11 +41,11 @@ type Auth struct {
 // that picks its own tenant seeds data nobody can reach.
 func Tenant() string { return env("ARANDU_TENANT_ID", DefaultTenant) }
 
-func loadAuth() Auth {
+func loadAuth(sessionTTL time.Duration) Auth {
 	return Auth{
 		Tenant:            Tenant(),
 		PasswordMinLength: envInt("AUTH_PASSWORD_MIN_LENGTH", 12),
 		PasswordResetTTL:  envSeconds("AUTH_PASSWORD_RESET_TTL", time.Hour),
-		SessionTTL:        envSeconds("SESSION_TTL", 12*time.Hour),
+		SessionTTL:        sessionTTL,
 	}
 }

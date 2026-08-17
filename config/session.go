@@ -4,7 +4,8 @@ import (
 	"net/http"
 	"time"
 
-	framework "github.com/arandu-io/framework/config"
+	"github.com/arandu-io/framework/foundation/bootstrap"
+	hconfig "github.com/arandu-io/hesape/config"
 )
 
 // SessionDriver is where session state is kept.
@@ -55,21 +56,25 @@ type Session struct {
 	SameSite http.SameSite
 }
 
-func loadSession(base framework.Config) Session {
+func loadSession(base bootstrap.Configuration) Session {
 	driver := SessionDriver(env("SESSION_DRIVER", string(SessionMemory)))
-	url := env("REDIS_URL", base.RedisURL)
+	url := env("REDIS_URL", "")
 	if driver == SessionKV && url == "" {
 		driver = SessionMemory
 	}
 	return Session{
-		Driver:   driver,
-		URL:      url,
-		TTL:      base.SessionTTL,
-		CSRFTTL:  base.CSRFTTL,
+		Driver: driver,
+		URL:    url,
+		// Both lifetimes are read here, in seconds, like every other duration in
+		// this directory. The session store and the CSRF token are built by this
+		// application, out of these two values, so a second reader of either one
+		// would be a second answer to how long a login lasts.
+		TTL:      envSeconds("SESSION_TTL", 12*time.Hour),
+		CSRFTTL:  envSeconds("CSRF_TTL", 2*time.Hour),
 		Cookie:   env("SESSION_COOKIE", "arandu_session"),
 		Path:     env("SESSION_PATH", "/"),
 		Domain:   env("SESSION_DOMAIN", ""),
-		Secure:   envBool("SESSION_SECURE", base.Env != framework.EnvDev),
+		Secure:   envBool("SESSION_SECURE", !base.App.Env.Is(hconfig.EnvDev)),
 		SameSite: http.SameSiteLaxMode,
 	}
 }

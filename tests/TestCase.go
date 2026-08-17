@@ -15,16 +15,19 @@ import (
 	"context"
 	"database/sql"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/arandu-io/framework/arandutest"
-	"github.com/arandu-io/framework/config"
 	"github.com/arandu-io/framework/data"
+	fwbootstrap "github.com/arandu-io/framework/foundation/bootstrap"
 	"github.com/arandu-io/framework/kernel"
 	"github.com/arandu-io/framework/mail"
+	"github.com/arandu-io/hesape/config"
+	"github.com/arandu-io/hesape/database"
 
 	"github.com/arandu-io/examples/bootstrap"
 	appconfig "github.com/arandu-io/examples/config"
@@ -40,12 +43,20 @@ import (
 func Kernel(t *testing.T, env config.Env) *kernel.Kernel {
 	t.Helper()
 
-	cfg := config.Config{
-		AppName:  "test",
-		Env:      env,
-		HTTPAddr: ":0",
-		AppKey:   []byte("0123456789abcdef0123456789abcdef"),
-		Database: config.DatabaseConfig{
+	cfg := fwbootstrap.Configuration{
+		App: config.App{
+			Name:     "test",
+			Env:      env,
+			HTTPAddr: ":0",
+			// Absolute, with a scheme and a host, because App.Validate refuses
+			// anything else -- and because appconfig.From reads it parsed rather
+			// than from the environment.
+			URL:      &url.URL{Scheme: "http", Host: "localhost:8080"},
+			Timezone: time.UTC,
+			Locale:   "en",
+			Key:      []byte("0123456789abcdef0123456789abcdef"),
+		},
+		Database: database.Config{
 			Connection: data.DialectPostgres,
 			Host:       "127.0.0.1",
 			Port:       "1",
@@ -53,13 +64,19 @@ func Kernel(t *testing.T, env config.Env) *kernel.Kernel {
 			Username:   "user",
 			Password:   "pass",
 		},
-		SessionTTL: time.Hour,
-		CSRFTTL:    time.Hour,
-		LogLevel:   slog.LevelError,
-		Editor:     "vscode",
+		Observability: fwbootstrap.Observability{
+			LogLevel: slog.LevelError,
+			Editor:   "vscode",
+		},
 	}
-	if err := cfg.Validate(); err != nil {
+	// Both halves, because each validates its own and neither validates the
+	// other: an invalid key and an unreachable connection fail in different
+	// places, and a test that only checked one would boot on the other.
+	if err := cfg.App.Validate(); err != nil {
 		t.Fatalf("the test configuration is not valid: %v", err)
+	}
+	if err := cfg.Database.Validate(); err != nil {
+		t.Fatalf("the test connection is not valid: %v", err)
 	}
 
 	sqldb, err := sql.Open(cfg.Database.Connection.Driver(), cfg.Database.DSN())
