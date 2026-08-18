@@ -57,12 +57,24 @@ func (s *CommentService) Create(ctx context.Context, actor security.Subject, in 
 }
 
 // Get returns one comment.
+//
+// The first Authorize answers whether the caller may look at comments at all.
+// The second, with the row that was read, is the object-level decision — a
+// policy that branches on the entity's fields is only consulted the second time.
 func (s *CommentService) Get(ctx context.Context, actor security.Subject, id string) (models.Comment, error) {
 	g, err := security.Authorize(ctx, s.policy, actor, policies.CommentView, models.Comment{})
 	if err != nil {
 		return models.Comment{}, err
 	}
-	return s.repo.Find(ctx, g, id)
+
+	found, err := s.repo.Find(ctx, g, id)
+	if err != nil {
+		return models.Comment{}, err
+	}
+	if _, err := security.Authorize(ctx, s.policy, actor, policies.CommentView, found); err != nil {
+		return models.Comment{}, err
+	}
+	return found, nil
 }
 
 // List returns a page of comments.

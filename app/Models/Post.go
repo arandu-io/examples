@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"time"
@@ -79,5 +80,25 @@ func (p Post) LogValue() slog.Value {
 }
 
 // arandu:begin custom
-// MarshalJSON, computed fields and anything else about this entity go here.
+// MarshalJSON writes every field explicitly. No field reaches the wire without
+// being named here: a column added to the struct and left out below is private
+// by omission, which is what a database default is not.
+func (p Post) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		ID          string    `json:"id"`
+		TenantID    string    `json:"tenant_id"`
+		Title       string    `json:"title"`
+		Slug        string    `json:"slug"`
+		Body        string    `json:"body"`
+		CategoryID  string    `json:"category_id"`
+		Views       int       `json:"views"`
+		PublishedAt time.Time `json:"published_at"`
+		CreatedAt   time.Time `json:"created_at"`
+	}{
+		ID: p.ID, TenantID: p.TenantID, Title: p.Title, Slug: p.Slug,
+		Body: p.Body, CategoryID: p.CategoryID, Views: p.Views,
+		PublishedAt: p.PublishedAt, CreatedAt: p.CreatedAt,
+	})
+}
+
 // arandu:end custom

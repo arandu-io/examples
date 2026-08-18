@@ -56,12 +56,24 @@ func (s *CategoryService) Create(ctx context.Context, actor security.Subject, in
 }
 
 // Get returns one category.
+//
+// The first Authorize answers whether the caller may look at categories at all.
+// The second, with the row that was read, is the object-level decision — a
+// policy that branches on the entity's fields is only consulted the second time.
 func (s *CategoryService) Get(ctx context.Context, actor security.Subject, id string) (models.Category, error) {
 	g, err := security.Authorize(ctx, s.policy, actor, policies.CategoryView, models.Category{})
 	if err != nil {
 		return models.Category{}, err
 	}
-	return s.repo.Find(ctx, g, id)
+
+	found, err := s.repo.Find(ctx, g, id)
+	if err != nil {
+		return models.Category{}, err
+	}
+	if _, err := security.Authorize(ctx, s.policy, actor, policies.CategoryView, found); err != nil {
+		return models.Category{}, err
+	}
+	return found, nil
 }
 
 // List returns a page of categories.

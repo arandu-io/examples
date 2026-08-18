@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"time"
@@ -55,5 +56,22 @@ func (co Comment) LogValue() slog.Value {
 }
 
 // arandu:begin custom
-// MarshalJSON, computed fields and anything else about this entity go here.
+// MarshalJSON writes every field explicitly. No field reaches the wire without
+// being named here: a column added to the struct and left out below is private
+// by omission.
+func (co Comment) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		ID        string    `json:"id"`
+		TenantID  string    `json:"tenant_id"`
+		PostID    string    `json:"post_id"`
+		Author    string    `json:"author"`
+		Body      string    `json:"body"`
+		Approved  bool      `json:"approved"`
+		CreatedAt time.Time `json:"created_at"`
+	}{
+		ID: co.ID, TenantID: co.TenantID, PostID: co.PostId, Author: co.Author,
+		Body: co.Body, Approved: co.Approved, CreatedAt: co.CreatedAt,
+	})
+}
+
 // arandu:end custom
