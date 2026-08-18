@@ -1,6 +1,10 @@
 package migrations
 
-import "github.com/arandu-io/framework/kernel"
+import (
+	"context"
+
+	"github.com/arandu-io/hesape/database/migrations"
+)
 
 // addCategoryToPosts links a post to the section it belongs to.
 //
@@ -25,13 +29,35 @@ import "github.com/arandu-io/framework/kernel"
 // "deleting a section does not delete what was written in it" -- is the service's
 // (see CategoryService.Delete), where it can say why rather than answering with a
 // constraint name.
-var addCategoryToPosts = kernel.Migration{
-	ID: "2026_08_09_000003_add_category_to_posts",
-	Up: `ALTER TABLE posts ADD COLUMN category_id VARCHAR(255);
-	CREATE INDEX posts_category_idx ON posts (category_id, created_at, id);`,
-	// The index goes with the column, because the listing filtered by section is
-	// the query this whole migration exists for -- and without it that page is a
-	// full scan on the one table that grows forever.
-	Down: `DROP INDEX posts_category_idx;
-	ALTER TABLE posts DROP COLUMN category_id;`,
+type addCategoryToPosts struct{ migrations.BaseMigration }
+
+// Down is found by a type assertion when a rollback runs, so one with the
+// wrong signature would apply fine and simply never be reversed. This is the
+// line that turns that into a build failure.
+var _ migrations.ReversibleMigration = addCategoryToPosts{}
+
+// GetName is this migration's identity. The date prefix carries the order.
+func (addCategoryToPosts) GetName() string { return "2026_08_09_000003_add_category_to_posts" }
+
+// Up adds the column, then the index the listing filtered by section reads --
+// the query this whole migration exists for, and without it a full scan on the
+// one table that grows forever.
+func (addCategoryToPosts) Up(ctx context.Context, conn migrations.Connection) error {
+	if _, err := conn.Statement(ctx, `ALTER TABLE posts ADD COLUMN category_id VARCHAR(255)`, nil); err != nil {
+		return err
+	}
+
+	_, err := conn.Statement(ctx, `CREATE INDEX posts_category_idx ON posts (category_id, created_at, id)`, nil)
+	return err
+}
+
+// Down drops the index first: SQLite refuses to drop a column an index still
+// names.
+func (addCategoryToPosts) Down(ctx context.Context, conn migrations.Connection) error {
+	if _, err := conn.Statement(ctx, `DROP INDEX posts_category_idx`, nil); err != nil {
+		return err
+	}
+
+	_, err := conn.Statement(ctx, `ALTER TABLE posts DROP COLUMN category_id`, nil)
+	return err
 }

@@ -1,12 +1,16 @@
 package migrations
 
-import "github.com/arandu-io/framework/kernel"
+import (
+	"context"
+
+	"github.com/arandu-io/hesape/database/migrations"
+)
 
 // addViewsToPosts adds columns to the posts table.
 //
 // It is unexported and listed in All(), which is what the kernel collects. A
 // migration nobody lists is a migration nobody applies, and nothing anywhere
-// fails: Go does not report an unused package-level variable, so the schema is
+// fails: Go does not report an unused package-level type, so the schema is
 // simply never changed.
 //
 // Every column is added nullable, with no NOT NULL. During a rollout the
@@ -17,13 +21,26 @@ import "github.com/arandu-io/framework/kernel"
 // A migration is immutable once published. Changing this one after it has been
 // applied anywhere leaves two schemas in the world under one id -- alter it with
 // a new migration instead.
-var addViewsToPosts = kernel.Migration{
-	ID: "2026_08_09_000001_add_views_to_posts",
-	Up: `ALTER TABLE posts ADD COLUMN views INTEGER;
-`,
-	// Dropping the column drops the index with it on all three engines, which is
-	// why there is no DROP INDEX here: its spelling is the one thing SQLite,
-	// PostgreSQL and MySQL do not agree about.
-	Down: `ALTER TABLE posts DROP COLUMN views;
-`,
+type addViewsToPosts struct{ migrations.BaseMigration }
+
+// Down is found by a type assertion when a rollback runs, so one with the
+// wrong signature would apply fine and simply never be reversed. This is the
+// line that turns that into a build failure.
+var _ migrations.ReversibleMigration = addViewsToPosts{}
+
+// GetName is this migration's identity. The date prefix carries the order.
+func (addViewsToPosts) GetName() string { return "2026_08_09_000001_add_views_to_posts" }
+
+// Up adds the column.
+func (addViewsToPosts) Up(ctx context.Context, conn migrations.Connection) error {
+	_, err := conn.Statement(ctx, `ALTER TABLE posts ADD COLUMN views INTEGER`, nil)
+	return err
+}
+
+// Down drops the column, and the index with it on all three engines -- which is
+// why there is no DROP INDEX here: its spelling is the one thing SQLite,
+// PostgreSQL and MySQL do not agree about.
+func (addViewsToPosts) Down(ctx context.Context, conn migrations.Connection) error {
+	_, err := conn.Statement(ctx, `ALTER TABLE posts DROP COLUMN views`, nil)
+	return err
 }
