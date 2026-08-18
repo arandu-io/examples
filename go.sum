@@ -12,8 +12,8 @@ github.com/arandu-io/joaju v0.3.0 h1:PNgU5YeTS0my4mpzsZGL5y2LB1v1xEfitf3I4SjswPI
 github.com/arandu-io/joaju v0.3.0/go.mod h1:xIjqfR2Vmsvzi/1TGhsuGDRIpxVUD/Fb0TqIkyiLrQs=
 github.com/arandu-io/kyse v0.8.0 h1:napijEZGxr5KxGCmIeh/7xZGskehTTE2GVZTwBnGMNY=
 github.com/arandu-io/kyse v0.8.0/go.mod h1:dt7z5kSchwlLOHLB7LIUj9VGdAkGNCvaX0czjh1c9fI=
-github.com/arandu-io/queue v0.3.0 h1:A3AjhR1bEvfO9UM4SH3c4cxddKeBmWa/ghdNScWovMQ=
-github.com/arandu-io/queue v0.3.0/go.mod h1:jM+sawPAdcb0GNHLDG+p2CVVEIB3nl9+7okv4tsY4kw=
+github.com/arandu-io/queue v0.5.0 h1:Z/AedzFLjfnPngGycmy3WhQ+Z5O2dwlyQQngzzKxHJM=
+github.com/arandu-io/queue v0.5.0/go.mod h1:b7/2aXWn5r67ip1TvaYASwWS1j+kM49V/cxK9INhFfY=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
