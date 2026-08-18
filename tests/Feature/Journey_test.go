@@ -10,6 +10,7 @@ import (
 	"github.com/arandu-io/framework/arandutest"
 	"github.com/arandu-io/framework/data"
 
+	"github.com/arandu-io/examples/bootstrap"
 	"github.com/arandu-io/examples/tests"
 )
 
@@ -287,14 +288,19 @@ var (
 )
 
 // seedJourneyPost writes one published article to have somewhere to comment.
+//
+// The tenant is written explicitly, and it is the one the application serves. A
+// row inserted without it is a row every query filters out, so the journey would
+// fail at the first page with "not found" rather than at the assertion that
+// means something.
 func seedJourneyPost(t *testing.T, db *data.DB) string {
 	t.Helper()
 
 	const id = "00000000-0000-4000-8000-0000000000bb"
 	_, err := db.ExecContext(context.Background(),
-		`INSERT INTO posts (id, title, slug, body, category_id, views, published_at, created_at)
-		 VALUES (?, ?, ?, ?, NULL, 0, ?, ?)`,
-		id, "Something to answer", "something-to-answer", "The body.",
+		`INSERT INTO posts (id, tenant_id, title, slug, body, category_id, views, published_at, created_at)
+		 VALUES (?, ?, ?, ?, ?, NULL, 0, ?, ?)`,
+		id, bootstrap.Tenant(), "Something to answer", "something-to-answer", "The body.",
 		time.Now().Add(-time.Hour), time.Now())
 	if err != nil {
 		t.Fatalf("seeding a post: %v", err)

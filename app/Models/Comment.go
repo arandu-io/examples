@@ -14,7 +14,13 @@ import (
 // List included -- takes a security.Grant that only a Policy can issue. The
 // model is data; the Policy is the door.
 type Comment struct {
-	ID        string
+	ID string
+
+	// TenantID is whose comment this is. It is written from the Grant and never
+	// from a request, and it is not a mutable field: moving a row between
+	// tenants is not an update.
+	TenantID string
+
 	PostId    string
 	Author    string
 	Body      string
@@ -44,6 +50,7 @@ var (
 func (co Comment) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("id", co.ID),
+		slog.String("tenant", co.TenantID),
 	)
 }
 

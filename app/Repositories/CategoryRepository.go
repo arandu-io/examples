@@ -41,15 +41,20 @@ func NewCategoryRepository(db *data.DB) *CategoryRepository { return &CategoryRe
 // Compile-time proof of the contract.
 var _ data.Repository[models.Category, string] = (*CategoryRepository)(nil)
 
-const categoryColumns = `id, name, slug, description, created_at`
+const categoryColumns = `id, tenant_id, name, slug, description, created_at`
 
-// Find returns one category by id.
+// Find returns one category by id, scoped to the grant's tenant.
 func (r *CategoryRepository) Find(ctx context.Context, g security.Grant, id string) (models.Category, error) {
 	if err := g.Check(policies.CategoryView); err != nil {
 		return models.Category{}, err
 	}
+	// The tenant comes from the Grant, never from the request. An id belonging
+	// to another tenant matches nothing, so it answers ErrCategoryNotFound
+	// rather than the row -- which is the same answer an id that does not exist
+	// gets, and telling the two apart is itself a leak.
 	row := r.db.QueryRowContext(ctx,
-		`SELECT `+categoryColumns+` FROM categories WHERE id = ?`, id)
+		`SELECT `+categoryColumns+` FROM categories WHERE id = ? AND tenant_id = ?`,
+		id, data.Tenant(g))
 	return r.scan(row)
 }
 
@@ -63,7 +68,7 @@ var categorySortable = map[string]string{
 	"description": "description",
 }
 
-// List returns a page of categories.
+// List returns a page of categories in the grant's tenant.
 //
 // Pagination is keyset based: OFFSET grows more expensive with every page and
 // skips rows when data changes underneath it.
@@ -88,13 +93,17 @@ func (r *CategoryRepository) List(ctx context.Context, g security.Grant, q data.
 		limit = categoryMaxLimit
 	}
 
-	query := `SELECT ` + categoryColumns + ` FROM categories WHERE 1 = 1`
-	var args []any
+	query := `SELECT ` + categoryColumns + ` FROM categories WHERE tenant_id = ?`
+	args := []any{data.Tenant(g)}
 	if q.Cursor != "" {
-		// See the tenant branch: the predicate follows q.Sort, not created_at.
-		query += ` AND (` + column + ` > (SELECT ` + column + ` FROM categories WHERE id = ?)
-		            OR (` + column + ` = (SELECT ` + column + ` FROM categories WHERE id = ?) AND id > ?))`
-		args = append(args, q.Cursor, q.Cursor, q.Cursor)
+		// The predicate names the column the ORDER BY names, and it is scoped
+		// like the outer query: a cursor is the id of the last row read, it
+		// arrives from the client, and a subquery that resolved it without the
+		// tenant would let an id from another tenant decide where this page
+		// starts.
+		query += ` AND (` + column + ` > (SELECT ` + column + ` FROM categories WHERE id = ? AND tenant_id = ?)
+		            OR (` + column + ` = (SELECT ` + column + ` FROM categories WHERE id = ? AND tenant_id = ?) AND id > ?))`
+		args = append(args, q.Cursor, args[0], q.Cursor, args[0], q.Cursor)
 	}
 	query += ` ORDER BY ` + column + `, id LIMIT ?`
 	args = append(args, limit)
@@ -131,11 +140,16 @@ func (r *CategoryRepository) Create(ctx context.Context, g security.Grant, ca mo
 			return models.Category{}, err
 		}
 	}
+	// Overwritten rather than trusted. Whatever the caller put in the field, the
+	// row is filed under the tenant that was authorized -- a candidate arrives
+	// from a request body, and a request that could choose its tenant could
+	// write into somebody else's.
+	ca.TenantID = data.Tenant(g)
 	ca.CreatedAt = time.Now().UTC()
 
 	_, err = r.db.ExecContext(ctx,
-		`INSERT INTO categories (`+categoryColumns+`) VALUES (?, ?, ?, ?, ?)`,
-		ca.ID, ca.Name, ca.Slug, ca.Description, ca.CreatedAt)
+		`INSERT INTO categories (`+categoryColumns+`) VALUES (?, ?, ?, ?, ?, ?)`,
+		ca.ID, ca.TenantID, ca.Name, ca.Slug, ca.Description, ca.CreatedAt)
 	if err != nil {
 		if r.conflict(err) {
 			return models.Category{}, models.ErrCategoryConflict
@@ -145,15 +159,17 @@ func (r *CategoryRepository) Create(ctx context.Context, g security.Grant, ca mo
 	return ca, nil
 }
 
-// Update writes the mutable fields.
+// Update writes the mutable fields. The tenant is not one of them: moving a row
+// between tenants is not an update, it is a migration.
 func (r *CategoryRepository) Update(ctx context.Context, g security.Grant, ca models.Category) (models.Category, error) {
 	if err := g.Check(policies.CategoryUpdate); err != nil {
 		return models.Category{}, err
 	}
 
 	res, err := r.db.ExecContext(ctx,
-		`UPDATE categories SET name = ?, slug = ?, description = ? WHERE id = ?`,
-		ca.Name, ca.Slug, ca.Description, ca.ID)
+		`UPDATE categories SET name = ?, slug = ?, description = ?
+		 WHERE id = ? AND tenant_id = ?`,
+		ca.Name, ca.Slug, ca.Description, ca.ID, data.Tenant(g))
 	if err != nil {
 		if r.conflict(err) {
 			return models.Category{}, models.ErrCategoryConflict
@@ -166,13 +182,13 @@ func (r *CategoryRepository) Update(ctx context.Context, g security.Grant, ca mo
 	return ca, nil
 }
 
-// Delete removes one category.
+// Delete removes one category within the grant's tenant.
 func (r *CategoryRepository) Delete(ctx context.Context, g security.Grant, id string) error {
 	if err := g.Check(policies.CategoryDelete); err != nil {
 		return err
 	}
 	res, err := r.db.ExecContext(ctx,
-		`DELETE FROM categories WHERE id = ?`, id)
+		`DELETE FROM categories WHERE id = ? AND tenant_id = ?`, id, data.Tenant(g))
 	if err != nil {
 		return err
 	}
@@ -196,14 +212,22 @@ func (r *CategoryRepository) Health(ctx context.Context) error { return r.db.Pin
 // repository of the application shares this package, and a second module
 // declaring rowScanner would not compile.
 func (r *CategoryRepository) scan(row interface{ Scan(dest ...any) error }) (models.Category, error) {
-	var ca models.Category
-	err := row.Scan(&ca.ID, &ca.Name, &ca.Slug, &ca.Description, &ca.CreatedAt)
+	var (
+		ca     models.Category
+		tenant sql.NullString
+	)
+	err := row.Scan(&ca.ID, &tenant, &ca.Name, &ca.Slug, &ca.Description, &ca.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return models.Category{}, models.ErrCategoryNotFound
 	}
 	if err != nil {
 		return models.Category{}, err
 	}
+	// The column arrived in a later migration and is nullable, so a plain
+	// *string scan is an error on every row written before it. Those rows read
+	// back with an empty tenant, which no Grant carries, so no query returns
+	// them.
+	ca.TenantID = tenant.String
 	return ca, nil
 }
 
@@ -239,12 +263,17 @@ func (r *CategoryRepository) FindBySlug(ctx context.Context, g security.Grant, s
 	if err := g.Check(policies.CategoryView); err != nil {
 		return models.Category{}, err
 	}
+	// A slug is unique per tenant and not globally, so the tenant is part of the
+	// lookup rather than a check on the row that came back. A slug is also the
+	// half of the address a reader can type, which makes this the query most
+	// likely to be handed another tenant's value.
 	row := r.db.QueryRowContext(ctx,
-		`SELECT `+categoryColumns+` FROM categories WHERE slug = ?`, r.normalize(slug))
+		`SELECT `+categoryColumns+` FROM categories WHERE slug = ? AND tenant_id = ?`,
+		r.normalize(slug), data.Tenant(g))
 	return r.scan(row)
 }
 
-// All returns every category, ordered by name.
+// All returns every category of the grant's tenant, ordered by name.
 //
 // No cursor and no limit, deliberately. A blog has a dozen sections, the
 // navigation shows all of them, and paging a navigation is a navigation that
@@ -255,7 +284,8 @@ func (r *CategoryRepository) All(ctx context.Context, g security.Grant) ([]model
 		return nil, err
 	}
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT `+categoryColumns+` FROM categories ORDER BY name, id LIMIT ?`, categoryMaxLimit)
+		`SELECT `+categoryColumns+` FROM categories WHERE tenant_id = ? ORDER BY name, id LIMIT ?`,
+		data.Tenant(g), categoryMaxLimit)
 	if err != nil {
 		return nil, err
 	}

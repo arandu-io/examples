@@ -14,7 +14,13 @@ import (
 // List included -- takes a security.Grant that only a Policy can issue. The
 // model is data; the Policy is the door.
 type Post struct {
-	ID    string
+	ID string
+
+	// TenantID is whose post this is. It is written from the Grant and never
+	// from a request, and it is not a mutable field: moving a row between
+	// tenants is not an update.
+	TenantID string
+
 	Title string
 	Slug  string
 	Body  string
@@ -68,6 +74,7 @@ var (
 func (p Post) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("id", p.ID),
+		slog.String("tenant", p.TenantID),
 	)
 }
 

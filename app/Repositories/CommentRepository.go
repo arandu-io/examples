@@ -41,15 +41,20 @@ func NewCommentRepository(db *data.DB) *CommentRepository { return &CommentRepos
 // Compile-time proof of the contract.
 var _ data.Repository[models.Comment, string] = (*CommentRepository)(nil)
 
-const commentColumns = `id, post_id, author, body, approved, created_at`
+const commentColumns = `id, tenant_id, post_id, author, body, approved, created_at`
 
-// Find returns one comment by id.
+// Find returns one comment by id, scoped to the grant's tenant.
 func (r *CommentRepository) Find(ctx context.Context, g security.Grant, id string) (models.Comment, error) {
 	if err := g.Check(policies.CommentView); err != nil {
 		return models.Comment{}, err
 	}
+	// The tenant comes from the Grant, never from the request. An id belonging
+	// to another tenant matches nothing, so it answers ErrCommentNotFound rather
+	// than the row -- which is the same answer an id that does not exist gets,
+	// and telling the two apart is itself a leak.
 	row := r.db.QueryRowContext(ctx,
-		`SELECT `+commentColumns+` FROM comments WHERE id = ?`, id)
+		`SELECT `+commentColumns+` FROM comments WHERE id = ? AND tenant_id = ?`,
+		id, data.Tenant(g))
 	return r.scan(row)
 }
 
@@ -63,7 +68,7 @@ var commentSortable = map[string]string{
 	"body":       "body",
 }
 
-// List returns a page of comments.
+// List returns a page of comments in the grant's tenant.
 //
 // Pagination is keyset based: OFFSET grows more expensive with every page and
 // skips rows when data changes underneath it.
@@ -88,13 +93,17 @@ func (r *CommentRepository) List(ctx context.Context, g security.Grant, q data.Q
 		limit = commentMaxLimit
 	}
 
-	query := `SELECT ` + commentColumns + ` FROM comments WHERE 1 = 1`
-	var args []any
+	query := `SELECT ` + commentColumns + ` FROM comments WHERE tenant_id = ?`
+	args := []any{data.Tenant(g)}
 	if q.Cursor != "" {
-		// See the tenant branch: the predicate follows q.Sort, not created_at.
-		query += ` AND (` + column + ` > (SELECT ` + column + ` FROM comments WHERE id = ?)
-		            OR (` + column + ` = (SELECT ` + column + ` FROM comments WHERE id = ?) AND id > ?))`
-		args = append(args, q.Cursor, q.Cursor, q.Cursor)
+		// The predicate names the column the ORDER BY names, and it is scoped
+		// like the outer query: a cursor is the id of the last row read, it
+		// arrives from the client, and a subquery that resolved it without the
+		// tenant would let an id from another tenant decide where this page
+		// starts.
+		query += ` AND (` + column + ` > (SELECT ` + column + ` FROM comments WHERE id = ? AND tenant_id = ?)
+		            OR (` + column + ` = (SELECT ` + column + ` FROM comments WHERE id = ? AND tenant_id = ?) AND id > ?))`
+		args = append(args, q.Cursor, args[0], q.Cursor, args[0], q.Cursor)
 	}
 	query += ` ORDER BY ` + column + `, id LIMIT ?`
 	args = append(args, limit)
@@ -129,11 +138,14 @@ func (r *CommentRepository) ForPost(ctx context.Context, g security.Grant, postI
 
 	const query = `SELECT ` + commentColumns + `
 		FROM comments
-		WHERE post_id = ?
+		WHERE tenant_id = ? AND post_id = ?
 		ORDER BY created_at, id
 		LIMIT ?`
 
-	rows, err := r.db.QueryContext(ctx, query, postID, commentMaxLimit)
+	// The post id arrives from the address bar, so the tenant is scoped as well
+	// as the thread: without it, a post id from another tenant would return its
+	// conversation.
+	rows, err := r.db.QueryContext(ctx, query, data.Tenant(g), postID, commentMaxLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -165,11 +177,16 @@ func (r *CommentRepository) Create(ctx context.Context, g security.Grant, co mod
 			return models.Comment{}, err
 		}
 	}
+	// Overwritten rather than trusted. Whatever the caller put in the field, the
+	// row is filed under the tenant that was authorized -- a candidate arrives
+	// from a request body, and a request that could choose its tenant could
+	// write into somebody else's.
+	co.TenantID = data.Tenant(g)
 	co.CreatedAt = time.Now().UTC()
 
 	_, err = r.db.ExecContext(ctx,
-		`INSERT INTO comments (`+commentColumns+`) VALUES (?, ?, ?, ?, ?, ?)`,
-		co.ID, co.PostId, co.Author, co.Body, co.Approved, co.CreatedAt)
+		`INSERT INTO comments (`+commentColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		co.ID, co.TenantID, co.PostId, co.Author, co.Body, co.Approved, co.CreatedAt)
 	if err != nil {
 		if r.conflict(err) {
 			return models.Comment{}, models.ErrCommentConflict
@@ -179,15 +196,17 @@ func (r *CommentRepository) Create(ctx context.Context, g security.Grant, co mod
 	return co, nil
 }
 
-// Update writes the mutable fields.
+// Update writes the mutable fields. The tenant is not one of them: moving a row
+// between tenants is not an update, it is a migration.
 func (r *CommentRepository) Update(ctx context.Context, g security.Grant, co models.Comment) (models.Comment, error) {
 	if err := g.Check(policies.CommentUpdate); err != nil {
 		return models.Comment{}, err
 	}
 
 	res, err := r.db.ExecContext(ctx,
-		`UPDATE comments SET post_id = ?, author = ?, body = ?, approved = ? WHERE id = ?`,
-		co.PostId, co.Author, co.Body, co.Approved, co.ID)
+		`UPDATE comments SET post_id = ?, author = ?, body = ?, approved = ?
+		 WHERE id = ? AND tenant_id = ?`,
+		co.PostId, co.Author, co.Body, co.Approved, co.ID, data.Tenant(g))
 	if err != nil {
 		if r.conflict(err) {
 			return models.Comment{}, models.ErrCommentConflict
@@ -200,13 +219,13 @@ func (r *CommentRepository) Update(ctx context.Context, g security.Grant, co mod
 	return co, nil
 }
 
-// Delete removes one comment.
+// Delete removes one comment within the grant's tenant.
 func (r *CommentRepository) Delete(ctx context.Context, g security.Grant, id string) error {
 	if err := g.Check(policies.CommentDelete); err != nil {
 		return err
 	}
 	res, err := r.db.ExecContext(ctx,
-		`DELETE FROM comments WHERE id = ?`, id)
+		`DELETE FROM comments WHERE id = ? AND tenant_id = ?`, id, data.Tenant(g))
 	if err != nil {
 		return err
 	}
@@ -230,14 +249,22 @@ func (r *CommentRepository) Health(ctx context.Context) error { return r.db.Ping
 // repository of the application shares this package, and a second module
 // declaring rowScanner would not compile.
 func (r *CommentRepository) scan(row interface{ Scan(dest ...any) error }) (models.Comment, error) {
-	var co models.Comment
-	err := row.Scan(&co.ID, &co.PostId, &co.Author, &co.Body, &co.Approved, &co.CreatedAt)
+	var (
+		co     models.Comment
+		tenant sql.NullString
+	)
+	err := row.Scan(&co.ID, &tenant, &co.PostId, &co.Author, &co.Body, &co.Approved, &co.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return models.Comment{}, models.ErrCommentNotFound
 	}
 	if err != nil {
 		return models.Comment{}, err
 	}
+	// The column arrived in a later migration and is nullable, so a plain
+	// *string scan is an error on every row written before it. Those rows read
+	// back with an empty tenant, which no Grant carries, so no query returns
+	// them.
+	co.TenantID = tenant.String
 	return co, nil
 }
 
@@ -283,11 +310,15 @@ func (r *CommentRepository) PublicForPost(ctx context.Context, g security.Grant,
 
 	const query = `SELECT ` + commentColumns + `
 		FROM comments
-		WHERE post_id = ? AND (approved = ? OR author = ?)
+		WHERE tenant_id = ? AND post_id = ? AND (approved = ? OR author = ?)
 		ORDER BY created_at, id
 		LIMIT ?`
 
-	rows, err := r.db.QueryContext(ctx, query, postID, true, reader, commentMaxLimit)
+	// The tenant is the outermost predicate, ahead of the OR. Inside a
+	// parenthesised OR it would apply to one branch and not the other, and the
+	// branch that lost it -- `author = ?` -- is the one that returns rows
+	// nobody has approved.
+	rows, err := r.db.QueryContext(ctx, query, data.Tenant(g), postID, true, reader, commentMaxLimit)
 	if err != nil {
 		return nil, err
 	}

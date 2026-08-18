@@ -12,6 +12,7 @@ import (
 	"github.com/arandu-io/framework/data"
 	"github.com/arandu-io/framework/mail"
 
+	"github.com/arandu-io/examples/bootstrap"
 	"github.com/arandu-io/examples/tests"
 )
 
@@ -237,14 +238,18 @@ func verificationLink(t *testing.T, box *mail.Array) string {
 // Straight SQL, which is the one place this project allows it: a test fixture is
 // not an application code path, and going through the repository would mean
 // building a Grant to prove something that has nothing to do with grants.
+//
+// The tenant is still written, and it is the one the application serves. Straight
+// SQL skips the Grant, not the schema: a row inserted without a tenant is a row
+// every query filters out, so the page under test answers 404.
 func seedOnePost(t *testing.T, db *data.DB) string {
 	t.Helper()
 
 	const id = "00000000-0000-4000-8000-0000000000aa"
 	_, err := db.ExecContext(context.Background(),
-		`INSERT INTO posts (id, title, slug, body, category_id, views, published_at, created_at)
-		 VALUES (?, ?, ?, ?, NULL, 0, ?, ?)`,
-		id, "A post to answer", "a-post-to-answer", "The body.",
+		`INSERT INTO posts (id, tenant_id, title, slug, body, category_id, views, published_at, created_at)
+		 VALUES (?, ?, ?, ?, ?, NULL, 0, ?, ?)`,
+		id, bootstrap.Tenant(), "A post to answer", "a-post-to-answer", "The body.",
 		time.Now().Add(-time.Hour), time.Now())
 	if err != nil {
 		t.Fatalf("seeding a post: %v", err)

@@ -14,7 +14,13 @@ import (
 // List included -- takes a security.Grant that only a Policy can issue. The
 // model is data; the Policy is the door.
 type Category struct {
-	ID          string
+	ID string
+
+	// TenantID is whose section this is. It is written from the Grant and never
+	// from a request, and it is not a mutable field: moving a row between
+	// tenants is not an update.
+	TenantID string
+
 	Name        string
 	Slug        string
 	Description string
@@ -43,6 +49,7 @@ var (
 func (ca Category) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("id", ca.ID),
+		slog.String("tenant", ca.TenantID),
 	)
 }
 

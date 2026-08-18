@@ -41,15 +41,20 @@ func NewPostRepository(db *data.DB) *PostRepository { return &PostRepository{db:
 // Compile-time proof of the contract.
 var _ data.Repository[models.Post, string] = (*PostRepository)(nil)
 
-const postColumns = `id, title, slug, body, category_id, views, published_at, created_at`
+const postColumns = `id, tenant_id, title, slug, body, category_id, views, published_at, created_at`
 
-// Find returns one post by id.
+// Find returns one post by id, scoped to the grant's tenant.
 func (r *PostRepository) Find(ctx context.Context, g security.Grant, id string) (models.Post, error) {
 	if err := g.Check(policies.PostView); err != nil {
 		return models.Post{}, err
 	}
+	// The tenant comes from the Grant, never from the request. An id belonging
+	// to another tenant matches nothing, so it answers ErrPostNotFound rather
+	// than the row -- which is the same answer an id that does not exist gets,
+	// and telling the two apart is itself a leak.
 	row := r.db.QueryRowContext(ctx,
-		`SELECT `+postColumns+` FROM posts WHERE id = ?`, id)
+		`SELECT `+postColumns+` FROM posts WHERE id = ? AND tenant_id = ?`,
+		id, data.Tenant(g))
 	return r.scan(row)
 }
 
@@ -64,7 +69,7 @@ var postSortable = map[string]string{
 	"published_at": "published_at",
 }
 
-// List returns a page of posts.
+// List returns a page of posts in the grant's tenant.
 //
 // Pagination is keyset based: OFFSET grows more expensive with every page and
 // skips rows when data changes underneath it.
@@ -89,13 +94,17 @@ func (r *PostRepository) List(ctx context.Context, g security.Grant, q data.Quer
 		limit = postMaxLimit
 	}
 
-	query := `SELECT ` + postColumns + ` FROM posts WHERE 1 = 1`
-	var args []any
+	query := `SELECT ` + postColumns + ` FROM posts WHERE tenant_id = ?`
+	args := []any{data.Tenant(g)}
 	if q.Cursor != "" {
-		// See the tenant branch: the predicate follows q.Sort, not created_at.
-		query += ` AND (` + column + ` > (SELECT ` + column + ` FROM posts WHERE id = ?)
-		            OR (` + column + ` = (SELECT ` + column + ` FROM posts WHERE id = ?) AND id > ?))`
-		args = append(args, q.Cursor, q.Cursor, q.Cursor)
+		// The predicate names the column the ORDER BY names, and it is scoped
+		// like the outer query: a cursor is the id of the last row read, it
+		// arrives from the client, and a subquery that resolved it without the
+		// tenant would let an id from another tenant decide where this page
+		// starts.
+		query += ` AND (` + column + ` > (SELECT ` + column + ` FROM posts WHERE id = ? AND tenant_id = ?)
+		            OR (` + column + ` = (SELECT ` + column + ` FROM posts WHERE id = ? AND tenant_id = ?) AND id > ?))`
+		args = append(args, q.Cursor, args[0], q.Cursor, args[0], q.Cursor)
 	}
 	query += ` ORDER BY ` + column + `, id LIMIT ?`
 	args = append(args, limit)
@@ -117,7 +126,8 @@ func (r *PostRepository) List(ctx context.Context, g security.Grant, q data.Quer
 	return out, rows.Err()
 }
 
-// Published is the public listing: what is out, newest first.
+// Published is the public listing of the grant's tenant: what is out, newest
+// first.
 //
 // A query of its own rather than List with a filter. The predicate is what makes
 // a draft unreachable rather than merely unlisted -- a filter applied after the
@@ -137,7 +147,7 @@ func (r *PostRepository) Published(ctx context.Context, g security.Grant, limit 
 
 	const query = `SELECT ` + postColumns + `
 		FROM posts
-		WHERE published_at IS NOT NULL AND published_at > ?
+		WHERE tenant_id = ? AND published_at IS NOT NULL AND published_at > ?
 		ORDER BY published_at DESC, id
 		LIMIT ?`
 
@@ -145,7 +155,7 @@ func (r *PostRepository) Published(ctx context.Context, g security.Grant, limit 
 	// sitemap. PublishedAt is a time.Time, not a pointer, so "not published" is
 	// the zero value -- which the driver writes as 0001-01-01, a real timestamp
 	// that is very much not null. The predicate has to say what it means.
-	rows, err := r.db.QueryContext(ctx, query, time.Time{}, limit)
+	rows, err := r.db.QueryContext(ctx, query, data.Tenant(g), time.Time{}, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -177,11 +187,16 @@ func (r *PostRepository) Create(ctx context.Context, g security.Grant, p models.
 			return models.Post{}, err
 		}
 	}
+	// Overwritten rather than trusted. Whatever the caller put in the field, the
+	// row is filed under the tenant that was authorized -- a candidate arrives
+	// from a request body, and a request that could choose its tenant could
+	// write into somebody else's.
+	p.TenantID = data.Tenant(g)
 	p.CreatedAt = time.Now().UTC()
 
 	_, err = r.db.ExecContext(ctx,
-		`INSERT INTO posts (`+postColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.ID, p.Title, p.Slug, p.Body, nullID(p.CategoryID), p.Views, p.PublishedAt, p.CreatedAt)
+		`INSERT INTO posts (`+postColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.ID, p.TenantID, p.Title, p.Slug, p.Body, nullID(p.CategoryID), p.Views, p.PublishedAt, p.CreatedAt)
 	if err != nil {
 		if r.conflict(err) {
 			return models.Post{}, models.ErrPostConflict
@@ -191,7 +206,8 @@ func (r *PostRepository) Create(ctx context.Context, g security.Grant, p models.
 	return p, nil
 }
 
-// Update writes the mutable fields.
+// Update writes the mutable fields. The tenant is not one of them: moving a row
+// between tenants is not an update, it is a migration.
 func (r *PostRepository) Update(ctx context.Context, g security.Grant, p models.Post) (models.Post, error) {
 	if err := g.Check(policies.PostUpdate); err != nil {
 		return models.Post{}, err
@@ -199,8 +215,8 @@ func (r *PostRepository) Update(ctx context.Context, g security.Grant, p models.
 
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE posts SET title = ?, slug = ?, body = ?, category_id = ?, published_at = ?
-		 WHERE id = ?`,
-		p.Title, p.Slug, p.Body, nullID(p.CategoryID), p.PublishedAt, p.ID)
+		 WHERE id = ? AND tenant_id = ?`,
+		p.Title, p.Slug, p.Body, nullID(p.CategoryID), p.PublishedAt, p.ID, data.Tenant(g))
 	if err != nil {
 		if r.conflict(err) {
 			return models.Post{}, models.ErrPostConflict
@@ -213,13 +229,13 @@ func (r *PostRepository) Update(ctx context.Context, g security.Grant, p models.
 	return p, nil
 }
 
-// Delete removes one post.
+// Delete removes one post within the grant's tenant.
 func (r *PostRepository) Delete(ctx context.Context, g security.Grant, id string) error {
 	if err := g.Check(policies.PostDelete); err != nil {
 		return err
 	}
 	res, err := r.db.ExecContext(ctx,
-		`DELETE FROM posts WHERE id = ?`, id)
+		`DELETE FROM posts WHERE id = ? AND tenant_id = ?`, id, data.Tenant(g))
 	if err != nil {
 		return err
 	}
@@ -245,10 +261,11 @@ func (r *PostRepository) Health(ctx context.Context) error { return r.db.PingCon
 func (r *PostRepository) scan(row interface{ Scan(dest ...any) error }) (models.Post, error) {
 	var (
 		p        models.Post
+		tenant   sql.NullString
 		category sql.NullString
 		views    sql.NullInt64
 	)
-	err := row.Scan(&p.ID, &p.Title, &p.Slug, &p.Body, &category, &views,
+	err := row.Scan(&p.ID, &tenant, &p.Title, &p.Slug, &p.Body, &category, &views,
 		&p.PublishedAt, &p.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return models.Post{}, models.ErrPostNotFound
@@ -256,6 +273,11 @@ func (r *PostRepository) scan(row interface{ Scan(dest ...any) error }) (models.
 	if err != nil {
 		return models.Post{}, err
 	}
+	// Read through sql.NullString for the same reason as the two below: the
+	// column arrived in a later migration and is nullable, so a plain *string
+	// scan is an error on every row written before it. Those rows read back with
+	// an empty tenant, which no Grant carries, so no query returns them.
+	p.TenantID = tenant.String
 	// The column arrived in a later migration, so every post written before it
 	// has NULL there. Reading through sql.NullString rather than into the field
 	// is what keeps those rows readable -- a plain *string scan of a NULL is an
@@ -322,11 +344,14 @@ func (r *PostRepository) PublishedInCategory(ctx context.Context, g security.Gra
 
 	const query = `SELECT ` + postColumns + `
 		FROM posts
-		WHERE category_id = ? AND published_at IS NOT NULL AND published_at > ?
+		WHERE tenant_id = ? AND category_id = ? AND published_at IS NOT NULL AND published_at > ?
 		ORDER BY published_at DESC, id
 		LIMIT ?`
 
-	rows, err := r.db.QueryContext(ctx, query, categoryID, time.Time{}, limit)
+	// The tenant is scoped as well as the section, and not instead of it. The
+	// section id reaches here from a slug in the address bar, so without the
+	// tenant a section id guessed from another tenant would list its posts.
+	rows, err := r.db.QueryContext(ctx, query, data.Tenant(g), categoryID, time.Time{}, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -343,7 +368,8 @@ func (r *PostRepository) PublishedInCategory(ctx context.Context, g security.Gra
 	return out, rows.Err()
 }
 
-// CountByCategory returns how many posts each section holds.
+// CountByCategory returns how many posts each section of the grant's tenant
+// holds.
 //
 // One query for the whole navigation rather than one per section: a sidebar with
 // eight sections would otherwise be eight round trips per page, which is the
@@ -358,10 +384,13 @@ func (r *PostRepository) CountByCategory(ctx context.Context, g security.Grant) 
 
 	const query = `SELECT category_id, COUNT(*)
 		FROM posts
-		WHERE category_id IS NOT NULL AND published_at IS NOT NULL AND published_at > ?
+		WHERE tenant_id = ? AND category_id IS NOT NULL AND published_at IS NOT NULL AND published_at > ?
 		GROUP BY category_id`
 
-	rows, err := r.db.QueryContext(ctx, query, time.Time{})
+	// An aggregate is a read like any other. A COUNT that crossed tenants would
+	// not return a single row of anybody's data and would still report how much
+	// of it there is, which is the kind of leak a report is made of.
+	rows, err := r.db.QueryContext(ctx, query, data.Tenant(g), time.Time{})
 	if err != nil {
 		return nil, err
 	}
@@ -396,7 +425,9 @@ func (r *PostRepository) IncrementViews(ctx context.Context, g security.Grant, i
 	if err := g.Check(policies.PostView); err != nil {
 		return err
 	}
-	_, err := r.db.ExecContext(ctx, `UPDATE posts SET views = views + 1 WHERE id = ?`, id)
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE posts SET views = views + 1 WHERE id = ? AND tenant_id = ?`,
+		id, data.Tenant(g))
 	return err
 }
 
