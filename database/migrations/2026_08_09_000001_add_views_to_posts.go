@@ -6,6 +6,8 @@ import (
 	"github.com/arandu-io/hesape/database/migrations"
 )
 
+func init() { migrations.Register(addViewsToPosts{}) }
+
 // addViewsToPosts adds columns to the posts table.
 //
 // It is unexported and listed in All(), which is what the kernel collects. A

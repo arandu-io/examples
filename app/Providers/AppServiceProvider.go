@@ -14,15 +14,15 @@ import (
 	"github.com/arandu-io/framework/http"
 	"github.com/arandu-io/framework/kernel"
 
-	"github.com/arandu-io/examples/database/migrations"
 	"github.com/arandu-io/examples/routes"
 )
 
 // AppServiceProvider is this application, seen by the kernel as one module.
 //
-// Everything the project itself adds -- its routes and its own migrations --
-// arrives through here, so `aru routes` groups them under one name instead of
-// scattering them among the framework's.
+// What the project itself adds arrives through here, so `aru routes` groups it
+// under one name instead of scattering it among the framework's. Its migrations
+// are the exception: they register themselves, because that is the one list the
+// migrator reads.
 type AppServiceProvider struct {
 	deps routes.Deps
 }
@@ -37,7 +37,6 @@ func NewAppServiceProvider(deps routes.Deps) *AppServiceProvider {
 // a typo in a method name fails the build instead of silently doing nothing.
 var (
 	_ kernel.Module      = (*AppServiceProvider)(nil)
-	_ kernel.Migratable  = (*AppServiceProvider)(nil)
 	_ kernel.Schedulable = (*AppServiceProvider)(nil)
 )
 
@@ -46,13 +45,6 @@ func (*AppServiceProvider) Name() string { return "app" }
 
 // Routes registers what routes/web.go declares.
 func (p *AppServiceProvider) Routes(r *http.Router) { routes.Web(r, p.deps) }
-
-// Migrations are this application's own, from database/migrations.
-//
-// The framework modules bring theirs -- the users table comes from the auth
-// module, the outbox from events, the jobs table from queue -- so this list
-// starts empty and holds only what the project adds.
-func (*AppServiceProvider) Migrations() []kernel.Migration { return migrations.All() }
 
 // Schedule declares the recurring work of this application.
 //

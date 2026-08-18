@@ -6,6 +6,8 @@ import (
 	"github.com/arandu-io/hesape/database/migrations"
 )
 
+func init() { migrations.Register(createCommentsTable{}) }
+
 // createCommentsTable creates the comments table.
 //
 // It is unexported and listed in All(), which is what the kernel collects: a

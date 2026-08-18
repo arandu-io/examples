@@ -6,6 +6,8 @@ import (
 	"github.com/arandu-io/hesape/database/migrations"
 )
 
+func init() { migrations.Register(backfillPostViews{}) }
+
 // backfillPostViews gives every post a view count of zero.
 //
 // 2026_08_09_000001 added the column nullable with no DEFAULT, and the scan in

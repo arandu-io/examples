@@ -39,6 +39,12 @@ import (
 	appconfig "github.com/arandu-io/examples/config"
 	"github.com/arandu-io/examples/routes"
 
+	// This application's own schema changes. Importing them is what registers
+	// them: each one calls migrations.Register from init(), and a package
+	// nothing imports is not in the binary at all -- so without this line `aru
+	// migrate` finds nothing and says so only by creating no tables.
+	_ "github.com/arandu-io/examples/database/migrations"
+
 	// Importing the views is what registers them: every generated view calls
 	// view.Register from init(), the same shape a database/sql driver has. Drop
 	// this import and ctx.View("home") answers "no view named home".

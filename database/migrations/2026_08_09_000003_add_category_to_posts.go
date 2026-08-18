@@ -6,6 +6,8 @@ import (
 	"github.com/arandu-io/hesape/database/migrations"
 )
 
+func init() { migrations.Register(addCategoryToPosts{}) }
+
 // addCategoryToPosts links a post to the section it belongs to.
 //
 // A migration is immutable once published, so this is a second one rather than
