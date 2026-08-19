@@ -98,4 +98,42 @@ func TestCommentListRejectsSortOutsideTheAllowlist(t *testing.T) {
 
 // arandu:begin custom
 // Tests for the rules you wrote go here, and survive regeneration.
+
+// TestEveryCommentQueryBeyondTheFiveRequiresItsGrant covers the two thread
+// queries this application added.
+//
+// PublicForPost is the one drawn under every article, for everybody, signed in
+// or not. It is also the query that decides which comments are visible while
+// they wait for review, so a Grant it never checked would be an unauthorized
+// read on the most public page there is.
+func TestEveryCommentQueryBeyondTheFiveRequiresItsGrant(t *testing.T) {
+	repo := commentRepoWithoutDB()
+	ctx := context.Background()
+	var zero security.Grant
+
+	calls := map[string]func(security.Grant) error{
+		"ForPost": func(g security.Grant) error {
+			_, err := repo.ForPost(ctx, g, "p1")
+			return err
+		},
+		"PublicForPost": func(g security.Grant) error {
+			_, err := repo.PublicForPost(ctx, g, "p1", "u1")
+			return err
+		},
+	}
+
+	for name, call := range calls {
+		t.Run(name+" with no grant", func(t *testing.T) {
+			if err := call(zero); !errors.Is(err, security.ErrForbidden) {
+				t.Fatalf("error = %v, want ErrForbidden", err)
+			}
+		})
+		t.Run(name+" with a grant for another action", func(t *testing.T) {
+			if err := call(security.SystemGrant("some.other.action", "t1")); !errors.Is(err, security.ErrForbidden) {
+				t.Fatalf("error = %v, want ErrForbidden", err)
+			}
+		})
+	}
+}
+
 // arandu:end custom

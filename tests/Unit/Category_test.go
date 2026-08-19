@@ -98,4 +98,41 @@ func TestCategoryListRejectsSortOutsideTheAllowlist(t *testing.T) {
 
 // arandu:begin custom
 // Tests for the rules you wrote go here, and survive regeneration.
+
+// TestEveryCategoryQueryBeyondTheFiveRequiresItsGrant covers the two lookups
+// this application added.
+//
+// FindBySlug takes the half of the address a reader can type, and All builds the
+// navigation on every page of the site. Both are read by somebody with no
+// account, and neither is named in the generated table above.
+func TestEveryCategoryQueryBeyondTheFiveRequiresItsGrant(t *testing.T) {
+	repo := categoryRepoWithoutDB()
+	ctx := context.Background()
+	var zero security.Grant
+
+	calls := map[string]func(security.Grant) error{
+		"FindBySlug": func(g security.Grant) error {
+			_, err := repo.FindBySlug(ctx, g, "news")
+			return err
+		},
+		"All": func(g security.Grant) error {
+			_, err := repo.All(ctx, g)
+			return err
+		},
+	}
+
+	for name, call := range calls {
+		t.Run(name+" with no grant", func(t *testing.T) {
+			if err := call(zero); !errors.Is(err, security.ErrForbidden) {
+				t.Fatalf("error = %v, want ErrForbidden", err)
+			}
+		})
+		t.Run(name+" with a grant for another action", func(t *testing.T) {
+			if err := call(security.SystemGrant("some.other.action", "t1")); !errors.Is(err, security.ErrForbidden) {
+				t.Fatalf("error = %v, want ErrForbidden", err)
+			}
+		})
+	}
+}
+
 // arandu:end custom

@@ -98,4 +98,54 @@ func TestPostListRejectsSortOutsideTheAllowlist(t *testing.T) {
 
 // arandu:begin custom
 // Tests for the rules you wrote go here, and survive regeneration.
+
+// TestEveryPostQueryBeyondTheFiveRequiresItsGrant covers the queries this
+// application added, which the table above cannot know about.
+//
+// The generated table names Find, List, Create, Update and Delete, because those
+// are the five the generator wrote. Everything below arrived in the custom block
+// of the repository, and until this test existed each one could lose its
+// g.Check without a single assertion changing colour -- which was measured, by
+// deleting them one at a time.
+//
+// Published and PublishedInCategory are the two a reader with no account
+// reaches, so they are the ones where an unchecked Grant is reachable from the
+// open internet.
+func TestEveryPostQueryBeyondTheFiveRequiresItsGrant(t *testing.T) {
+	repo := postRepoWithoutDB()
+	ctx := context.Background()
+	var zero security.Grant
+
+	calls := map[string]func(security.Grant) error{
+		"Published": func(g security.Grant) error {
+			_, err := repo.Published(ctx, g, 10)
+			return err
+		},
+		"PublishedInCategory": func(g security.Grant) error {
+			_, err := repo.PublishedInCategory(ctx, g, "ca1", 10)
+			return err
+		},
+		"CountByCategory": func(g security.Grant) error {
+			_, err := repo.CountByCategory(ctx, g)
+			return err
+		},
+		"IncrementViews": func(g security.Grant) error {
+			return repo.IncrementViews(ctx, g, "id")
+		},
+	}
+
+	for name, call := range calls {
+		t.Run(name+" with no grant", func(t *testing.T) {
+			if err := call(zero); !errors.Is(err, security.ErrForbidden) {
+				t.Fatalf("error = %v, want ErrForbidden", err)
+			}
+		})
+		t.Run(name+" with a grant for another action", func(t *testing.T) {
+			if err := call(security.SystemGrant("some.other.action", "t1")); !errors.Is(err, security.ErrForbidden) {
+				t.Fatalf("error = %v, want ErrForbidden", err)
+			}
+		})
+	}
+}
+
 // arandu:end custom
