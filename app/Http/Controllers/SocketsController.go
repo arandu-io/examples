@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arandu-io/framework/data"
 	fhttp "github.com/arandu-io/framework/http"
 	"github.com/arandu-io/framework/observability"
 	"github.com/arandu-io/framework/security"
@@ -119,7 +118,7 @@ func (c *SocketsController) Index(ctx *fhttp.Context) error {
 
 	return ctx.View("admin.sockets", admin.SocketsData{
 		Chrome:   adminChrome(ctx, actor, token, "Sockets"),
-		Tenants:  c.connections(data.Tenant(grant)),
+		Tenants:  c.connections(security.Tenant(grant)),
 		Messages: c.messages(),
 		ReadAt:   time.Now().Format("2 January 2006, 15:04:05"),
 	})
