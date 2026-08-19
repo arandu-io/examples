@@ -142,12 +142,31 @@ func (s *CategoryService) Delete(ctx context.Context, actor security.Subject, id
 // Business rules beyond CRUD go here, and survive regeneration.
 
 // BySlug returns the section a reader's URL names.
+//
+// It asks the two questions Get asks, and for the same reason: it returns one
+// row, and the row is chosen by the caller. The first Authorize is permission to
+// look at sections at all, which is what produces the Grant the repository
+// needs; the second is about the section that came back, and it is where a rule
+// that reads the entity's fields is decided.
+//
+// A lookup by slug rather than by id does not make the second question optional.
+// Both take a value from the address bar and answer with one record, and a read
+// path that skips the object-level decision is one where a rule written against
+// the entity is never consulted.
 func (s *CategoryService) BySlug(ctx context.Context, actor security.Subject, slug string) (models.Category, error) {
 	g, err := security.Authorize(ctx, s.policy, actor, policies.CategoryView, models.Category{})
 	if err != nil {
 		return models.Category{}, err
 	}
-	return s.repo.FindBySlug(ctx, g, slug)
+
+	found, err := s.repo.FindBySlug(ctx, g, slug)
+	if err != nil {
+		return models.Category{}, err
+	}
+	if _, err := security.Authorize(ctx, s.policy, actor, policies.CategoryView, found); err != nil {
+		return models.Category{}, err
+	}
+	return found, nil
 }
 
 // All returns every section, for the navigation.
