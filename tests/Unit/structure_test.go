@@ -28,6 +28,13 @@ import (
 // one is special, and the rule ends up describing the tree instead of shaping
 // it. This repository had "assets" on such a list, justified as a module that
 // ships on its own -- and there is one go.mod here, so it was not one.
+//
+// "tests/" means tests/ of the module the file belongs to, which is why the
+// path is measured from the nearest go.mod up the tree rather than from here.
+// There is one module in this project today, so the two are the same directory;
+// the day a driver gets its own go.mod they stop being, and a rule anchored at
+// the project root would then reject that module's own suite for sitting where
+// it is supposed to sit.
 func TestEveryTestLivesInTheTestsDirectory(t *testing.T) {
 	root := tests.Root(t)
 
@@ -38,7 +45,11 @@ func TestEveryTestLivesInTheTestsDirectory(t *testing.T) {
 		rel, _ := filepath.Rel(root, path)
 		rel = filepath.ToSlash(rel)
 
-		if strings.HasPrefix(rel, "tests/") {
+		inModule, err := relativeToModule(path, root)
+		if err != nil {
+			return err
+		}
+		if strings.HasPrefix(inModule, "tests/") {
 			return nil
 		}
 		if strings.HasSuffix(rel, "_internal_test.go") {
@@ -52,6 +63,30 @@ func TestEveryTestLivesInTheTestsDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// relativeToModule is path as its own module sees it: the slash-separated path
+// from the nearest directory at or above it that holds a go.mod.
+//
+// The search stops at root, so a file outside any module is reported relative
+// to root rather than walking off into whatever is above the project.
+func relativeToModule(path, root string) (string, error) {
+	dir := filepath.Dir(path)
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			break
+		}
+		if dir == root || dir == filepath.Dir(dir) {
+			dir = root
+			break
+		}
+		dir = filepath.Dir(dir)
+	}
+	rel, err := filepath.Rel(dir, path)
+	if err != nil {
+		return "", err
+	}
+	return filepath.ToSlash(rel), nil
 }
 
 // TestEveryDirectoryThatMustExistIsKept.
@@ -159,6 +194,135 @@ func TestEachSuiteHoldsWhatItsNameSays(t *testing.T) {
 				t.Errorf("tests/Feature/%s boots nothing: move it to tests/Unit, or Feature stops "+
 					"meaning what it says", e.Name())
 			}
+		}
+	}
+}
+
+// goFiles is every .go file in the project, as a path relative to the root.
+//
+// Generated views and compiled templates are in here too, on purpose: they are
+// files the compiler reads, and a rule about Go files that skipped the ones
+// nobody typed by hand would miss the ones a generator can get wrong at scale.
+func goFiles(t *testing.T, root string) []string {
+	t.Helper()
+
+	var found []string
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(path) != ".go" {
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		found = append(found, filepath.ToSlash(rel))
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walking the project: %v", err)
+	}
+	if len(found) == 0 {
+		t.Fatal("no .go file was found: the walk is looking in the wrong place, and every check built on it would pass on nothing")
+	}
+	return found
+}
+
+// TestNoTestIsInvisibleToGoTest is the one check here whose absence is silent.
+//
+// go test compiles a file into its package like any other unless the name ends
+// in _test.go, and runs the test functions only of the ones that do. So a
+// BrokerTest.go full of func TestX(t *testing.T) builds, links, reports no
+// error, and executes nothing. Every other kind of broken test is loud; this
+// one leaves a green build over a suite that never ran, and the count of tests
+// executed is the only place it shows.
+//
+// The check is what the file holds, not what it is called, because the name is
+// the part that varies: TestBroker.go, BrokerTests.go and broker.go all fail
+// the same way once a test function is inside one.
+func TestNoTestIsInvisibleToGoTest(t *testing.T) {
+	// Go's own rule for a function it will run: the Test, Benchmark or Fuzz
+	// prefix, a capital or an underscore after it, and one parameter of the
+	// matching testing type. tests/testcase.go takes a *testing.T in every
+	// helper it exports and matches none of this, which is the distinction.
+	runnable := regexp.MustCompile(`(?m)^func (Test|Benchmark|Fuzz)[A-Z_][A-Za-z0-9_]*\([A-Za-z_][A-Za-z0-9_]* \*testing\.[TBF]\)`)
+
+	root := tests.Root(t)
+	for _, rel := range goFiles(t, root) {
+		if strings.HasSuffix(rel, "_test.go") {
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m := runnable.FindString(string(body)); m != "" {
+			t.Errorf("%s holds a test function and does not end in _test.go, so go test compiles it "+
+				"and runs nothing in it:\n  %s\nRename the file, or the suite is quietly shorter than it looks", rel, m)
+		}
+	}
+}
+
+// TestEveryPackageClauseIsLowercase.
+//
+// The directories under tests/ are capitalised and the package clauses inside
+// them are not, and that is not an inconsistency to tidy up: a directory name
+// is a label, an identifier is code. Every import of a capitalised package
+// reads as an exported name that is not one, and go vet has nothing to say
+// about it.
+func TestEveryPackageClauseIsLowercase(t *testing.T) {
+	clause := regexp.MustCompile(`(?m)^package ([A-Za-z_][A-Za-z0-9_]*)`)
+
+	root := tests.Root(t)
+	for _, rel := range goFiles(t, root) {
+		body, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := clause.FindStringSubmatch(string(body))
+		if m == nil {
+			continue
+		}
+		if strings.ToLower(m[1][:1]) != m[1][:1] {
+			t.Errorf("%s declares `package %s`: a package identifier is lowercase, whatever "+
+				"the directory holding it is called", rel, m[1])
+		}
+	}
+}
+
+// TestTheTestBaseNeverShipsInTheBinary.
+//
+// tests/ imports bootstrap, opens databases and calls t.Fatal. It is built to be
+// linked into a test binary and nothing else. One import of it from a file the
+// compiler puts in the application -- a handler reaching for a helper that
+// already does the thing -- and the testing package, the fixtures and the
+// throwaway database wiring are all inside what gets deployed.
+//
+// A direct import is the whole check, and it is enough: nothing outside this
+// module can import a package of it back into this binary.
+func TestTheTestBaseNeverShipsInTheBinary(t *testing.T) {
+	root := tests.Root(t)
+	const base = "github.com/arandu-io/examples/tests"
+
+	for _, rel := range goFiles(t, root) {
+		if strings.HasSuffix(rel, "_test.go") {
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(body), `"`+base+`"`) {
+			t.Errorf("%s imports %s, which is test scaffolding: it would be linked into the "+
+				"application, testing and all", rel, base)
 		}
 	}
 }
