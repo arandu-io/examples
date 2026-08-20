@@ -17,20 +17,19 @@ import (
 // `_test.go` anywhere else is a source file and its test side by side, doubling
 // every listing with files nobody opens on purpose.
 //
-// Two exceptions, and neither is a preference:
+// One exception, and it is not a preference: a test that reads an unexported
+// identifier cannot live in another package. Go decides that, not this project.
+// Such a test stays beside the code and says so in its name, _internal_test.go,
+// so that "it is next to the code" is a claim the file makes and this test can
+// check rather than a habit nobody notices.
 //
-//   - a test that reads an unexported identifier cannot live in another package.
-//     Go decides that, not this project.
-//   - a module of its own -- assets/ embeds the compiled stylesheet -- owns its
-//     tests, because it is a package that ships on its own.
+// The suffix is the whole exception. A list of blessed directories is not: it
+// grows one package at a time, each entry with a sentence explaining why that
+// one is special, and the rule ends up describing the tree instead of shaping
+// it. This repository had "assets" on such a list, justified as a module that
+// ships on its own -- and there is one go.mod here, so it was not one.
 func TestEveryTestLivesInTheTestsDirectory(t *testing.T) {
 	root := tests.Root(t)
-
-	allowed := map[string]bool{
-		// The stylesheet package proves the bytes it embeds are the ones the
-		// build produced, and that is a question about itself.
-		"assets": true,
-	}
 
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(path, "_test.go") {
@@ -42,11 +41,12 @@ func TestEveryTestLivesInTheTestsDirectory(t *testing.T) {
 		if strings.HasPrefix(rel, "tests/") {
 			return nil
 		}
-		if allowed[strings.SplitN(rel, "/", 2)[0]] {
+		if strings.HasSuffix(rel, "_internal_test.go") {
 			return nil
 		}
-		t.Errorf("%s is a test outside tests/: move it to tests/Feature if it boots the "+
-			"application, or tests/Unit if it does not", rel)
+		t.Errorf("%s is a test outside tests/: name it _internal_test.go if it needs an "+
+			"unexported identifier, otherwise move it to tests/Feature if it boots the "+
+			"application and tests/Unit if it does not", rel)
 		return nil
 	})
 	if err != nil {
@@ -129,7 +129,11 @@ func TestEachSuiteHoldsWhatItsNameSays(t *testing.T) {
 	// the store and the publisher together against a real schema. "Feature"
 	// means more than one piece interacting, and HTTP is the common case rather
 	// than the definition.
-	boots := regexp.MustCompile(`tests\.App\(|tests\.Kernel\(|bootstrap\.Dispatch\(|bootstrap\.Open\(|httptest\.NewRequest\(|migratedDB\(`)
+	//
+	// httptest.NewServer belongs on this list next to NewRequest, and was
+	// missing from it: a test that listens on a port and dials it back is not
+	// one somebody runs on every save, whatever it is checking.
+	boots := regexp.MustCompile(`tests\.App\(|tests\.Kernel\(|bootstrap\.Dispatch\(|bootstrap\.Open\(|httptest\.NewRequest\(|httptest\.NewServer\(|migratedDB\(`)
 
 	for _, suite := range []string{"Feature", "Unit"} {
 		dir := filepath.Join(tests.Root(t), "tests", suite)

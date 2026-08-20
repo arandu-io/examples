@@ -1,71 +1,20 @@
-package assets_test
+package unit_test
 
 import (
-	"crypto/md5"
-	"encoding/hex"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
-	fhttp "github.com/arandu-io/framework/http"
-	"github.com/arandu-io/framework/view"
-
-	_ "github.com/arandu-io/examples/assets"
+	"github.com/arandu-io/examples/tests"
 )
 
-// TestTheBrowserGetsThisProjectsStylesheet guards a whole pipeline whose output
-// nothing is obliged to consume.
-//
-// `aru view:build` runs Tailwind over resources/css/app.css and writes
-// assets/app.css. If nothing embeds it, the browser receives the framework's
-// default instead -- byte for byte, same md5 -- and every class written in a
-// view of this project is absent from the page, with no error anywhere.
-//
-// The check is the md5 of what comes over HTTP against the md5 of the file on
-// disk. Anything weaker passes in the broken state: the framework's default is
-// also valid CSS, also served with a 200, and also has Tailwind's banner.
-func TestTheBrowserGetsThisProjectsStylesheet(t *testing.T) {
-	onDisk, err := os.ReadFile("app.css")
-	if err != nil {
-		t.Fatalf("assets/app.css is missing: it is committed so that `go build` works on a fresh clone: %v", err)
-	}
-
-	r := fhttp.NewRouter()
-	view.NewModule().Routes(r)
-	server := httptest.NewServer(r)
-	defer server.Close()
-
-	resp, err := http.Get(server.URL + view.URL(view.Stylesheet))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	served, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("the stylesheet answered %d", resp.StatusCode)
-	}
-
-	if sum(served) != sum(onDisk) {
-		t.Errorf("the browser is served a different stylesheet than assets/app.css.\n  served   %s (%d bytes)\n  on disk  %s (%d bytes)\nThis is the framework's default: nothing registered this project's.",
-			sum(served), len(served), sum(onDisk), len(onDisk))
-	}
-}
-
-func sum(b []byte) string {
-	h := md5.Sum(b)
-	return hex.EncodeToString(h[:])
-}
-
 // TestTheStylesheetCarriesTheClassesTheMarkupRenders is the guard for the half
-// of the pipeline the test above cannot see.
+// of the pipeline that serving the file cannot see.
 //
-// That one proves the browser is served this project's stylesheet. It says
-// nothing about what is inside it. Tailwind reads class names only out of the
-// files an @source names, resources/css/app.css can only name directories of
+// The Feature suite proves the browser is served this project's stylesheet. It
+// says nothing about what is inside it. Tailwind reads class names only out of
+// the files an @source names, resources/css/app.css can only name directories of
 // this project, and the components are an imported module whose source lives in
 // the module cache -- so a class only a component writes can be absent from the
 // compiled CSS while every form renders it. Without .text-destructive, a
@@ -77,7 +26,7 @@ func sum(b []byte) string {
 // success, and the page renders. That is why this test exists and why it names
 // the class rather than the component: the class is what has to reach the file.
 func TestTheStylesheetCarriesTheClassesTheMarkupRenders(t *testing.T) {
-	css, err := os.ReadFile("app.css")
+	css, err := os.ReadFile(filepath.Join(tests.Root(t), "assets", "app.css"))
 	if err != nil {
 		t.Fatalf("assets/app.css is missing: it is committed so that `go build` works on a fresh clone: %v", err)
 	}
