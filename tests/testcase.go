@@ -9,6 +9,12 @@
 //
 //	tests/Feature/  boots the application and makes a request
 //	tests/Unit/     checks one thing without booting anything
+//
+// The file is testcase.go, lowercase, because it is a package and not a test.
+// Only a file ending in _test.go is run by go test: a TestCase.go one letter
+// away from that pattern teaches the reader a name that, applied to a file with
+// test functions in it, compiles into the package and runs nothing -- no error,
+// no warning, a green build over a suite that never executed.
 package tests
 
 import (

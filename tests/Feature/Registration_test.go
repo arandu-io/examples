@@ -181,7 +181,7 @@ func TestABadFormComesBackWithTheMessagesAndNotA200(t *testing.T) {
 	res.See("ada@example.com").DontSee("different")
 }
 
-// The helpers below. They are here rather than in tests/TestCase.go because they
+// The helpers below. They are here rather than in tests/testcase.go because they
 // are about this flow: a project that does not have a comment section has no use
 // for seedOnePost.
 
