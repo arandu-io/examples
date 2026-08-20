@@ -6,11 +6,13 @@ require (
 	github.com/arandu-io/database v0.5.0
 	github.com/arandu-io/database/pgx v0.2.0
 	github.com/arandu-io/database/sqlite v0.2.0
-	github.com/arandu-io/framework v0.31.0
-	github.com/arandu-io/hesape v0.10.0
-	github.com/arandu-io/joaju v0.3.0
+	github.com/arandu-io/framework v0.32.0
+	github.com/arandu-io/hesape v0.11.0
+	github.com/arandu-io/joaju v0.4.0
 	github.com/arandu-io/queue v0.5.0
 )
+
+require golang.org/x/net v0.55.0 // indirect
 
 require (
 	github.com/arandu-io/kyse v0.9.0
