@@ -23,6 +23,7 @@ import (
 	"github.com/arandu-io/framework/kernel"
 	"github.com/arandu-io/framework/mail"
 	"github.com/arandu-io/framework/modules/auth"
+	"github.com/arandu-io/framework/observability"
 	"github.com/arandu-io/framework/observability/errorpage"
 	"github.com/arandu-io/framework/scheduler"
 	"github.com/arandu-io/framework/security"
@@ -32,6 +33,7 @@ import (
 
 	controllers "github.com/arandu-io/examples/app/Http/Controllers"
 	authui "github.com/arandu-io/examples/app/Http/Controllers/Auth"
+	listeners "github.com/arandu-io/examples/app/Listeners"
 	policies "github.com/arandu-io/examples/app/Policies"
 	providers "github.com/arandu-io/examples/app/Providers"
 	repositories "github.com/arandu-io/examples/app/Repositories"
@@ -153,7 +155,12 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 	commentService := services.NewCommentService(repositories.NewCommentRepository(db))
 	categoryService := services.NewCategoryService(repositories.NewCategoryRepository(db))
 
-	socket, socketCounts := buildSocket(cfg.Auth.Tenant)
+	// The numbers this process owns, in one place. It is the whole process's and
+	// not the socket server's: a second registry would be a second place to look
+	// for "what is this binary doing right now", and the first screen that read
+	// the wrong one would show a number that is true of nothing.
+	gauges := observability.NewGauges()
+	socket := buildSocket(cfg.Auth.Tenant, gauges)
 
 	deps := routes.Deps{
 		Home:     controllers.NewHomeController(cfg.App.Name, sessions, csrf, authService, cfg.Auth.Tenant),
@@ -161,10 +168,12 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 		Comment:  controllers.NewCommentController(commentService, sessions, csrf, cfg.App.Name, authService, cfg.Auth.Tenant),
 		Category: controllers.NewCategoryController(categoryService, sessions, csrf, cfg.App.Name, authService, cfg.Auth.Tenant),
 		Admin:    controllers.NewAdminController(postService, commentService, sessions, csrf),
-		// The operator's screen, and the socket server it reads. Both come from
-		// buildSocket, and they have to: the controller draws the counter the
-		// server was built with, and a second counter would read zero forever.
-		Sockets: controllers.NewSocketsController(socketCounts, policies.SocketMetricsPolicy{Tenant: cfg.Auth.Tenant}, sessions, csrf),
+		// The operator's screen, and the socket server it reads. The screen is
+		// given the registry rather than the server's counter: it draws what was
+		// published, and buildSocket is what publishes it. A screen holding the
+		// counter would be a screen reading the process directly, and the read it
+		// makes crosses tenants.
+		Sockets: controllers.NewSocketsController(gauges, policies.SocketMetricsPolicy{Tenant: cfg.Auth.Tenant}, sessions, csrf),
 		Socket:  socket,
 		// The origin the sitemap builds absolute URLs on. A sitemap of relative
 		// paths is refused by every crawler that reads one, and the value cannot
@@ -261,16 +270,18 @@ const (
 	SocketAppKey = "examples-app-key"
 )
 
-// buildSocket wires the realtime server and the counter that watches it.
+// buildSocket wires the realtime server and the observer that publishes what it
+// is holding into gauges.
 //
-// It answers two values because they are one decision. joaju.Counter is a
-// joaju.Observer, and it counts nothing unless the server was built with it --
-// a server without one reads zero for the life of the process, and the screen
-// that draws those zeros looks exactly like a screen of a quiet deployment. So
-// the counter is created here, handed to ServerConfig.Observer AND to the
-// protocol (the two halves are announced from different places: sockets by the
-// server, channels by the protocol), and handed back for controllers.SocketsController
-// to read.
+// The observer counts nothing unless the server was built with it -- a server
+// without one publishes nothing for the life of the process, and the screen that
+// draws those absent numbers looks exactly like the screen of a quiet
+// deployment. So it is created here and handed to ServerConfig.Observer AND to
+// the protocol: the two halves are announced from different places, sockets by
+// the server and channels by the protocol.
+//
+// Nothing is handed back for the screen to read. It reads the registry, which is
+// the reason the observer exists rather than a bare counter.
 //
 // The broker is the same value in two places for the same kind of reason: the
 // protocol reaches channels through it, and the server's own routes do too.
@@ -279,8 +290,8 @@ const (
 // connected where, and this is one process -- with one, every number on the
 // operator's screen would be an answer for the fleet instead of for this binary,
 // and there is no fleet. It is the field to fill in the day there is one.
-func buildSocket(tenant string) (*joaju.Server, *joaju.Counter) {
-	counts := joaju.NewCounter()
+func buildSocket(tenant string, gauges *observability.Gauges) *joaju.Server {
+	counts := listeners.NewSocketGauges(gauges)
 	broker := joaju.NewMemoryBroker()
 
 	// Both policies are this application's, in app/Policies, beside the policy
@@ -307,7 +318,7 @@ func buildSocket(tenant string) (*joaju.Server, *joaju.Counter) {
 		panic("bootstrap: the socket server could not be built: " + err.Error())
 	}
 
-	return server, counts
+	return server
 }
 
 // mailTransport picks the transport the configuration asked for.
