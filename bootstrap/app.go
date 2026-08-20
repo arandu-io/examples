@@ -29,6 +29,7 @@ import (
 	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/framework/view"
 	"github.com/arandu-io/joaju"
+	"github.com/arandu-io/joaju/protocols/pusher"
 	"github.com/arandu-io/queue"
 
 	controllers "github.com/arandu-io/examples/app/Http/Controllers"
@@ -155,11 +156,20 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 	commentService := services.NewCommentService(repositories.NewCommentRepository(db))
 	categoryService := services.NewCategoryService(repositories.NewCategoryRepository(db))
 
+	// The Application is built here rather than below the controllers because
+	// two of them read its gauge registry, and it opens nothing: no connection,
+	// no port, no migration. Boot and Run are what do that.
+	k := kernel.New(fw)
+
 	// The numbers this process owns, in one place. It is the whole process's and
 	// not the socket server's: a second registry would be a second place to look
 	// for "what is this binary doing right now", and the first screen that read
 	// the wrong one would show a number that is true of nothing.
-	gauges := observability.NewGauges()
+	//
+	// It comes from the Application because the Application is what mounts the
+	// console, and the console draws this. One built here instead would be
+	// filled correctly and read by nobody.
+	gauges := k.Gauges()
 	socket := buildSocket(cfg.Auth.Tenant, gauges)
 
 	deps := routes.Deps{
@@ -185,8 +195,6 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 		// exist.
 		Sessions: sessions,
 	}
-
-	k := kernel.New(fw)
 
 	k.
 		// The pipeline order is the order of execution. Recover comes FIRST, or
@@ -292,7 +300,7 @@ const (
 // and there is no fleet. It is the field to fill in the day there is one.
 func buildSocket(tenant string, gauges *observability.Gauges) *joaju.Server {
 	counts := listeners.NewSocketGauges(gauges)
-	broker := joaju.NewMemoryBroker()
+	broker := pusher.NewMemoryBroker()
 
 	// Both policies are this application's, in app/Policies, beside the policy
 	// that decides who may read a comment. Who may open a socket and who may
@@ -307,7 +315,7 @@ func buildSocket(tenant string, gauges *observability.Gauges) *joaju.Server {
 		Broker:    broker,
 		Connect:   policies.SocketConnectPolicy{Tenant: tenant},
 		Subscribe: subscribe,
-		Protocol:  joaju.NewPusher(broker, subscribe, joaju.PusherConfig{Observer: counts}),
+		Protocol:  pusher.NewPusher(broker, subscribe, pusher.PusherConfig{Observer: counts}),
 		Observer:  counts,
 	})
 	if err != nil {
