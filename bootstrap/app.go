@@ -255,8 +255,10 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 	// declared. A module never starts its own goroutine; it declares work, and
 	// this is what runs it.
 	//
-	// Locker is nil here: one replica. Behind more than one, pass
-	// kv.NewLocker(client) or every replica runs every task.
+	// Locker is nil here: one replica. Behind more than one, build one over a
+	// store every replica shares, or every replica runs every task:
+	//
+	//	kernel.NewLocker(cache.NewLocks(redis.NewRedisStore(conn)))
 	//
 	// Tenants is nil too: a PerTenant task needs to know which tenants exist,
 	// and only the application knows where that list lives. Wire it and the
