@@ -315,21 +315,40 @@ func TestEveryPackageClauseIsLowercase(t *testing.T) {
 //
 // A direct import is the whole check, and it is enough: nothing outside this
 // module can import a package of it back into this binary.
+//
+// The base package and anything under it, not the base package alone. A
+// subdirectory of tests/ holding ordinary Go rather than _test.go files is the
+// one part of the suite a production file can import with the compiler raising
+// no objection -- the base itself is imported by the suites that bootstrap
+// imports, so reaching for that one from the application is an import cycle and
+// stops at the compiler before it ever reaches here.
 func TestTheTestBaseNeverShipsInTheBinary(t *testing.T) {
 	root := tests.Root(t)
-	const base = "github.com/arandu-io/examples/tests"
+	scaffolding := regexp.MustCompile(`"github\.com/arandu-io/examples/tests(/[^"]*)?"`)
 
 	for _, rel := range goFiles(t, root) {
 		if strings.HasSuffix(rel, "_test.go") {
 			continue
 		}
+		// Production is what is left after the suite, and the suite is more than
+		// its _test.go files: Helpers and the base are ordinary Go, and one
+		// helper importing another is the tree working rather than leaking.
+		// Asked the other way this check reports the suite for being itself.
+		inModule, err := relativeToModule(filepath.Join(root, rel), root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.HasPrefix(inModule, "tests/") {
+			continue
+		}
+
 		body, err := os.ReadFile(filepath.Join(root, rel))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(string(body), `"`+base+`"`) {
+		if m := scaffolding.FindString(string(body)); m != "" {
 			t.Errorf("%s imports %s, which is test scaffolding: it would be linked into the "+
-				"application, testing and all", rel, base)
+				"application, testing and all", rel, strings.Trim(m, `"`))
 		}
 	}
 }
