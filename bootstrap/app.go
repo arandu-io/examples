@@ -20,6 +20,7 @@ import (
 	"github.com/arandu-io/framework/data"
 	"github.com/arandu-io/framework/events"
 	"github.com/arandu-io/framework/http/middleware"
+	"github.com/arandu-io/framework/jobs"
 	"github.com/arandu-io/framework/kernel"
 	"github.com/arandu-io/framework/mail"
 	"github.com/arandu-io/framework/modules/auth"
@@ -28,9 +29,9 @@ import (
 	"github.com/arandu-io/framework/scheduler"
 	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/framework/view"
+	"github.com/arandu-io/hesape/queue"
 	"github.com/arandu-io/joaju"
 	"github.com/arandu-io/joaju/protocols/pusher"
-	"github.com/arandu-io/queue"
 
 	controllers "github.com/arandu-io/examples/app/Http/Controllers"
 	authui "github.com/arandu-io/examples/app/Http/Controllers/Auth"
@@ -92,7 +93,7 @@ type App struct {
 	// Scheduler runs what the modules declared. `aru schedule:list` reads it.
 	Scheduler *scheduler.Module
 	// Queue is the job store `aru work` drains.
-	Queue *queue.Store
+	Queue *queue.DatabaseQueue
 	// Mail is what sends. It is returned as well as used, because a job that
 	// sends is built outside this function and reaching back in for the mailer
 	// later is the hidden coupling the explicit wiring exists to avoid.
@@ -121,9 +122,9 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 
 	// The queue over the application's own database, which is what makes a job
 	// commitable by the same transaction as the row it is about. For volume
-	// beyond a table, github.com/arandu-io/queue/kv is the same contract over
-	// RESP -- same Worker, same handlers, one line here.
-	queueStore := queue.New(db)
+	// beyond a table, github.com/arandu-io/hesape/queue/connectors/redis is the
+	// same contract over RESP -- same Worker, same handlers, one line here.
+	queueStore := queue.NewDatabaseQueue(db)
 
 	// A module that calls another service takes observability.Client, not one of
 	// its own:
@@ -238,7 +239,12 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 			// The jobs table. Work that happens after the response, drained by
 			// `aru work` -- the same image with another argument, which is what
 			// keeps the deploy at one artifact.
-			queue.NewModule(queueStore),
+			//
+			// The driver goes in unwrapped: the module discovers the schema by
+			// asking it, and anything standing in between would answer that
+			// question for a driver it does not know -- a queue that looks wired
+			// with no table behind it.
+			jobs.NewModule(queueStore),
 			// This application: its routes, from routes/web.go, and its own
 			// migrations, from database/migrations.
 			providers.NewAppServiceProvider(deps),

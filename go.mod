@@ -8,7 +8,6 @@ require (
 	github.com/arandu-io/hesape/database/connectors/pgx v0.4.0
 	github.com/arandu-io/hesape/database/connectors/sqlite v0.4.0
 	github.com/arandu-io/joaju v0.4.0
-	github.com/arandu-io/queue v0.5.0
 )
 
 require golang.org/x/net v0.55.0 // indirect

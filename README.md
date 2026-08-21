@@ -40,7 +40,7 @@ files a person had to decide, everything else came out of `aru make:module`.
   would list everything.
 
 18,060 lines of production code and 3,721 of test, across 26 test files.
-Built against `arandu-io/framework`, `arandu-io/kyse` and `arandu-io/queue`,
+Built against `arandu-io/framework`, `arandu-io/kyse` and `arandu-io/hesape`,
 with a PostgreSQL and a SQLite driver both wired through `.env` — an example
 is meant to show the shape of a real deployment, so it defaults to Postgres
 rather than the skeleton's SQLite default.

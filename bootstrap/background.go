@@ -11,9 +11,10 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/arandu-io/framework/jobs"
 	"github.com/arandu-io/framework/kernel"
 	"github.com/arandu-io/framework/scheduler"
+	"github.com/arandu-io/hesape/queue"
+	"github.com/arandu-io/hesape/queue/jobs"
 )
 
 // The background commands: what runs outside a request.
@@ -91,9 +92,12 @@ func scheduleRun(ctx context.Context, sched *scheduler.Module, args []string) er
 }
 
 // work drains a job queue until interrupted.
-func work(ctx context.Context, k *kernel.Kernel, store jobs.Queue, args []string) error {
+func work(ctx context.Context, k *kernel.Kernel, store queue.Queue, args []string) error {
 	flags := flag.NewFlagSet("work", flag.ContinueOnError)
-	queue := flags.String("queue", jobs.DefaultQueue, "which queue to drain")
+	// name rather than queue, because the package that builds the worker has
+	// that identifier: a local called queue would shadow it and hide the
+	// constructor a few lines below.
+	name := flags.String("queue", jobs.DefaultQueue, "which queue to drain")
 	workers := flags.Int("workers", 4, "how many jobs to run at once")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -107,8 +111,8 @@ func work(ctx context.Context, k *kernel.Kernel, store jobs.Queue, args []string
 	}
 	defer func() { _ = k.Shutdown() }()
 
-	w := jobs.NewWorker(store, jobs.WorkerOptions{
-		Queue:       *queue,
+	w := queue.NewWorker(store, queue.WorkerOptions{
+		Queue:       *name,
 		Concurrency: *workers,
 		// A finished job lands on /_arandu/debug with its queries and its
 		// timeline, exactly like a request -- and only when something is
@@ -129,7 +133,12 @@ func work(ctx context.Context, k *kernel.Kernel, store jobs.Queue, args []string
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	return w.Run(ctx)
+	// Daemon answers with an exit status as well as an error, and the status is
+	// dropped here: main reports an error and exits, so there is nowhere to put
+	// a number a supervisor would read. Handing one to the shell is a decision
+	// about what this binary promises, not part of draining a queue.
+	_, err := w.Daemon(ctx)
+	return err
 }
 
 // registerHandlers is where a module's job handlers are wired.
@@ -137,7 +146,7 @@ func work(ctx context.Context, k *kernel.Kernel, store jobs.Queue, args []string
 // Explicit, like the module registration in bootstrap.Build: read it top to
 // bottom and you know every kind of work this application does in the
 // background.
-func registerHandlers(w *jobs.Worker) {
+func registerHandlers(w *queue.Worker) {
 	// arandu:begin custom
 	// w.HandleFunc("invoice.send", invoiceModule.SendInvoice)
 	// arandu:end custom
