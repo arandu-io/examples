@@ -38,30 +38,37 @@ import (
 func TestEveryTestLivesInTheTestsDirectory(t *testing.T) {
 	root := tests.Root(t)
 
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(path, "_test.go") {
-			return err
+	seen := 0
+	for _, rel := range goFiles(t, root) {
+		if !strings.HasSuffix(rel, "_test.go") {
+			continue
 		}
-		rel, _ := filepath.Rel(root, path)
-		rel = filepath.ToSlash(rel)
+		seen++
 
-		inModule, err := relativeToModule(path, root)
+		inModule, err := relativeToModule(filepath.Join(root, rel), root)
 		if err != nil {
-			return err
+			t.Fatal(err)
 		}
 		if strings.HasPrefix(inModule, "tests/") {
-			return nil
+			continue
 		}
 		if strings.HasSuffix(rel, "_internal_test.go") {
-			return nil
+			continue
 		}
 		t.Errorf("%s is a test outside tests/: name it _internal_test.go if it needs an "+
 			"unexported identifier, otherwise move it to tests/Feature if it boots the "+
 			"application and tests/Unit if it does not", rel)
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
+	}
+
+	// A check about where tests live proves nothing if it examined no test, and
+	// it says so rather than passing. This one walked the project itself until
+	// it was found doing exactly that: pointed at an empty directory it reported
+	// success, because a rule of the form "every file that is X must also be Y"
+	// is satisfied by no files at all. The listing it now shares refuses to come
+	// back empty, and this refuses to come back having seen no test.
+	if seen == 0 {
+		t.Fatal("no _test.go file was examined: this check passes on nothing, so a suite that " +
+			"vanished would read as a suite that complies")
 	}
 }
 
