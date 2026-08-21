@@ -113,8 +113,11 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 	// The core ships the in-memory session backend, which is right for one
 	// instance and wrong for two: behind a load balancer, half the requests land
 	// on the replica that never saw the login. Behind more than one pod, swap
-	// this for kv.NewSessionBackend(client) -- github.com/arandu-io/kv, same
-	// interface, one line. SESSION_DRIVER is what says which one is expected;
+	// the backend for one over the shared store:
+	//
+	//	security.NewSessionBackend(hredis.NewCacheBasedSessionHandler[security.Subject](cache))
+	//
+	// SESSION_DRIVER is what says which one is expected;
 	// the same applies to the limiter below.
 	sessions := security.NewSessionStore(fw.App.Key, cfg.Session.TTL, cfg.Session.Secure, security.NewMemoryBackend())
 
