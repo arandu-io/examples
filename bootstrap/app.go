@@ -60,8 +60,8 @@ import (
 	// because bootstrap is what composes the application -- and the tests
 	// compose it too: with them in main every feature test opened a connection
 	// to a driver nobody had registered.
-	_ "github.com/arandu-io/database/pgx"
-	_ "github.com/arandu-io/database/sqlite"
+	_ "github.com/arandu-io/hesape/database/connectors/pgx"
+	_ "github.com/arandu-io/hesape/database/connectors/sqlite"
 
 	_ "github.com/arandu-io/examples/storage/framework/views"
 	_ "github.com/arandu-io/examples/storage/framework/views/admin"
