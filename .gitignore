@@ -45,10 +45,10 @@ database/arandu*
 # The compiled views.
 #
 # `aru view:build` turns resources/views/home.kyse.go into
-# storage/framework/views/home.go, which is where Laravel puts a compiled Blade
-# template and is gitignored there for the same reason: a compiled view is build
-# output, and build output in a repository is a file people read diffs of,
-# resolve conflicts in, and eventually edit -- this one opens with DO NOT EDIT.
+# storage/framework/views/home.go, and that output stays out of the repository:
+# a compiled view is build output, and build output in a repository is a file
+# people read diffs of, resolve conflicts in, and eventually edit -- this one
+# opens with DO NOT EDIT.
 #
 # It sat beside the source before this, and hiding it in the editor was half an
 # answer: it was still in the tree, in diffs, on GitHub and in every clone.
