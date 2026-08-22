@@ -25,10 +25,12 @@ go vet ./...
 go test -race ./...
 ```
 
-CI runs exactly this, plus a check that no new dependency entered the core: the
-framework depends on the standard library and `golang.org/x/crypto`, and nothing
-else. A pull request that adds a dependency there needs to argue for it first,
-in an issue.
+CI runs these and a handful of checks besides; the list is
+`.github/workflows/ci.yml`, and that file is what decides -- not this paragraph,
+which will fall behind it. One rule worth knowing before you push: the framework
+depends on the standard library and `golang.org/x/crypto`, and nothing else. A
+pull request that adds a dependency there needs to argue for it first, in an
+issue.
 
 ## Where a test goes
 
