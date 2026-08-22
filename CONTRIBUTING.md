@@ -34,25 +34,31 @@ issue.
 
 ## Where a test goes
 
-Beside the code it tests, named `*_test.go`, in the same directory. There is no
-`tests/` directory, and that is not style: `go test` attributes coverage per
-directory, so a test filed elsewhere leaves the package under test reporting
-0% -- and it can only reach what the package exports.
+In `tests/`, under `Feature/` or `Unit/`, declaring an external `_test` package.
+That is the default, and it is where nearly every test belongs: it sees what a
+caller sees, which is the point of testing a contract. The directory names are
+capitalised and the package clause is not, so a file under `tests/Feature`
+declares `package feature_test`.
 
-Which package the test declares is a real choice, and it answers one question:
+The exception is a test that genuinely needs an identifier its package does not
+export. It cannot live in `tests/`, because an external package reaches only
+what is exported, so it sits beside the code it tests, inside that package, and
+says so in its name: `*_internal_test.go`. The name is the load-bearing part --
+it is what keeps the exception legible instead of ambient, so a test outside
+`tests/` carries that name or it does not belong outside `tests/`.
 
-| declare | when |
-|---|---|
-| `package X_test` | this is the **contract**. The test sees what a caller sees, which is the point |
-| `package X` | this is the **implementation**, and the test genuinely needs something the package does not export |
+The coverage argument lands on that exception rather than against the tree:
+`go test` attributes coverage per directory, so the test compiled into the
+package is the one that reports against it, and a suite under `tests/` is
+measured against itself unless coverage is asked for across packages.
 
-Prefer the first. Take the second only when you use it -- `plans/testpackages.go`
-in the arandu-io working tree checks exactly that, by intersecting the
-identifiers a test names with what its package declares unexported, and the
-checklist runs it across every repository.
+Take the exception only when you use it -- `plans/testpackages.go` in the
+arandu-io working tree checks exactly that, by intersecting the identifiers a
+test names with what its package declares unexported, and the checklist runs it
+across every Go repository in the project.
 
 A `package main` has no external form: it cannot be imported, so its tests are
-internal and that is the end of it.
+internal -- beside `main.go`, and named `_internal_test.go` like any other.
 
 ## What the commit message says
 
