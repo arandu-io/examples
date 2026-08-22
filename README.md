@@ -14,44 +14,51 @@
 </p>
 
 A blog: posts filed into sections, a comment thread that requires a confirmed
-address, a moderation panel, and a password reset. Almost every file in it was
+address, a moderation panel, a password reset, and a live socket. Most of it was
 written by the toolchain rather than by hand, which is the part worth reading —
-two policies (`PostPolicy`, `CommentPolicy`) and three controllers
-(`AdminController`, `PasswordController`, `RegisterController`) are the only
-files a person had to decide, everything else came out of `aru make:module`.
+`aru make:module` wrote the posts, the comments and the categories end to end.
+What a person had to decide is the six policies in `app/Policies/`, the
+moderation panel and the sitemap, and the auth screens `arandu-io/ui` published
+for this application to finish.
 
 ## What it delivers
 
-- **A repository call that cannot skip authorization** — every method on
-  `PostRepository` and `CommentRepository` takes a `security.Grant`, and
-  `tests/Unit/GrantRequired_test.go` proves the absence does not compile — on
-  the generated code itself, not on the framework's own.
+- **A repository call that cannot skip authorization** — every method that reads
+  or writes a row on `PostRepository` and `CommentRepository` takes a
+  `security.Grant`, and `tests/Unit/GrantRequired_test.go` proves the absence
+  does not compile — on the generated code itself, not on the framework's own.
 - **A public read path decided entirely by policy** — a guest gets the
   published listing and any published post; a draft answers 403; none of it
   is middleware, all of it is `PostPolicy.Can`.
 - **A moderation panel that owns no data of its own** — `/admin` reads the
   same posts and comments through the same services and the same policies as
   the public screens, rather than opening a second path to the database.
-- **A verification link that is signed, not stored** — no table, no cleanup
-  job; the purpose is part of the HMAC, so a verification link cannot be
-  replayed as a password reset even though the same key signs both.
+- **Two links that are signed rather than stored** — address verification and
+  password reset both carry their payload in an HMAC, so there is no token
+  table and no cleanup job; the purpose is part of the signature, so a
+  verification link cannot be replayed as a reset even though the same key
+  signs both. The reset is single use without a row to delete, because it
+  fingerprints the password it was minted against.
 - **A sitemap that cannot leak a draft** — it authorizes as a guest through
   the same `PostPolicy` a browser uses, instead of holding a system grant that
   would list everything.
 
-18,060 lines of production code and 3,721 of test, across 26 test files.
-Built against `arandu-io/framework`, `arandu-io/kyse` and `arandu-io/hesape`,
-with a PostgreSQL and a SQLite driver both wired through `.env` — an example
-is meant to show the shape of a real deployment, so it defaults to Postgres
-rather than the skeleton's SQLite default.
+13,125 lines of production code and 5,100 of test, across 31 test files, with
+the compiled views in neither — `aru view:build` writes them and `.gitignore`
+keeps build output out. Built against `arandu-io/framework`, `arandu-io/kyse`,
+`arandu-io/hesape` and `arandu-io/joaju`, with a PostgreSQL and a SQLite driver
+both wired through `.env` — an example is meant to show the shape of a real
+deployment, so it defaults to Postgres rather than the skeleton's SQLite default.
 
 Nothing is actually mailed: `MAIL_URL=log://`, the default, writes verification
 and password-reset links to the output of `aru dev` instead of sending them, so
 the example runs without an SMTP server.
 
-Known limit: the password-reset token store is in memory, correct for one
-instance and wrong for two — right behind a load balancer, the link only
-works on the replica that issued it.
+Known limit: this is one process. `SESSION_DRIVER=memory` and
+`CACHE_STORE=memory` are the defaults, the rate limiter counts in the same
+process, and the socket broker holds its channels there — right for one instance
+and wrong for two, where half the requests land on the replica that never saw
+the login. `bootstrap/app.go` names the line to swap in each case.
 
 ## Run it
 
@@ -68,10 +75,11 @@ password that is refused outside development.
 
 ## The rest of Arandu
 
-`aru make:module` is what generated every file here but the five listed
-above; `arandu-io/framework` is what it ran against; `arandu-io/arandu` is the
-skeleton this application started from; `hesape` is the 47-package collection
-underneath the framework.
+`aru make:module` is what generated the modules here; `arandu-io/framework` is
+what it ran against; `arandu-io/arandu` is the skeleton this application started
+from; `arandu-io/ui` published the auth screens into it; `arandu-io/joaju` is
+the socket server, in this process rather than beside it; `hesape` is the
+47-package collection underneath the framework.
 
 ## Learning Arandu
 
