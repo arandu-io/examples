@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/arandu-io/hesape/database/migrations"
+	"github.com/arandu-io/hesape/database/schema"
 )
 
 func init() { migrations.Register(addCategoryToPosts{}) }
@@ -45,21 +46,17 @@ func (addCategoryToPosts) GetName() string { return "2026_08_09_000003_add_categ
 // the query this whole migration exists for, and without it a full scan on the
 // one table that grows forever.
 func (addCategoryToPosts) Up(ctx context.Context, conn migrations.Connection) error {
-	if _, err := conn.Statement(ctx, `ALTER TABLE posts ADD COLUMN category_id VARCHAR(255)`, nil); err != nil {
-		return err
-	}
-
-	_, err := conn.Statement(ctx, `CREATE INDEX posts_category_idx ON posts (category_id, created_at, id)`, nil)
-	return err
+	return conn.Schema().Table(ctx, "posts", func(table *schema.Blueprint) {
+		table.String("category_id").Nullable()
+		table.Index([]string{"category_id", "created_at", "id"})
+	})
 }
 
 // Down drops the index first: SQLite refuses to drop a column an index still
 // names.
 func (addCategoryToPosts) Down(ctx context.Context, conn migrations.Connection) error {
-	if _, err := conn.Statement(ctx, `DROP INDEX posts_category_idx`, nil); err != nil {
-		return err
-	}
-
-	_, err := conn.Statement(ctx, `ALTER TABLE posts DROP COLUMN category_id`, nil)
-	return err
+	return conn.Schema().Table(ctx, "posts", func(table *schema.Blueprint) {
+		table.DropIndex([]string{"category_id", "created_at", "id"})
+		table.DropColumn("category_id")
+	})
 }

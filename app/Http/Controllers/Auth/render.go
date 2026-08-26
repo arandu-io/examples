@@ -8,6 +8,7 @@ import (
 	"github.com/arandu-io/framework/mail"
 	"github.com/arandu-io/framework/modules/auth"
 	"github.com/arandu-io/framework/observability"
+	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/framework/view"
 )
 
@@ -92,7 +93,13 @@ func SignedInName(ctx context.Context, people *auth.Service, tenant, id string) 
 	if id == "" || people == nil {
 		return ""
 	}
-	names, err := people.Names(ctx, tenant, []string{id})
+	// The reader is the person the header is being drawn for, which is the same
+	// person whose name is being read: a signed-in header shows the name of
+	// whoever is signed in. PublicNames authorizes against that subject, so the
+	// tenant on it is what scopes the lookup.
+	reader := security.Subject{ID: id, Tenant: tenant}
+
+	names, err := people.PublicNames(ctx, reader, []string{id})
 	if err != nil || names[id] == "" {
 		return id
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/arandu-io/hesape/database/migrations"
+	"github.com/arandu-io/hesape/database/schema"
 )
 
 func init() { migrations.Register(addTenantToContent{}) }
@@ -61,15 +62,14 @@ func (addTenantToContent) GetName() string { return "2026_08_17_000001_add_tenan
 // place a migration could carry an injection, and a reader should not have to
 // check that the parts are constants.
 func (addTenantToContent) Up(ctx context.Context, conn migrations.Connection) error {
-	for _, statement := range []string{
-		`ALTER TABLE posts ADD COLUMN tenant_id VARCHAR(255)`,
-		`ALTER TABLE comments ADD COLUMN tenant_id VARCHAR(255)`,
-		`ALTER TABLE categories ADD COLUMN tenant_id VARCHAR(255)`,
-		`CREATE INDEX posts_tenant_created_idx ON posts (tenant_id, created_at, id)`,
-		`CREATE INDEX comments_tenant_created_idx ON comments (tenant_id, created_at, id)`,
-		`CREATE INDEX categories_tenant_created_idx ON categories (tenant_id, created_at, id)`,
-	} {
-		if _, err := conn.Statement(ctx, statement, nil); err != nil {
+	for _, table := range []string{"posts", "comments", "categories"} {
+		if err := conn.Schema().Table(ctx, table, func(t *schema.Blueprint) {
+			// Nullable, because the rows are already there. The column is
+			// backfilled and tightened in a later migration, which is what
+			// RULE 16 asks of every column added to a table in use.
+			t.String("tenant_id").Nullable()
+			t.Index([]string{"tenant_id", "created_at", "id"})
+		}); err != nil {
 			return err
 		}
 	}
@@ -80,15 +80,14 @@ func (addTenantToContent) Up(ctx context.Context, conn migrations.Connection) er
 // names, so dropping the columns alone would fail on the one engine this
 // example runs on out of the box.
 func (addTenantToContent) Down(ctx context.Context, conn migrations.Connection) error {
-	for _, statement := range []string{
-		`DROP INDEX posts_tenant_created_idx`,
-		`DROP INDEX comments_tenant_created_idx`,
-		`DROP INDEX categories_tenant_created_idx`,
-		`ALTER TABLE posts DROP COLUMN tenant_id`,
-		`ALTER TABLE comments DROP COLUMN tenant_id`,
-		`ALTER TABLE categories DROP COLUMN tenant_id`,
-	} {
-		if _, err := conn.Statement(ctx, statement, nil); err != nil {
+	for _, table := range []string{"posts", "comments", "categories"} {
+		if err := conn.Schema().Table(ctx, table, func(t *schema.Blueprint) {
+			// The index first: SQLite refuses to drop a column an index still
+			// names, and the Blueprint runs the commands in the order they were
+			// added.
+			t.DropIndex([]string{"tenant_id", "created_at", "id"})
+			t.DropColumn("tenant_id")
+		}); err != nil {
 			return err
 		}
 	}

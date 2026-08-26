@@ -513,7 +513,10 @@ func (c *PostController) thread(ctx *fhttp.Context, found []models.Comment) []vi
 	for _, m := range found {
 		ids = append(ids, m.Author)
 	}
-	names, err := c.people.Names(ctx.Ctx(), c.tenant, ids)
+	// PublicNames authorizes against the reader, and the reader is whoever is
+	// looking at the page. The tenant on the subject is what scopes the lookup,
+	// which is why it is the controller's and not a parameter.
+	names, err := c.people.PublicNames(ctx.Ctx(), security.Subject{Tenant: c.tenant}, ids)
 	if err != nil {
 		// Not fatal. An article is worth rendering with a thread that names
 		// people badly; it is not worth failing over one.

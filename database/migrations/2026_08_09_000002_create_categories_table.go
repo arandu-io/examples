@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/arandu-io/hesape/database/migrations"
+	"github.com/arandu-io/hesape/database/schema"
 )
 
 func init() { migrations.Register(createCategoriesTable{}) }
@@ -35,22 +36,18 @@ func (createCategoriesTable) GetName() string { return "2026_08_09_000002_create
 
 // Up creates the table, then the index the listing reads.
 func (createCategoriesTable) Up(ctx context.Context, conn migrations.Connection) error {
-	if _, err := conn.Statement(ctx, `CREATE TABLE categories (
-		id          VARCHAR(255) PRIMARY KEY,
-		name        VARCHAR(255) NOT NULL,
-		slug        VARCHAR(255) NOT NULL,
-		description TEXT,
-		created_at  TIMESTAMP NOT NULL
-	)`, nil); err != nil {
-		return err
-	}
+	return conn.Schema().Create(ctx, "categories", func(table *schema.Blueprint) {
+		table.String("id").Primary()
+		table.String("name")
+		table.String("slug")
+		table.Text("description").Nullable()
+		table.Timestamp("created_at")
 
-	_, err := conn.Statement(ctx, `CREATE INDEX categories_created_idx ON categories (created_at, id)`, nil)
-	return err
+		table.Index([]string{"created_at", "id"})
+	})
 }
 
 // Down drops the table, and the index goes with it on all three engines.
 func (createCategoriesTable) Down(ctx context.Context, conn migrations.Connection) error {
-	_, err := conn.Statement(ctx, `DROP TABLE categories`, nil)
-	return err
+	return conn.Schema().DropIfExists(ctx, "categories")
 }

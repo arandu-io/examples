@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/arandu-io/hesape/database/migrations"
+	"github.com/arandu-io/hesape/database/schema"
 )
 
 func init() { migrations.Register(addViewsToPosts{}) }
@@ -35,14 +36,20 @@ func (addViewsToPosts) GetName() string { return "2026_08_09_000001_add_views_to
 
 // Up adds the column.
 func (addViewsToPosts) Up(ctx context.Context, conn migrations.Connection) error {
-	_, err := conn.Statement(ctx, `ALTER TABLE posts ADD COLUMN views INTEGER`, nil)
-	return err
+	return conn.Schema().Table(ctx, "posts", func(table *schema.Blueprint) {
+		// Nullable, and that is the rollout rule rather than a preference: a NOT
+		// NULL column added to a table that has rows fails on every row already
+		// there, and during a rollout the previous binary does not fill it in.
+		table.BigInteger("views").Nullable()
+	})
 }
 
 // Down drops the column, and the index with it on all three engines -- which is
-// why there is no DROP INDEX here: its spelling is the one thing SQLite,
-// PostgreSQL and MySQL do not agree about.
+// why there is no index named here: the spelling of a drop is the one thing
+// SQLite, PostgreSQL and MySQL do not agree about, and it is the grammar's to
+// know.
 func (addViewsToPosts) Down(ctx context.Context, conn migrations.Connection) error {
-	_, err := conn.Statement(ctx, `ALTER TABLE posts DROP COLUMN views`, nil)
-	return err
+	return conn.Schema().Table(ctx, "posts", func(table *schema.Blueprint) {
+		table.DropColumn("views")
+	})
 }

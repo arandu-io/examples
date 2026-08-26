@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/arandu-io/hesape/database/migrations"
+	"github.com/arandu-io/hesape/database/schema"
 )
 
 func init() { migrations.Register(createCommentsTable{}) }
@@ -35,23 +36,19 @@ func (createCommentsTable) GetName() string { return "2026_08_08_000002_create_c
 
 // Up creates the table, then the index the listing reads.
 func (createCommentsTable) Up(ctx context.Context, conn migrations.Connection) error {
-	if _, err := conn.Statement(ctx, `CREATE TABLE comments (
-		id         VARCHAR(255) PRIMARY KEY,
-		post_id    VARCHAR(255) NOT NULL,
-		author     VARCHAR(255) NOT NULL,
-		body       TEXT NOT NULL,
-		approved   BOOLEAN,
-		created_at TIMESTAMP NOT NULL
-	)`, nil); err != nil {
-		return err
-	}
+	return conn.Schema().Create(ctx, "comments", func(table *schema.Blueprint) {
+		table.String("id").Primary()
+		table.String("post_id")
+		table.String("author")
+		table.Text("body")
+		table.Boolean("approved").Nullable()
+		table.Timestamp("created_at")
 
-	_, err := conn.Statement(ctx, `CREATE INDEX comments_created_idx ON comments (created_at, id)`, nil)
-	return err
+		table.Index([]string{"created_at", "id"})
+	})
 }
 
 // Down drops the table, and the index goes with it on all three engines.
 func (createCommentsTable) Down(ctx context.Context, conn migrations.Connection) error {
-	_, err := conn.Statement(ctx, `DROP TABLE comments`, nil)
-	return err
+	return conn.Schema().DropIfExists(ctx, "comments")
 }

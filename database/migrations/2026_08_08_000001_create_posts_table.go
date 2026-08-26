@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/arandu-io/hesape/database/migrations"
+	"github.com/arandu-io/hesape/database/schema"
 )
 
 func init() { migrations.Register(createPostsTable{}) }
@@ -37,31 +38,29 @@ var _ migrations.ReversibleMigration = createPostsTable{}
 // GetName is this migration's identity. The date prefix carries the order.
 func (createPostsTable) GetName() string { return "2026_08_08_000001_create_posts_table" }
 
-// Up creates the table, then the index the listing reads.
+// Up creates the table and the index the listing reads.
 //
-// Two statements are two calls. A statement is what the driver is handed, and
-// several of them in one string is a thing each engine decides for itself --
-// SQLite runs them, PostgreSQL runs them only outside a prepared statement, and
-// MySQL refuses unless the connection was opened asking for it.
+// The column types are the Blueprint's to spell, one per engine. This migration
+// used to write them, with a comment above explaining that anything a key names
+// has to be VARCHAR because MySQL refuses TEXT in a key without a prefix length
+// -- which is what the grammar knows, worked out by hand here instead.
+//
+// conn.Statement is still reachable, and the backfill next door uses it. What it
+// is for is what no Blueprint reaches.
 func (createPostsTable) Up(ctx context.Context, conn migrations.Connection) error {
-	if _, err := conn.Statement(ctx, `CREATE TABLE posts (
-		id           VARCHAR(255) PRIMARY KEY,
-		title        VARCHAR(255) NOT NULL,
-		slug         VARCHAR(255) NOT NULL,
-		body         TEXT NOT NULL,
-		published_at TIMESTAMP,
-		created_at   TIMESTAMP NOT NULL,
-		UNIQUE (slug)
-	)`, nil); err != nil {
-		return err
-	}
+	return conn.Schema().Create(ctx, "posts", func(table *schema.Blueprint) {
+		table.String("id").Primary()
+		table.String("title")
+		table.String("slug").Unique()
+		table.Text("body")
+		table.Timestamp("published_at").Nullable()
+		table.Timestamp("created_at")
 
-	_, err := conn.Statement(ctx, `CREATE INDEX posts_created_idx ON posts (created_at, id)`, nil)
-	return err
+		table.Index([]string{"created_at", "id"})
+	})
 }
 
 // Down drops the table, and the index goes with it on all three engines.
 func (createPostsTable) Down(ctx context.Context, conn migrations.Connection) error {
-	_, err := conn.Statement(ctx, `DROP TABLE posts`, nil)
-	return err
+	return conn.Schema().DropIfExists(ctx, "posts")
 }
