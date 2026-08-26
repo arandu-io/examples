@@ -11,9 +11,12 @@ package bootstrap
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/arandu-io/framework/data"
 	"github.com/arandu-io/framework/kernel"
+	"github.com/arandu-io/hesape/console"
 	"github.com/arandu-io/hesape/database"
 
 	appconfig "github.com/arandu-io/examples/config"
@@ -61,30 +64,6 @@ func Dispatch(command string, args []string) error {
 		}
 		return k.Run(ctx)
 
-	case "migrate":
-		options, err := migrateOptions(args)
-		if err != nil {
-			return err
-		}
-		return migrate(ctx, db, k.Migrations(), options)
-
-	case "migrate:rollback":
-		options, err := migrateOptions(args)
-		if err != nil {
-			return err
-		}
-		return rollback(ctx, db, k.Migrations(), options)
-
-	case "migrate:status":
-		return migrateStatus(ctx, db, k.Migrations())
-
-	case "migrate:fresh":
-		options, err := migrateOptions(args)
-		if err != nil {
-			return err
-		}
-		return fresh(ctx, cfg, db, k.Migrations(), options)
-
 	case "routes":
 		if err := k.Boot(ctx); err != nil {
 			return err
@@ -122,6 +101,20 @@ func Dispatch(command string, args []string) error {
 		return nil
 
 	default:
+		// The component's migration commands come before the application's own,
+		// for the same reason routes/console.go comes after both: a project must
+		// not shadow `aru migrate` and change what a deploy step does.
+		//
+		// They are built here rather than above the switch because building them
+		// wires a migrator, and `aru serve` has no reason to pay for one.
+		migrationCommands := migrationCommands(cfg, db, app)
+		for _, c := range migrationCommands {
+			if c.Name != command {
+				continue
+			}
+			return runMigrationCommand(ctx, cfg, c, args)
+		}
+
 		// What routes/console.go declares comes last, so an application cannot
 		// shadow a built-in command and change what `aru migrate` means.
 		if cmd, found := routes.Lookup(command); found {
@@ -131,22 +124,52 @@ func Dispatch(command string, args []string) error {
 			defer func() { _ = k.Shutdown() }()
 			return cmd.Run(ctx, args)
 		}
-		return unknownCommand(command)
+		return unknownCommand(command, migrationCommands)
 	}
+}
+
+// runMigrationCommand runs one of the component's commands.
+//
+// The IO is built here rather than by a console.Application because this
+// application dispatches with a switch: what an Application would add over this
+// is the listing and the lock, and the lock is the half that matters, so it is
+// wired below.
+//
+// A command that names a lock and finds no issuer refuses rather than running
+// unlocked -- see console.Application.guarded -- so one is always wired. How
+// wide it is, and when that width is not enough, is refuseCommand's answer.
+func runMigrationCommand(ctx context.Context, cfg appconfig.Config, c console.Command, args []string) error {
+	if err := refuseCommand(cfg, c); err != nil {
+		return err
+	}
+	return console.NewApplication(os.Stdout, os.Stderr, os.Stdin).
+		Add(c).
+		WithLocks(migrationLocks(), isolationLockTTL).
+		Call(ctx, c.Name, args...)
 }
 
 // unknownCommand lists what was available instead. An error that only says the
 // command is unknown costs a search; this one ends it.
-func unknownCommand(command string) error {
-	err := fmt.Errorf("unknown command: %s (expected serve, migrate, migrate:rollback, "+
-		"migrate:status, migrate:fresh, routes, db:seed, schedule:list, schedule:run, work or Version)", command)
+//
+// The migration commands are listed from the same slice the dispatch reads, so
+// a command that exists is named and one that does not cannot be: the listing
+// and the lookup cannot disagree, which is how migrate:install, migrate:reset
+// and migrate:refresh went unmentioned for as long as they went unwired.
+func unknownCommand(command string, migrationCommands []console.Command) error {
+	names := make([]string, 0, len(migrationCommands))
+	for _, c := range migrationCommands {
+		names = append(names, c.Name)
+	}
+
+	err := fmt.Errorf("unknown command: %s (expected serve, routes, db:seed, schedule:list, "+
+		"schedule:run, work, Version or one of %s)", command, strings.Join(names, ", "))
 	if help := routes.Help(); help != "" {
 		return fmt.Errorf("%w\n\n%s", err, help)
 	}
 	return err
 }
 
-// open connects using whatever DB_CONNECTION says.
+// open connects using whatever the scheme of DATABASE_URL says.
 //
 // The pool policy, the SQLite directory and the message for a driver that is
 // configured but not linked all live in the adapter, so every project gets the

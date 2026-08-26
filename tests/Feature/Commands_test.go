@@ -51,6 +51,80 @@ func TestMigrateAndRollbackOnSQLite(t *testing.T) {
 	}
 }
 
+// TestTheApplicationExposesTheCompleteMigrationCommandSurface keeps this
+// application's command catalog aligned with the migration component.
+//
+// These are behaviour checks rather than a source import check: a command only
+// exists when Dispatch can run it against the database the application wired.
+// The three below did not exist here until the four hand-written commands were
+// replaced by the component's eight.
+func TestTheApplicationExposesTheCompleteMigrationCommandSurface(t *testing.T) {
+	t.Run("install creates the migration repository", func(t *testing.T) {
+		sqliteEnv(t)
+
+		if err := bootstrap.Dispatch("migrate:install", nil); err != nil {
+			t.Fatalf("migrate:install: %v", err)
+		}
+		if !tableExists(t, "arandu_migrations") {
+			t.Error("migrate:install did not create the migration repository")
+		}
+	})
+
+	t.Run("reset rolls every migration back", func(t *testing.T) {
+		sqliteEnv(t)
+
+		if err := bootstrap.Dispatch("migrate", nil); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
+		if err := bootstrap.Dispatch("migrate:reset", nil); err != nil {
+			t.Fatalf("migrate:reset: %v", err)
+		}
+		if tableExists(t, "posts") {
+			t.Error("migrate:reset left an application table behind")
+		}
+	})
+
+	t.Run("refresh rolls back and re-runs every migration", func(t *testing.T) {
+		sqliteEnv(t)
+
+		if err := bootstrap.Dispatch("migrate", nil); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
+		if err := bootstrap.Dispatch("migrate:refresh", nil); err != nil {
+			t.Fatalf("migrate:refresh: %v", err)
+		}
+		if !tableExists(t, "posts") {
+			t.Error("migrate:refresh did not rebuild the application schema")
+		}
+	})
+}
+
+// tableExists reports whether the schema has a table of that name.
+//
+// It reads the database itself rather than the migrator's own report, because
+// what is being checked is whether a run happened at all -- and a report is
+// exactly what a run that did not happen still produces.
+func tableExists(t *testing.T, name string) bool {
+	t.Helper()
+
+	cfg, err := appconfig.Load()
+	if err != nil {
+		t.Fatalf("config: %v", err)
+	}
+	db, closeDB, err := bootstrap.Open(cfg)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer closeDB()
+
+	var count int
+	if err := db.Unwrap().QueryRowContext(context.Background(),
+		"SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?", name).Scan(&count); err != nil {
+		t.Fatalf("reading the schema: %v", err)
+	}
+	return count > 0
+}
+
 // TestLoginOnSQLite runs the promise end to end, on a database that needs no
 // installation: migrate, seed the administrator, and sign in.
 func TestLoginOnSQLite(t *testing.T) {
