@@ -2,14 +2,17 @@ package feature_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/arandu-io/framework/security"
 
+	requests "github.com/arandu-io/examples/app/Http/Requests"
 	models "github.com/arandu-io/examples/app/Models"
 	policies "github.com/arandu-io/examples/app/Policies"
 	repositories "github.com/arandu-io/examples/app/Repositories"
+	services "github.com/arandu-io/examples/app/Services"
 	"github.com/arandu-io/examples/bootstrap"
 )
 
@@ -126,6 +129,133 @@ func TestTheThreadHidesWhatIsWaitingForReview(t *testing.T) {
 				"somebody who just wrote one is told their words vanished", len(found))
 		}
 	})
+}
+
+// TestAPendingCommentCannotBeReadByItsID closes the other public read path.
+//
+// PublicForPost protects the thread with a filtered query, but Get reads one
+// row before asking the policy about that row. CommentView therefore has to
+// distinguish the preliminary zero value from an actual pending comment. If it
+// allows both, knowing an id bypasses moderation even though the listing stays
+// clean.
+func TestAPendingCommentCannotBeReadByItsID(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	ours := bootstrap.Tenant()
+
+	const (
+		category = "00000000-0000-4000-8000-0000000001a0"
+		post     = "00000000-0000-4000-8000-0000000001a1"
+		pending  = "00000000-0000-4000-8000-0000000001a2"
+	)
+	seedCategory(t, db, category, ours, "Reports", "reports")
+	seedPostInCategory(t, db, post, ours, category, "Visible post", "visible-post")
+	seedComment(t, db, pending, ours, post, "u9", false)
+
+	svc := services.NewCommentService(repositories.NewCommentRepository(db))
+	if _, err := svc.Get(ctx, security.Guest(ours), pending); !errors.Is(err, security.ErrForbidden) {
+		t.Fatalf("reading a pending comment by id returned %v, want ErrForbidden", err)
+	}
+}
+
+// TestCommentCreationTakesAuthorshipAndModerationFromTheActor proves the
+// service owns the rule, not one HTTP handler.
+//
+// A second transport, command or job may call the same service without copying
+// the controller's field overrides. The candidate therefore arrives with both
+// protected fields hostile on purpose: neither may reach the stored value.
+func TestCommentCreationTakesAuthorshipAndModerationFromTheActor(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	ours := bootstrap.Tenant()
+
+	const (
+		category = "00000000-0000-4000-8000-0000000001b0"
+		post     = "00000000-0000-4000-8000-0000000001b1"
+	)
+	seedCategory(t, db, category, ours, "Reports", "reports")
+	seedPostInCategory(t, db, post, ours, category, "Visible post", "visible-post")
+
+	actor := security.Subject{ID: "u1", Tenant: ours, Verified: true}
+	svc := services.NewCommentService(repositories.NewCommentRepository(db))
+	created, err := svc.Create(ctx, actor, requests.StoreComment{
+		PostId: post, Author: "u9", Body: "A pending comment.", Approved: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Author != actor.ID || created.Approved {
+		t.Fatalf("created comment has author %q and approved=%t, want %q and false",
+			created.Author, created.Approved, actor.ID)
+	}
+}
+
+// TestACommentCannotTargetAnotherTenantsPost protects the relationship as well
+// as the comment row itself.
+//
+// The new comment belongs to the Grant's tenant, but a globally valid foreign
+// key from another tenant must not be accepted as its parent. Returning the
+// same not-found error as an unknown id avoids confirming that the other
+// tenant's post exists.
+func TestACommentCannotTargetAnotherTenantsPost(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	scopedFixture(t, db)
+
+	actor := security.Subject{ID: "u1", Tenant: bootstrap.Tenant(), Verified: true}
+	svc := services.NewCommentService(repositories.NewCommentRepository(db))
+	_, err := svc.Create(ctx, actor, requests.StoreComment{
+		PostId: theirPost,
+		Body:   "This must not cross tenants.",
+	})
+	if !errors.Is(err, models.ErrPostNotFound) {
+		t.Fatalf("creating a comment under another tenant's post returned %v, want ErrPostNotFound", err)
+	}
+}
+
+// TestACommentCannotBeMovedToAnotherTenantsPost applies the same relationship
+// boundary to updates.
+//
+// The moderator is fully authorized to edit this tenant's comment; the failure
+// must therefore come from the target post being outside the Grant's tenant,
+// not from a route guard or a missing write permission.
+func TestACommentCannotBeMovedToAnotherTenantsPost(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	scopedFixture(t, db)
+
+	actor := security.Subject{
+		ID: "admin", Tenant: bootstrap.Tenant(), Roles: []string{"admin"}, Verified: true,
+	}
+	svc := services.NewCommentService(repositories.NewCommentRepository(db))
+	_, err := svc.Update(ctx, actor, requests.UpdateComment{
+		ID: ourComment, PostId: theirPost, Author: "u1", Body: "Moved.", Approved: true,
+	})
+	if !errors.Is(err, models.ErrPostNotFound) {
+		t.Fatalf("moving a comment under another tenant's post returned %v, want ErrPostNotFound", err)
+	}
+}
+
+// TestUpdatingAnUnknownCommentStillReportsTheComment preserves the repository
+// contract after the relationship predicate was added.
+//
+// Both the comment and the target post participate in the conditional update.
+// A zero-row result must not collapse the two failures into ErrPostNotFound:
+// callers already distinguish the missing resource they addressed.
+func TestUpdatingAnUnknownCommentStillReportsTheComment(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	scopedFixture(t, db)
+
+	//arandu:system-grant this repository contract test needs an update Grant with no request actor
+	g := security.SystemGrant(policies.CommentUpdate, bootstrap.Tenant())
+	_, err := repositories.NewCommentRepository(db).Update(ctx, g, models.Comment{
+		ID: "00000000-0000-4000-8000-0000000001c0", PostId: ourPost,
+		Author: "u1", Body: "Missing.", Approved: false,
+	})
+	if !errors.Is(err, models.ErrCommentNotFound) {
+		t.Fatalf("updating an unknown comment returned %v, want ErrCommentNotFound", err)
+	}
 }
 
 // assertPublishedOnly fails when a draft came back, and when the published post

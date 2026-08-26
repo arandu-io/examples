@@ -184,14 +184,31 @@ func (r *CommentRepository) Create(ctx context.Context, g security.Grant, co mod
 	co.TenantID = data.Tenant(g)
 	co.CreatedAt = time.Now().UTC()
 
-	_, err = r.db.ExecContext(ctx,
-		`INSERT INTO comments (`+commentColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		co.ID, co.TenantID, co.PostId, co.Author, co.Body, co.Approved, co.CreatedAt)
+	// The relationship is scoped in the same statement as the insert. A plain
+	// foreign key on post_id only proves that the id exists somewhere; it would
+	// accept a post of another tenant and leave this tenant holding a comment
+	// attached to an aggregate it cannot read. EXISTS answers both facts without
+	// a check-then-insert race between two statements.
+	res, err := r.db.ExecContext(ctx,
+		`INSERT INTO comments (`+commentColumns+`)
+		 SELECT ?, ?, ?, ?, ?, ?, ?
+		 WHERE EXISTS (SELECT 1 FROM posts WHERE id = ? AND tenant_id = ?)`,
+		co.ID, co.TenantID, co.PostId, co.Author, co.Body, co.Approved, co.CreatedAt,
+		co.PostId, data.Tenant(g))
 	if err != nil {
 		if r.conflict(err) {
 			return models.Comment{}, models.ErrCommentConflict
 		}
 		return models.Comment{}, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return models.Comment{}, err
+	}
+	if n == 0 {
+		// Missing and belonging to another tenant deliberately share an answer:
+		// telling the caller which one happened confirms another tenant's row.
+		return models.Comment{}, models.ErrPostNotFound
 	}
 	return co, nil
 }
@@ -205,18 +222,54 @@ func (r *CommentRepository) Update(ctx context.Context, g security.Grant, co mod
 
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE comments SET post_id = ?, author = ?, body = ?, approved = ?
-		 WHERE id = ? AND tenant_id = ?`,
-		co.PostId, co.Author, co.Body, co.Approved, co.ID, data.Tenant(g))
+		 WHERE id = ? AND tenant_id = ?
+		   AND EXISTS (SELECT 1 FROM posts WHERE id = ? AND tenant_id = ?)`,
+		co.PostId, co.Author, co.Body, co.Approved, co.ID, data.Tenant(g),
+		co.PostId, data.Tenant(g))
 	if err != nil {
 		if r.conflict(err) {
 			return models.Comment{}, models.ErrCommentConflict
 		}
 		return models.Comment{}, err
 	}
-	if n, err := res.RowsAffected(); err == nil && n == 0 {
-		return models.Comment{}, models.ErrCommentNotFound
+	n, err := res.RowsAffected()
+	if err != nil {
+		return models.Comment{}, err
+	}
+	if n == 0 {
+		// Classify after the atomic write rather than checking before it. The
+		// UPDATE remains the operation that enforces both relationships, while
+		// this read preserves the repository's not-found contract and accepts
+		// drivers that report zero for a matched no-op update.
+		if err := r.classifyUpdateMiss(ctx, g, co.ID, co.PostId); err != nil {
+			return models.Comment{}, err
+		}
 	}
 	return co, nil
+}
+
+// classifyUpdateMiss distinguishes the two tenant-scoped reasons the guarded
+// update can affect no row. A row in another tenant is deliberately identical
+// to a missing row, so neither existence check can disclose it.
+func (r *CommentRepository) classifyUpdateMiss(ctx context.Context, g security.Grant, commentID, postID string) error {
+	var commentExists, postExists int
+	tenant := data.Tenant(g)
+	err := r.db.QueryRowContext(ctx,
+		`SELECT
+			CASE WHEN EXISTS (SELECT 1 FROM comments WHERE id = ? AND tenant_id = ?) THEN 1 ELSE 0 END,
+			CASE WHEN EXISTS (SELECT 1 FROM posts WHERE id = ? AND tenant_id = ?) THEN 1 ELSE 0 END`,
+		commentID, tenant, postID, tenant,
+	).Scan(&commentExists, &postExists)
+	if err != nil {
+		return err
+	}
+	if commentExists == 0 {
+		return models.ErrCommentNotFound
+	}
+	if postExists == 0 {
+		return models.ErrPostNotFound
+	}
+	return nil
 }
 
 // Delete removes one comment within the grant's tenant.

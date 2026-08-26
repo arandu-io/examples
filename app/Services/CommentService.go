@@ -25,17 +25,27 @@ func NewCommentService(repo *repositories.CommentRepository) *CommentService {
 	return &CommentService{repo: repo}
 }
 
-// Create walks the mandatory path: validate, Authorize, Grant, Repository.
-// There is no other order that compiles.
+// Create normalizes protected fields, then walks the mandatory path: validate,
+// Authorize, Grant, Repository. There is no other order that compiles.
 func (s *CommentService) Create(ctx context.Context, actor security.Subject, in requests.StoreComment) (models.Comment, error) {
+	// Protected fields are normalized before validation. A browser form should
+	// not have to submit an author merely because UpdateComment shares this
+	// validation shape, and a submitted value must never choose the answer.
+	in.Author = actor.ID
+	in.Approved = false
 	if errs := in.Validate(); errs.Any() {
 		return models.Comment{}, errs
 	}
 
 	candidate := models.Comment{
-		PostId:   in.PostId,
-		Author:   in.Author,
-		Body:     in.Body,
+		PostId: in.PostId,
+		// Authorship is an authorization fact, not form data. Keeping this in
+		// the service protects every transport that can call it, not only the
+		// browser handler shipped today.
+		Author: in.Author,
+		Body:   in.Body,
+		// Publishing is the moderator's separate action. Creation always enters
+		// the queue, even when a caller sets the input field directly.
 		Approved: in.Approved,
 	}
 

@@ -352,6 +352,7 @@ func TestTheTenantOnAWriteComesFromTheGrant(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	ours := bootstrap.Tenant()
+	var postID string
 
 	t.Run("post", func(t *testing.T) {
 		g := security.SystemGrant(policies.PostCreate, ours)
@@ -363,12 +364,13 @@ func TestTheTenantOnAWriteComesFromTheGrant(t *testing.T) {
 		if created.TenantID != ours {
 			t.Fatalf("the post was filed under %q, which the caller chose", created.TenantID)
 		}
+		postID = created.ID
 	})
 
 	t.Run("comment", func(t *testing.T) {
 		g := security.SystemGrant(policies.CommentCreate, ours)
 		created, err := repositories.NewCommentRepository(db).Create(ctx, g,
-			models.Comment{TenantID: theirTenant, PostId: "p1", Author: "u1", Body: "A remark."})
+			models.Comment{TenantID: theirTenant, PostId: postID, Author: "u1", Body: "A remark."})
 		if err != nil {
 			t.Fatal(err)
 		}

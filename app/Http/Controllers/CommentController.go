@@ -169,17 +169,11 @@ func (c *CommentController) Store(ctx *fhttp.Context) error {
 
 	in, form, errs := c.input(ctx)
 
-	// The post and the author come from the route and the session, never from
-	// the form. A hidden field carrying either is a hidden field somebody edits:
-	// one would let a comment be attached to any post, and the other would let
-	// it be signed with anybody's name.
+	// The post comes from the route, never from the form. A hidden field carrying
+	// it is a hidden field somebody edits and would let a comment be attached to
+	// any post. Authorship and moderation state are owned by CommentService, so
+	// every transport gets the same rule rather than copying this handler.
 	in.PostId = ctx.Param("id")
-	in.Author = actor.ID
-
-	// A new comment is never public. Approving is the administrator's action,
-	// and defaulting to true here would make the moderation queue a screen that
-	// is always empty.
-	in.Approved = false
 
 	if !c.Validated(errs) {
 		return c.rejectedCreate(ctx, actor, form, errs)
@@ -384,6 +378,8 @@ func (c *CommentController) fail(ctx *fhttp.Context, err error) error {
 		observability.Log(ctx.Ctx()).Warn("authorization denied", "error", err)
 		return ctx.Status(http.StatusForbidden)
 	case errors.Is(err, models.ErrCommentNotFound):
+		return ctx.Status(http.StatusNotFound)
+	case errors.Is(err, models.ErrPostNotFound):
 		return ctx.Status(http.StatusNotFound)
 	case errors.Is(err, models.ErrCommentConflict):
 		return ctx.Status(http.StatusConflict)

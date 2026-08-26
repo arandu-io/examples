@@ -68,11 +68,27 @@ func (CommentPolicy) Can(ctx context.Context, s security.Subject, a security.Act
 	// is almost always a session that failed to load, and answering an
 	// authorization question about nobody is how a hole opens by accident.
 	switch a {
-	case CommentView, CommentPublicList:
+	case CommentPublicList:
 		// The thread is public. A blog where you have to sign in to READ what
 		// people said is not a blog, and the moderation state is what the query
 		// behind this action protects -- not the login.
 		return nil
+
+	case CommentView:
+		// Get asks twice. The zero value is the preliminary permission needed
+		// to obtain a Grant for the scoped lookup; the populated value is the
+		// object-level decision. Treating both as public lets somebody who knows
+		// an id bypass the filtered thread and read a comment still awaiting
+		// review.
+		if co.ID == "" || co.Approved {
+			return nil
+		}
+		// A pending comment remains visible to its author and to a moderator.
+		// Both need this read before Delete or Approve can ask their separate
+		// write permission about the stored row.
+		if !s.IsGuest() && (co.Author == s.ID || s.HasRole("admin")) {
+			return nil
+		}
 
 	case CommentList:
 		// Every comment there is, moderation queue included. That is the
