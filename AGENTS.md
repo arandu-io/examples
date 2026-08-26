@@ -63,14 +63,14 @@ SQLite file in its own `t.TempDir()` — `sqliteEnv` at
 | `routes/web.go`, `routes/admin.go` | 51 registered routes across four modules, 32 of them this application's |
 | `bootstrap/app.go` | the whole wiring, top to bottom, in one function |
 | `database/migrations/`, `database/seeders/` | seven each |
-| `tests/Feature/`, `tests/Unit/` | 32 files, 126 test functions — 69 feature and 57 unit |
+| `tests/Feature/`, `tests/Unit/` | 32 files, 127 test functions — 69 feature and 58 unit |
 
 Counted with:
 
 ```sh
 find resources/views -name '*.kyse.go' | wc -l                      # 29
 find . -name '*_test.go' -not -path './storage/*' | wc -l           # 32
-grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l  # 126
+grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l  # 127
 ls app/Policies | wc -l                                             # 6
 GOWORK=off go run . routes | grep -cE '^  (GET|POST|PUT|PATCH|DELETE)'  # 51
 ```

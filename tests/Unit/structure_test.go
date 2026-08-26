@@ -149,6 +149,150 @@ func TestEveryDirectoryThatMustExistIsKept(t *testing.T) {
 	}
 }
 
+// TestTheApplicationTreeHasOneOwnerPerResponsibility freezes the part of this
+// application a reader is allowed to learn as architecture. Required paths are
+// active responsibilities, optional paths appear only with specialized code,
+// and refused paths would introduce a second owner or a Node build.
+func TestTheApplicationTreeHasOneOwnerPerResponsibility(t *testing.T) {
+	root := tests.Root(t)
+
+	requiredDirectories := []string{
+		"app",
+		"app/Http/Controllers",
+		"app/Http/Middleware",
+		"app/Http/Requests",
+		"app/Listeners",
+		"app/Mail",
+		"app/Models",
+		"app/Policies",
+		"app/Providers",
+		"app/Services",
+		"assets",
+		"bootstrap",
+		"config",
+		"database/factories",
+		"database/migrations",
+		"database/seeders",
+		"public",
+		"resources/css",
+		"resources/views",
+		"routes",
+		"storage/app/private",
+		"storage/app/public",
+		"storage/framework/cache",
+		"storage/framework/sessions",
+		"tests/Feature",
+		"tests/Unit",
+	}
+	for _, path := range requiredDirectories {
+		info, err := os.Stat(filepath.Join(root, path))
+		switch {
+		case err != nil:
+			t.Errorf("required directory %s is missing: %v", path, err)
+		case !info.IsDir():
+			t.Errorf("required directory %s is not a directory", path)
+		}
+	}
+
+	requiredFiles := []string{
+		"go.mod",
+		"main.go",
+		"arandu.toml",
+		"app/Providers/AppServiceProvider.go",
+		"assets/assets.go",
+		"bootstrap/app.go",
+		"bootstrap/console.go",
+		"config/app.go",
+		"database/migrations/migrations.go",
+		"public/public.go",
+		"routes/console.go",
+		"routes/web.go",
+		"tests/testcase.go",
+	}
+	for _, path := range requiredFiles {
+		info, err := os.Stat(filepath.Join(root, path))
+		switch {
+		case err != nil:
+			t.Errorf("required file %s is missing: %v", path, err)
+		case info.IsDir():
+			t.Errorf("required file %s is a directory", path)
+		}
+	}
+
+	// Services is the one home of use-case orchestration. Repositories remains
+	// available only for specialized queries, and Commands appears with the first
+	// structured command. Optional means absent or a directory, never a second
+	// kind of file at the canonical path.
+	for _, path := range []string{"app/Repositories", "app/Console/Commands"} {
+		info, err := os.Stat(filepath.Join(root, path))
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			t.Errorf("reading optional directory %s: %v", path, err)
+			continue
+		}
+		if !info.IsDir() {
+			t.Errorf("optional path %s is not a directory", path)
+		}
+	}
+
+	refusedPaths := []string{
+		"app/Actions",
+		"app/Data",
+		"app/Rules",
+		"app/Support",
+		"bootstrap/providers.go",
+		"bootstrap/cache",
+		"routes/api.go",
+		"routes/channels.go",
+		"resources/js",
+		"public/assets/manifest.json",
+		"storage/logs",
+	}
+	for _, path := range refusedPaths {
+		if _, err := os.Lstat(filepath.Join(root, path)); err == nil {
+			t.Errorf("refused path %s exists in the application", path)
+		} else if !os.IsNotExist(err) {
+			t.Errorf("checking refused path %s: %v", path, err)
+		}
+	}
+
+	nodeManifests := map[string]bool{
+		"package.json":        true,
+		"package-lock.json":   true,
+		"npm-shrinkwrap.json": true,
+		"pnpm-lock.yaml":      true,
+		"yarn.lock":           true,
+		"bun.lock":            true,
+		"bun.lockb":           true,
+	}
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() && d.Name() == ".git" {
+			return filepath.SkipDir
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		switch {
+		case d.IsDir() && d.Name() == "node_modules":
+			t.Errorf("refused Node directory %s exists in the application", rel)
+			return filepath.SkipDir
+		case !d.IsDir() && nodeManifests[d.Name()]:
+			t.Errorf("refused Node manifest %s exists in the application", rel)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestEachSuiteHoldsWhatItsNameSays.
 //
 // The two suites are not two folders to spread files across. Each means

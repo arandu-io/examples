@@ -53,15 +53,15 @@ in `README.md`, in `AGENTS.md`, and in the comments of
 ```sh
 find resources/views -name '*.kyse.go' | wc -l                            # 29
 find . -name '*_test.go' -not -path './storage/*' | wc -l                 # 32
-grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l      # 126
+grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l      # 127
 find . -name '*.go' -not -path './storage/*' -not -name '*_test.go' -exec cat {} + | wc -l   # 13253
-find . -name '*_test.go' -not -path './storage/*' -exec cat {} + | wc -l  # 5325
+find . -name '*_test.go' -not -path './storage/*' -exec cat {} + | wc -l  # 5469
 ls app/Policies | wc -l                                                   # 6
 GOWORK=off go run . routes | grep -cE '^  (GET|POST|PUT|PATCH|DELETE)'    # 51
 ```
 
 The README's figures were checked against these and are right: 13,253 lines of
-production code, 5,300 of test (5,325, rounded), 32 test files, six policies,
+production code, 5,500 of test (5,469, rounded), 32 test files, six policies,
 and hesape's 47 components — `ls -d */ | wc -l` in that repository, which counts
 components and not the 153 Go packages under them.
 
