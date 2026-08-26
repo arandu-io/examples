@@ -87,35 +87,30 @@ var retiredMailVars = []string{
 	"MAIL_USERNAME", "MAIL_PASSWORD", "MAIL_ENCRYPTION", "MAIL_KEY",
 }
 
-func loadMail(base bootstrap.Configuration) Mail {
+func loadMail(base bootstrap.Configuration) (Mail, error) {
 	for _, name := range retiredMailVars {
 		if env(name, "") == "" {
 			continue
 		}
-		panic(name + ` is set, and the mailer comes from one URL now.
-
-    MAIL_URL=log://                                   nothing is sent; it is logged
-    MAIL_URL=smtp://user:password@smtp.example.com:587
-    MAIL_URL=resend://re_xxxxxxxx
-    MAIL_URL=sendgrid://SG.xxxxxxxx
-
-Remove ` + name + ` and the rest of the MAIL_* block, except MAIL_FROM_ADDRESS
-and MAIL_FROM_NAME -- those are who the application is, not where mail goes.`)
+		return Mail{}, fmt.Errorf("%s is retired; remove it and configure the mailer with MAIL_URL", name)
 	}
 
-	cfg := parseMailURL(env("MAIL_URL", "log://"))
+	cfg, err := parseMailURL(env("MAIL_URL", "log://"))
+	if err != nil {
+		return Mail{}, err
+	}
 	cfg.FromAddress = env("MAIL_FROM_ADDRESS", "no-reply@localhost")
 	cfg.FromName = env("MAIL_FROM_NAME", base.App.Name)
-	return cfg
+	return cfg, nil
 }
 
 // parseMailURL reads the one variable.
 //
-// A bad value panics rather than falling back to the log transport. Falling
-// back is the failure nobody sees: the application boots, the messages are
-// written to a log, and the first person to notice is the customer who never
+// A bad value returns an error rather than falling back to the log transport.
+// Falling back is the failure nobody sees: the application boots, the messages
+// are written to a log, and the first person to notice is the customer who never
 // got one.
-func parseMailURL(raw string) Mail {
+func parseMailURL(raw string) (Mail, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		raw = "log://"
@@ -123,11 +118,7 @@ func parseMailURL(raw string) Mail {
 
 	u, err := url.Parse(raw)
 	if err != nil || u.Scheme == "" {
-		panic(fmt.Sprintf(`MAIL_URL is not a URL: %q
-
-    MAIL_URL=log://
-    MAIL_URL=smtp://user:password@smtp.example.com:587
-    MAIL_URL=resend://re_xxxxxxxx`, raw))
+		return Mail{}, fmt.Errorf("MAIL_URL is not a URL: %q", raw)
 	}
 
 	cfg := Mail{Mailer: Mailer(strings.ToLower(u.Scheme))}
@@ -140,7 +131,11 @@ func parseMailURL(raw string) Mail {
 		cfg.Mailer = MailerSMTP
 		cfg.Host = u.Hostname()
 		cfg.Port = 587
-		if p, err := strconv.Atoi(u.Port()); err == nil && p > 0 {
+		if rawPort := u.Port(); rawPort != "" {
+			p, err := strconv.Atoi(rawPort)
+			if err != nil || p <= 0 || p > 65535 {
+				return Mail{}, fmt.Errorf("MAIL_URL has an invalid SMTP port: %q", raw)
+			}
 			cfg.Port = p
 		}
 		if u.User != nil {
@@ -158,7 +153,7 @@ func parseMailURL(raw string) Mail {
 			}
 		}
 		if cfg.Host == "" {
-			panic(fmt.Sprintf("MAIL_URL names no SMTP host: %q", raw))
+			return Mail{}, fmt.Errorf("MAIL_URL names no SMTP host: %q", raw)
 		}
 
 	case MailerResend, MailerSendGrid:
@@ -167,13 +162,12 @@ func parseMailURL(raw string) Mail {
 		// looks like a username with no password.
 		cfg.Key = u.Host
 		if cfg.Key == "" {
-			panic(fmt.Sprintf("MAIL_URL carries no API key: %q\n\n    MAIL_URL=%s://your-key", raw, u.Scheme))
+			return Mail{}, fmt.Errorf("MAIL_URL carries no API key: %q", raw)
 		}
 
 	default:
-		panic(fmt.Sprintf(`MAIL_URL uses the scheme %q, and this application speaks log, smtp, smtps, resend, sendgrid and array: %q`,
-			u.Scheme, raw))
+		return Mail{}, fmt.Errorf("MAIL_URL uses unsupported scheme %q: %q", u.Scheme, raw)
 	}
 
-	return cfg
+	return cfg, nil
 }

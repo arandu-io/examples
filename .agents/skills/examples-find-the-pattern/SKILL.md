@@ -6,7 +6,7 @@ license: MIT
 
 # Reading this application to find an answer
 
-This is a blog with 51 routes, 29 views and 117 tests, and every file in it is
+This is a blog with 51 routes, 29 views and 126 tests, and every file in it is
 an answer to a question somebody asked. Finding the answer is a lookup, not a
 search, and the point of the lookup is that the file also says *why* the shape
 is what it is.

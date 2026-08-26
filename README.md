@@ -43,7 +43,7 @@ for this application to finish.
   the same `PostPolicy` a browser uses, instead of holding a system grant that
   would list everything.
 
-13,125 lines of production code and 5,100 of test, across 31 test files, with
+13,253 lines of production code and 5,300 of test, across 32 test files, with
 the compiled views in neither — `aru view:build` writes them and `.gitignore`
 keeps build output out. Built against `arandu-io/framework`, `arandu-io/kyse`,
 `arandu-io/hesape` and `arandu-io/joaju`, with a PostgreSQL and a SQLite driver

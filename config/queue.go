@@ -1,6 +1,9 @@
 package config
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // QueueConnection is where queued work is stored.
 type QueueConnection string
@@ -37,12 +40,34 @@ type Queue struct {
 	MaxAttempts int
 }
 
-func loadQueue() Queue {
-	return Queue{
-		Connection:  QueueConnection(env("QUEUE_CONNECTION", string(QueueDatabase))),
-		Default:     env("QUEUE_DEFAULT", "default"),
-		Workers:     envInt("QUEUE_WORKERS", 4),
-		RetryAfter:  envSeconds("QUEUE_RETRY_AFTER", 90*time.Second),
-		MaxAttempts: envInt("QUEUE_MAX_ATTEMPTS", 5),
+func loadQueue() (Queue, error) {
+	connection := QueueConnection(env("QUEUE_CONNECTION", string(QueueDatabase)))
+	switch connection {
+	case QueueDatabase:
+	case QueueRedis:
+		if env("REDIS_URL", "") == "" {
+			return Queue{}, fmt.Errorf("QUEUE_CONNECTION %q requires REDIS_URL", connection)
+		}
+	default:
+		return Queue{}, fmt.Errorf("QUEUE_CONNECTION has unsupported value %q; expected database or redis", connection)
 	}
+	workers, err := envInt("QUEUE_WORKERS", 4)
+	if err != nil {
+		return Queue{}, err
+	}
+	retryAfter, err := envSeconds("QUEUE_RETRY_AFTER", 90*time.Second)
+	if err != nil {
+		return Queue{}, err
+	}
+	maxAttempts, err := envInt("QUEUE_MAX_ATTEMPTS", 5)
+	if err != nil {
+		return Queue{}, err
+	}
+	return Queue{
+		Connection:  connection,
+		Default:     env("QUEUE_DEFAULT", "default"),
+		Workers:     workers,
+		RetryAfter:  retryAfter,
+		MaxAttempts: maxAttempts,
+	}, nil
 }

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/arandu-io/framework/foundation/bootstrap"
@@ -38,22 +39,29 @@ type Cache struct {
 	TTL time.Duration
 }
 
-func loadCache(base bootstrap.Configuration) Cache {
+func loadCache(base bootstrap.Configuration) (Cache, error) {
 	store := CacheStore(env("CACHE_STORE", string(CacheMemory)))
 	// The endpoint is read here rather than taken off base: it points the cache
 	// and the session store of this application at a server, and nothing in the
 	// framework opens a connection to it.
 	url := env("REDIS_URL", "")
-	if store == CacheRedis && url == "" {
-		// Falling back rather than failing: a cache that silently answers nothing
-		// is worse than one that says which variable is missing, and the kernel
-		// reports the store it ended up with at boot.
-		store = CacheMemory
+	switch store {
+	case CacheMemory:
+	case CacheRedis:
+		if url == "" {
+			return Cache{}, fmt.Errorf("CACHE_STORE %q requires REDIS_URL", store)
+		}
+	default:
+		return Cache{}, fmt.Errorf("CACHE_STORE has unsupported value %q; expected memory or redis", store)
+	}
+	ttl, err := envSeconds("CACHE_TTL", 10*time.Minute)
+	if err != nil {
+		return Cache{}, err
 	}
 	return Cache{
 		Store:  store,
 		URL:    url,
 		Prefix: env("CACHE_PREFIX", base.App.Name+":cache:"),
-		TTL:    envSeconds("CACHE_TTL", 10*time.Minute),
-	}
+		TTL:    ttl,
+	}, nil
 }
