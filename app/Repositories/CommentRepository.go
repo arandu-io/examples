@@ -31,6 +31,28 @@ const (
 //
 // The SQL uses "?" placeholders and types every supported database shares, so
 // these statements run unchanged on SQLite and PostgreSQL.
+//
+// # What kind of repository this is: specialised query, decided by the writes
+//
+// A repository is where a query too complex to generate lives, and here it is
+// the writing that is too complex rather than the reading.
+//
+// Create is INSERT INTO comments ... SELECT ? ... WHERE EXISTS (SELECT 1 FROM
+// posts WHERE id = ? AND tenant_id = ?). Update carries the same EXISTS beside
+// its own id and tenant, and classifyUpdateMiss reads two of them in a single
+// row. Three statements naming a second table, to enforce in one shot what a
+// foreign key on post_id cannot say: not that the post exists somewhere, but
+// that it exists in this tenant. A single-table insert of the kind a generated
+// model emits cannot express that, and splitting it into a check and then a
+// write puts a race between the two.
+//
+// The reads are plainer. Find, List and ForPost select from comments alone,
+// keyed by id or by post_id and filtered by tenant, and they are CRUD.
+// PublicForPost is the one read that is more: (approved = ? OR author = ?) is
+// the visibility rule of the thread, in the predicate rather than applied to
+// rows already in memory. It answers with the entity and not with a shape of
+// its own, so it is a narrowed query rather than a read model -- there is no
+// read model in this file.
 type CommentRepository struct {
 	db *data.DB
 }

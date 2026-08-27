@@ -31,6 +31,18 @@ const (
 //
 // The SQL uses "?" placeholders and types every supported database shares, so
 // these statements run unchanged on SQLite and PostgreSQL.
+//
+// # What kind of repository this is: legacy CRUD, without an exception
+//
+// A repository is where a query too complex to generate lives. Nothing in this
+// file is that, and saying so is worth more than leaving it to be assumed.
+//
+// Find and FindBySlug are one select by a unique key, twice: id for what a form
+// posts, slug for what an address carries. List pages the same select with the
+// keyset predicate for its cursor, whose subquery resolves an id of this same
+// table. All is that select ordered by name under a fixed bound. Create, Update
+// and Delete write one row. Every statement here names categories and nothing
+// else; not one joins, groups or projects.
 type CategoryRepository struct {
 	db *data.DB
 }

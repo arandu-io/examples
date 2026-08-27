@@ -31,6 +31,26 @@ const (
 //
 // The SQL uses "?" placeholders and types every supported database shares, so
 // these statements run unchanged on SQLite and PostgreSQL.
+//
+// # What kind of repository this is: legacy CRUD, with one report
+//
+// A repository is where a query too complex to generate lives -- a join, an
+// aggregate, a shape built for a screen. Measured against the statements in
+// this file, almost nothing here is that.
+//
+// Find, Create, Update, Delete and IncrementViews are single statements against
+// posts alone, keyed by id and filtered by tenant. Published and
+// PublishedInCategory add a predicate on published_at and on category_id and
+// stay one table. List is the same select with the keyset predicate it builds
+// for its cursor -- structure, but structure over one table, and the subquery
+// resolves an id of that same table. Every one of them is CRUD, and a generated
+// model writes exactly those.
+//
+// CountByCategory is the exception, and it is the one query that would still
+// need a repository if the rest moved. SELECT category_id, COUNT(*) ... GROUP
+// BY category_id answers with a count per section rather than with rows: a
+// report, a shape no row of posts carries, assembled for the section bar and
+// read nowhere else.
 type PostRepository struct {
 	db *data.DB
 }
