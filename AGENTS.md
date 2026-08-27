@@ -63,14 +63,14 @@ SQLite file in its own `t.TempDir()` — `sqliteEnv` at
 | `routes/web.go`, `routes/admin.go` | 51 registered routes across four modules, 32 of them this application's |
 | `bootstrap/app.go` | the whole wiring, top to bottom, in one function |
 | `database/migrations/`, `database/seeders/` | seven each |
-| `tests/Feature/`, `tests/Unit/` | 34 files, 137 test functions — 79 feature and 58 unit |
+| `tests/Feature/`, `tests/Unit/` | 34 files, 140 test functions — 82 feature and 58 unit |
 
 Counted with:
 
 ```sh
 find resources/views -name '*.kyse.go' | wc -l                      # 29
 find . -name '*_test.go' -not -path './storage/*' | wc -l           # 34
-grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l  # 137
+grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l  # 140
 ls app/Policies | wc -l                                             # 6
 GOWORK=off go run . routes | grep -cE '^  (GET|POST|PUT|PATCH|DELETE)'  # 51
 ```
@@ -105,8 +105,14 @@ compiling a fixture that must fail, and once by handing every method of
 refuse. The second is the sharper of the two — carrying *a* Grant is not enough.
 
 **The tenant comes from the Grant.** `data.Tenant(g)`, never from the request.
-`tests/Feature/TenantScoping_test.go` is 513 lines of one tenant failing to see
-another's rows, and it is the largest test file here for that reason.
+`tests/Feature/TenantScoping_test.go` is 788 lines of one tenant failing to see
+another's rows, and it is the largest test file here for that reason. Its
+fixture writes two rows of the second tenant that name the first's — a post
+filed under our section id, a comment hung off our article — because a key that
+matches while the tenant does not is what a nested query, an eager load and an
+aggregate are each wrong about in their own way. The fourth shape, a pivot, has
+no table here to run against, and the file says so where the other three are
+tested rather than leaving the absence to be inferred.
 
 The one screen that crosses tenants says so out loud: `SocketsController` reads
 process-wide gauges, and its crossing has a name — `SocketInspectAll` on

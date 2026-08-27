@@ -45,6 +45,10 @@ const (
 	theirPost     = "00000000-0000-4000-8000-0000000ba002"
 	theirComment  = "00000000-0000-4000-8000-0000000ba003"
 
+	// The two rows of theirs that point at ours.
+	theirPostInOurSection = "00000000-0000-4000-8000-0000000ba004"
+	theirCommentOnOurPost = "00000000-0000-4000-8000-0000000ba005"
+
 	ourCategory = "00000000-0000-4000-8000-0000000bb001"
 	ourPost     = "00000000-0000-4000-8000-0000000bb002"
 	ourComment  = "00000000-0000-4000-8000-0000000bb003"
@@ -52,7 +56,16 @@ const (
 )
 
 // scopedFixture writes one section, published posts in it and one approved
-// comment, for each of two tenants.
+// comment, for each of two tenants -- and then two rows of theirs that name
+// ours.
+//
+// The crossing pair is what makes a matching key a worse witness than the
+// tenant: a post of theirs filed under OUR section id, and a comment of theirs
+// hanging off OUR article. Nothing in the schema forbids either. category_id
+// and post_id are plain id columns with no tenant beside them, so a row of one
+// tenant can name a row of another, and every query that groups by a section or
+// reads a thread by its post then has a row whose key matches and whose tenant
+// does not.
 func scopedFixture(t *testing.T, db *data.DB) {
 	t.Helper()
 
@@ -72,6 +85,13 @@ func scopedFixture(t *testing.T, db *data.DB) {
 	// the cursor cases below have something to assert about.
 	seedPostInCategory(t, db, ourSecond, ours, ourCategory, "Ours as well", "ours-as-well")
 	seedComment(t, db, ourComment, ours, ourPost, "u1", true)
+
+	// The crossing pair, written last so that the assertions above it read in
+	// the order the rows were meant. The slug is its own, because posts.slug is
+	// unique across the whole table and not per tenant.
+	seedPostInCategory(t, db, theirPostInOurSection, theirTenant, ourCategory,
+		"Filed under our section", "filed-under-our-section")
+	seedComment(t, db, theirCommentOnOurPost, theirTenant, ourPost, "u9", true)
 }
 
 // TestNoPostQueryReadsAnotherTenantsRows.
@@ -392,6 +412,217 @@ func TestTheTenantOnAWriteComesFromTheGrant(t *testing.T) {
 	})
 }
 
+// The shapes a tenant filter can be dropped from without any of the tests above
+// noticing.
+//
+// Every method they ask about is a statement whose outermost WHERE carries the
+// tenant, and that is the shape easiest to get right and easiest to watch. Four
+// others are not: a nested query, where a second SELECT inside the statement
+// needs a tenant of its own; an eager load, where children are fetched by the
+// key of a parent that was already scoped; a pivot; and an aggregate, which
+// returns no row of anybody's data and still reports how much of it there is.
+//
+// Three of the four are below. The fourth is not, and inventing it would be
+// worse than leaving it out.
+//
+// # The pivot, and why there is no test for it
+//
+// A pivot is a row whose entire content is the pair of ids it joins, which is
+// what makes it the hardest of the four: there is no column on it to be wrong
+// about except the two keys, so the tenant has to be carried in from outside or
+// it is not there at all.
+//
+// This application has no such table. Its migrations create posts, comments and
+// categories; its relations are two plain id columns, posts.category_id and
+// comments.post_id, each a one-to-many; and not one statement in
+// app/Repositories joins a second table except through the EXISTS guards the
+// nested-query test below covers. A many-to-many written here to have something
+// to run against would be a test of its own fixture, and the shape would still
+// be untested on the day a real one arrived.
+
+// TestANestedQueryCarriesATenantOfItsOwn.
+//
+// The comment repository writes through EXISTS. Create is an INSERT ... SELECT
+// guarded by EXISTS (SELECT 1 FROM posts WHERE id = ? AND tenant_id = ?),
+// Update carries the same, and classifyUpdateMiss reads two of them to say
+// which of the two rows was missing. Each of those inner SELECTs is a query in
+// its own right and needs its own tenant: the outer statement being scoped says
+// nothing about what the subquery reached.
+//
+// The other nested query in this application is the keyset predicate List
+// builds for its cursor, and the three "List from another tenant's cursor"
+// cases above are what watch that one.
+func TestANestedQueryCarriesATenantOfItsOwn(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	scopedFixture(t, db)
+
+	repo := repositories.NewCommentRepository(db)
+	ours := bootstrap.Tenant()
+
+	// The insert's EXISTS. A post id arrives in the request body, so this is
+	// the subquery most likely to be handed another tenant's value.
+	t.Run("Create against another tenant's post", func(t *testing.T) {
+		//arandu:system-grant a fixture needs a Grant for a tenant no session in this test carries
+		g := security.SystemGrant(policies.CommentCreate, ours)
+
+		_, err := repo.Create(ctx, g,
+			models.Comment{PostId: theirPost, Author: "u1", Body: "A remark."})
+		if !errors.Is(err, models.ErrPostNotFound) {
+			t.Fatalf("Create = %v, and a post of another tenant is not a post this tenant can be attached to", err)
+		}
+		if n := commentsOn(t, db, theirPost); n != 1 {
+			t.Fatalf("another tenant's article carries %d comments and the fixture wrote it one", n)
+		}
+	})
+
+	// The update's EXISTS, which is the same guard on the other statement: a
+	// comment that cannot be created against their article must not be moved
+	// onto it either.
+	t.Run("Update onto another tenant's post", func(t *testing.T) {
+		g := security.SystemGrant(policies.CommentUpdate, ours)
+
+		_, err := repo.Update(ctx, g, models.Comment{
+			ID: ourComment, PostId: theirPost, Author: "u1", Body: "Moved.", Approved: true,
+		})
+		if !errors.Is(err, models.ErrPostNotFound) {
+			t.Fatalf("Update = %v, and the article it was moved onto belongs to another tenant", err)
+		}
+		if post, _ := commentRow(t, db, ourComment); post != ourPost {
+			t.Fatalf("our comment now hangs off %q", post)
+		}
+	})
+
+	// The subquery inside classifyUpdateMiss, which is the one with no outer
+	// statement to hide behind: it runs only after the guarded UPDATE matched
+	// nothing, and its answer is what the caller is told. If its EXISTS over
+	// comments lost the tenant it would find their row, find our post beside
+	// it, conclude that nothing was wrong, and return success on a write that
+	// never happened.
+	t.Run("Update of another tenant's comment", func(t *testing.T) {
+		g := security.SystemGrant(policies.CommentUpdate, ours)
+
+		_, err := repo.Update(ctx, g, models.Comment{
+			ID: theirComment, PostId: ourPost, Author: "u1", Body: "Rewritten.", Approved: true,
+		})
+		if !errors.Is(err, models.ErrCommentNotFound) {
+			t.Fatalf("Update = %v, and a comment of another tenant is one this tenant does not have", err)
+		}
+		if _, body := commentRow(t, db, theirComment); body != "A remark." {
+			t.Fatalf("another tenant's comment now reads %q", body)
+		}
+	})
+}
+
+// TestAnEagerLoadedThreadHoldsNoRowOfAnotherTenant.
+//
+// The article page is an eager load written by hand: one query for the parents
+// and one for the children of each, keyed by the parent's id and merged in
+// memory. The parent set is scoped, and that is exactly what makes the second
+// query easy to leave unscoped -- the ids being asked about are ours, so the
+// filter looks redundant.
+//
+// It is not. A comment of another tenant carrying our post_id is a row nothing
+// in the schema forbids, and a thread that trusted the key would draw it under
+// our article for every reader.
+func TestAnEagerLoadedThreadHoldsNoRowOfAnotherTenant(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	scopedFixture(t, db)
+
+	posts := repositories.NewPostRepository(db)
+	comments := repositories.NewCommentRepository(db)
+	ours := bootstrap.Tenant()
+
+	//arandu:system-grant a fixture needs a Grant for a tenant no session in this test carries
+	listing := security.SystemGrant(policies.PostPublicList, ours)
+	reading := security.SystemGrant(policies.CommentPublicList, ours)
+	moderating := security.SystemGrant(policies.CommentList, ours)
+
+	parents, err := posts.Published(ctx, listing, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertOnlyOurs(t, ours, tenantsOfPosts(parents), 2)
+
+	byPost := make(map[string][]models.Comment, len(parents))
+	for _, p := range parents {
+		found, err := comments.PublicForPost(ctx, reading, p.ID, "u1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range found {
+			if c.TenantID != ours {
+				t.Fatalf("a comment of tenant %q was loaded under our article %q", c.TenantID, p.ID)
+			}
+		}
+		byPost[p.ID] = found
+	}
+
+	// The two halves together. One comment came back for our article, and the
+	// table holds two for it -- so the number is a filter that ran and not a
+	// row that was never written.
+	if n := len(byPost[ourPost]); n != 1 {
+		t.Fatalf("the thread of our article holds %d comments and one was written for it", n)
+	}
+	if n := commentsOn(t, db, ourPost); n != 2 {
+		t.Fatalf("the table holds %d comments on our article, and the fixture wrote two: "+
+			"the second is another tenant's, and leaving it out is what the thread is being asked to do", n)
+	}
+
+	// The moderation side loads the same children by the same key and answers a
+	// wider question, so it is a second query with a filter of its own.
+	moderated, err := comments.ForPost(ctx, moderating, ourPost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertOnlyOurs(t, ours, tenantsOfComments(moderated), 1)
+}
+
+// TestAnAggregateCountsNoRowOfAnotherTenantUnderOurKey.
+//
+// An aggregate is the read that leaks without returning anything: CountByCategory
+// hands back a number per section and not one row of anybody's data, and a
+// number is still an answer about how much of it there is.
+//
+// The case that finds it is not a section of theirs appearing in the map -- the
+// tests above already refuse that -- but a post of theirs filed under OUR
+// section id. The key is ours, the row is not, and the GROUP BY has no opinion
+// about the difference. Only the tenant predicate does.
+func TestAnAggregateCountsNoRowOfAnotherTenantUnderOurKey(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	scopedFixture(t, db)
+
+	repo := repositories.NewPostRepository(db)
+	ours := bootstrap.Tenant()
+	g := security.SystemGrant(policies.PostPublicList, ours)
+
+	counts, err := repo.CountByCategory(ctx, g)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if counts[ourCategory] != 2 {
+		t.Fatalf("our section counts %d, and two posts of ours are filed in it", counts[ourCategory])
+	}
+	if n := postsInCategory(t, db, ourCategory); n != 3 {
+		t.Fatalf("the table holds %d posts under our section id, and the fixture filed three: "+
+			"the third is another tenant's, and the count above is only worth reading because it is there", n)
+	}
+	if len(counts) != 1 {
+		t.Fatalf("the counts cover %d sections and this tenant has one", len(counts))
+	}
+
+	// The listing behind the same section id, because a count that is right and
+	// a listing that is wrong is the same leak arriving one page later.
+	rows, err := repo.PublishedInCategory(ctx, g, ourCategory, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertOnlyOurs(t, ours, tenantsOfPosts(rows), 2)
+}
+
 // assertOnlyOurs fails when a result carries a tenant that is not the one asked
 // for, and when the expected number of rows did not come back.
 //
@@ -447,6 +678,48 @@ func viewsOf(t *testing.T, db *data.DB, id string) int {
 		t.Fatalf("reading the counter: %v", err)
 	}
 	return views
+}
+
+// commentsOn and postsInCategory count what the table holds under one key,
+// whatever tenant wrote it.
+//
+// They are the second half of every case about a crossing row. A thread that
+// answers with one comment and a count that answers with two posts prove
+// nothing on their own: the number is only a filter that ran if the row it left
+// out is really there, and a repository cannot be asked about a row it is meant
+// to refuse.
+func commentsOn(t *testing.T, db *data.DB, postID string) int {
+	t.Helper()
+
+	var n int
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM comments WHERE post_id = ?`, postID).Scan(&n); err != nil {
+		t.Fatalf("counting the thread: %v", err)
+	}
+	return n
+}
+
+func postsInCategory(t *testing.T, db *data.DB, categoryID string) int {
+	t.Helper()
+
+	var n int
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM posts WHERE category_id = ?`, categoryID).Scan(&n); err != nil {
+		t.Fatalf("counting the section: %v", err)
+	}
+	return n
+}
+
+// commentRow reads the two columns the nested-query cases assert about: the
+// article a comment hangs off, and what it says.
+func commentRow(t *testing.T, db *data.DB, id string) (postID, body string) {
+	t.Helper()
+
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT post_id, body FROM comments WHERE id = ?`, id).Scan(&postID, &body); err != nil {
+		t.Fatalf("reading the comment: %v", err)
+	}
+	return postID, body
 }
 
 // titleOf answers with the empty string when the row is gone, which is what the
