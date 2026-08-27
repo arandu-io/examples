@@ -20,7 +20,6 @@ import (
 	"github.com/arandu-io/hesape/database"
 
 	appconfig "github.com/arandu-io/examples/config"
-	"github.com/arandu-io/examples/database/seeders"
 	"github.com/arandu-io/examples/routes"
 )
 
@@ -71,14 +70,6 @@ func Dispatch(command string, args []string) error {
 		fmt.Print(kernel.FormatRoutes(k.Routes()))
 		return nil
 
-	case "db:seed":
-		// DB is handed over because this application seeds domain data as well
-		// as the first user. The skeleton's console does not pass it, and copying
-		// that version here is how PostSeeder started answering "the database is
-		// not wired" -- the seeder ran, the administrator was created, and the
-		// posts silently were not.
-		return seeders.Run(ctx, seeders.Deps{Auth: app.Auth, DB: db, Tenant: cfg.Auth.Tenant}, args)
-
 	case "schedule:list":
 		if err := k.Boot(ctx); err != nil {
 			return err
@@ -107,7 +98,7 @@ func Dispatch(command string, args []string) error {
 		//
 		// They are built here rather than above the switch because building them
 		// wires a migrator, and `aru serve` has no reason to pay for one.
-		migrationCommands := migrationCommands(cfg, db, app)
+		migrationCommands := append(migrationCommands(cfg, db, app), seedCommands(cfg, db, app)...)
 		for _, c := range migrationCommands {
 			if c.Name != command {
 				continue
@@ -161,7 +152,7 @@ func unknownCommand(command string, migrationCommands []console.Command) error {
 		names = append(names, c.Name)
 	}
 
-	err := fmt.Errorf("unknown command: %s (expected serve, routes, db:seed, schedule:list, "+
+	err := fmt.Errorf("unknown command: %s (expected serve, routes, schedule:list, "+
 		"schedule:run, work, Version or one of %s)", command, strings.Join(names, ", "))
 	if help := routes.Help(); help != "" {
 		return fmt.Errorf("%w\n\n%s", err, help)
