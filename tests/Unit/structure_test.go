@@ -319,7 +319,13 @@ func TestEachSuiteHoldsWhatItsNameSays(t *testing.T) {
 	// httptest.NewServer belongs on this list next to NewRequest, and was
 	// missing from it: a test that listens on a port and dials it back is not
 	// one somebody runs on every save, whatever it is checking.
-	boots := regexp.MustCompile(`tests\.App\(|tests\.Kernel\(|bootstrap\.Dispatch\(|bootstrap\.Open\(|httptest\.NewRequest\(|httptest\.NewServer\(|migratedDB\(`)
+	//
+	// tests.Boot is the implementation App and AppWithMailbox are two views of,
+	// and it is named here as well as they are. A booter left off this list is a
+	// hole rather than an omission: it is the one way into tests/Unit for a test
+	// that migrates a database, and the suite somebody runs on every save is
+	// exactly the one that cannot afford it.
+	boots := regexp.MustCompile(`tests\.App\(|tests\.Boot\(|tests\.Kernel\(|bootstrap\.Dispatch\(|bootstrap\.Open\(|httptest\.NewRequest\(|httptest\.NewServer\(|migratedDB\(`)
 
 	for _, suite := range []string{"Feature", "Unit"} {
 		dir := filepath.Join(tests.Root(t), "tests", suite)

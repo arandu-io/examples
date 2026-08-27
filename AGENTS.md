@@ -63,14 +63,14 @@ SQLite file in its own `t.TempDir()` — `sqliteEnv` at
 | `routes/web.go`, `routes/admin.go` | 51 registered routes across four modules, 32 of them this application's |
 | `bootstrap/app.go` | the whole wiring, top to bottom, in one function |
 | `database/migrations/`, `database/seeders/` | seven each |
-| `tests/Feature/`, `tests/Unit/` | 32 files, 127 test functions — 69 feature and 58 unit |
+| `tests/Feature/`, `tests/Unit/` | 33 files, 135 test functions — 77 feature and 58 unit |
 
 Counted with:
 
 ```sh
 find resources/views -name '*.kyse.go' | wc -l                      # 29
-find . -name '*_test.go' -not -path './storage/*' | wc -l           # 32
-grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l  # 127
+find . -name '*_test.go' -not -path './storage/*' | wc -l           # 33
+grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l  # 135
 ls app/Policies | wc -l                                             # 6
 GOWORK=off go run . routes | grep -cE '^  (GET|POST|PUT|PATCH|DELETE)'  # 51
 ```
@@ -93,7 +93,7 @@ exists to argue against. None of them is missing by accident.
 | an ORM, a query builder on the model, `$fillable` | an entity struct and parameterised SQL in the repository |
 | a template engine with runtime lookup | `.kyse.go`, compiled to Go. A missing field is a build error |
 | npm, a bundler, `node_modules`, a CDN script | nothing. `TestResourcesHoldNoJavaScript` and `TestTheOnlyScriptsServedAreTheEmbeddedOnes` walk the tree and the response |
-| a fixture that writes rows behind the policy without saying so | `security.SystemGrant` with a `//arandu:system-grant <reason>` line directly above it. Eleven of them in this repository, and every one carries its reason |
+| a fixture that writes rows behind the policy without saying so | `security.SystemGrant` with a `//arandu:system-grant <reason>` line directly above it. Thirteen of them in this repository, and every one carries its reason |
 
 ## The two rules everything else follows from
 
@@ -128,7 +128,7 @@ Three consequences:
 - A number written in prose — in `README.md`, in a comment, in this file — is a
   measurement. Re-run the command before trusting it, and fix every copy
   together. `tests/test-layout-guard.sh` states two of them in its own comments
-  ("all 32 test files", "the 29 files under resources/views") and both are
+  ("all 33 test files", "the 29 files under resources/views") and both are
   currently right.
 
 ## Writing code

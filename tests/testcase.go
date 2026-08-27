@@ -141,8 +141,9 @@ func File(t *testing.T, name string) string {
 // SQLite in a temporary directory, so the tests need nothing installed and two
 // of them cannot see each other's rows. The file goes with t.TempDir.
 func App(t *testing.T) (*arandutest.Client, *data.DB) {
-	client, db, _ := AppWithMailbox(t)
-	return client, db
+	t.Helper()
+	booted := Boot(t)
+	return booted.Client, booted.DB
 }
 
 // AppWithMailbox is App plus what the application sent.
@@ -153,6 +154,39 @@ func App(t *testing.T) (*arandutest.Client, *data.DB) {
 // returns is the one a person would click, produced by the same code path
 // production takes.
 func AppWithMailbox(t *testing.T) (*arandutest.Client, *data.DB, *mail.Array) {
+	t.Helper()
+	booted := Boot(t)
+	return booted.Client, booted.DB, booted.Mail
+}
+
+// Booted is everything one boot produced.
+//
+// A struct rather than a fourth return value, for the reason bootstrap.App is
+// one: the fifth is always the one that breaks every call site. App and
+// AppWithMailbox are the two views of this that nearly every test wants, and
+// they stay because they are the two that read well at the top of a test.
+type Booted struct {
+	// App is the wiring itself, for a test whose subject is something
+	// bootstrap.Build produced rather than something a request reaches. The
+	// relay is the case that forced this open: it publishes what the outbox
+	// holds and is reachable from no route, so a test that built one of its own
+	// would pass over an application that wires none.
+	App bootstrap.App
+	// Client is a browser for the booted application.
+	Client *arandutest.Client
+	// DB is the migrated throwaway database, for a fixture or an assertion about
+	// a row.
+	DB *data.DB
+	// Mail is what the application sent.
+	Mail *mail.Array
+}
+
+// Boot boots the whole application on a throwaway SQLite database, migrated.
+//
+// It is the one implementation behind App and AppWithMailbox: two ways to boot
+// an application in one suite is two sets of environment variables to keep in
+// step, and the one nobody runs daily is the one that drifts.
+func Boot(t *testing.T) Booted {
 	t.Helper()
 
 	// Before appconfig.Load: this is what mailTransport switches on.
@@ -192,5 +226,10 @@ func AppWithMailbox(t *testing.T) (*arandutest.Client, *data.DB, *mail.Array) {
 		t.Fatalf("the test mailer is %s and not the array transport: nothing can read what was sent",
 			app.Mail.Transport().Name())
 	}
-	return arandutest.NewClient(t, app.Kernel.Handler()), db, box
+	return Booted{
+		App:    app,
+		Client: arandutest.NewClient(t, app.Kernel.Handler()),
+		DB:     db,
+		Mail:   box,
+	}
 }

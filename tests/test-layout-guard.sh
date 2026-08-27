@@ -94,7 +94,7 @@ fi
 # 2. A test outside tests/ has to need an unexported identifier, and says so in
 #    its name. Anything else belongs in a category.
 #
-#    Nothing in this repository is outside tests/ today: all 32 test files sit
+#    Nothing in this repository is outside tests/ today: all 33 test files sit
 #    under tests/Feature or tests/Unit and not one is named _internal_test.go.
 #    The check is not therefore idle -- it is the only thing standing between
 #    that state and the first test dropped next to a handler in app/, which is
