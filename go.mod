@@ -3,11 +3,11 @@ module github.com/arandu-io/examples
 go 1.26
 
 require (
-	github.com/arandu-io/framework v0.39.0
+	github.com/arandu-io/framework v0.40.0
 	github.com/arandu-io/hesape v0.16.0
 	github.com/arandu-io/hesape/database/connectors/pgx v0.7.0
 	github.com/arandu-io/hesape/database/connectors/sqlite v0.7.0
-	github.com/arandu-io/joaju v0.5.0
+	github.com/arandu-io/joaju v0.6.0
 )
 
 require (
