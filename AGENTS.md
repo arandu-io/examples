@@ -43,7 +43,7 @@ filter; `.github/workflows/ci.yml` states it with. Copy the one above.
 
 `aru doctor` exits zero here with two warnings, both
 `sensitive-field-not-redacted`, at `app/Http/Controllers/Auth/page.go:24` and
-`app/Http/Controllers/Auth/render.go:33`. A third finding is a regression.
+`app/Http/Controllers/Auth/render.go:34`. A third finding is a regression.
 
 The suite needs no database server. Every feature test sets `DATABASE_URL` to a
 SQLite file in its own `t.TempDir()` — `sqliteEnv` at
