@@ -26,12 +26,36 @@ func TestConfigurationRejectsAnInvalidBoolean(t *testing.T) {
 
 func TestConfigurationRejectsAnInvalidInteger(t *testing.T) {
 	prepareConfigurationLoad(t)
-	t.Setenv("DB_MAX_OPEN_CONNS", "many")
+	t.Setenv("QUEUE_WORKERS", "many")
 
 	_, err := appconfig.Load()
 
-	if err == nil || err.Error() != `DB_MAX_OPEN_CONNS must be an integer, got "many"` {
-		t.Fatalf("error = %v, want the invalid DB_MAX_OPEN_CONNS value", err)
+	if err == nil || err.Error() != `QUEUE_WORKERS must be an integer, got "many"` {
+		t.Fatalf("error = %v, want the invalid QUEUE_WORKERS value", err)
+	}
+}
+
+// TestAPoolSettingThatIsNotANumberStopsTheBoot.
+//
+// The three pool variables are the framework's to read now, and the half of
+// that worth a test here is the refusal: a value that is present and not a
+// number has to stop the boot, because the alternative is a pool running on a
+// default while .env says otherwise and no line anywhere reports it.
+//
+// The wording belongs to the framework, so what is asserted is that the boot
+// failed and that the refusal names both the variable and the value. Pinning
+// the sentence would make this a test of somebody else's prose.
+func TestAPoolSettingThatIsNotANumberStopsTheBoot(t *testing.T) {
+	prepareConfigurationLoad(t)
+	t.Setenv("DB_MAX_OPEN_CONNS", "fifty")
+
+	_, err := appconfig.Load()
+
+	if err == nil {
+		t.Fatal("the boot accepted a pool size that is not a number")
+	}
+	if !strings.Contains(err.Error(), "DB_MAX_OPEN_CONNS") || !strings.Contains(err.Error(), "fifty") {
+		t.Fatalf("error = %v, want it to name the variable and the value it refused", err)
 	}
 }
 
@@ -183,9 +207,13 @@ func TestConfigurationUsesDefaultsForExplicitlyEmptyValues(t *testing.T) {
 	if cfg.Session.Secure || cfg.Session.TTL != 12*time.Hour || cfg.Session.CSRFTTL != 2*time.Hour {
 		t.Errorf("session defaults = secure %t, TTL %s, CSRF TTL %s", cfg.Session.Secure, cfg.Session.TTL, cfg.Session.CSRFTTL)
 	}
-	if cfg.Database.MaxOpenConns != 25 || cfg.Database.MaxIdleConns != 5 || cfg.Database.ConnMaxLifetime != time.Hour {
-		t.Errorf("database defaults = %d open, %d idle, %s lifetime",
-			cfg.Database.MaxOpenConns, cfg.Database.MaxIdleConns, cfg.Database.ConnMaxLifetime)
+	// Zero on all three, and the zero is the assertion rather than an omission:
+	// the pool numbers belong to the adapter, which reads zero as its own
+	// default, so an application that wrote them here would be holding a copy
+	// that goes stale the day the adapter's change.
+	if c := cfg.Database.Connection; c.MaxOpenConns != 0 || c.MaxIdleConns != 0 || c.ConnMaxLifetime != 0 {
+		t.Errorf("database defaults = %d open, %d idle, %s lifetime, and this application sets none of them",
+			c.MaxOpenConns, c.MaxIdleConns, c.ConnMaxLifetime)
 	}
 	if cfg.Mail.Mailer != appconfig.MailerLog {
 		t.Errorf("mail default = %q, want %q", cfg.Mail.Mailer, appconfig.MailerLog)

@@ -162,14 +162,12 @@ func unknownCommand(command string, migrationCommands []console.Command) error {
 
 // Open connects, using the configuration this application was given.
 //
-// The three pool settings are carried onto the connection here, and that is the
-// whole reason this function is more than one line. What the framework parsed
-// out of DATABASE_URL says where the database is and nothing about how many
-// connections to hold, so it arrives with the three at zero -- and a call that
-// handed the adapter that value alone would leave DB_MAX_OPEN_CONNS,
-// DB_MAX_IDLE_CONNS and DB_CONN_MAX_LIFETIME read, validated at boot, and
-// unused. Three variables that look applied and are not is worse than three
-// variables that do not exist.
+// The connection goes to the adapter whole, pool and all. What the framework
+// parsed carries the engine, the credentials AND the three pool settings, so
+// handing over a part of it is how DB_MAX_OPEN_CONNS, DB_MAX_IDLE_CONNS and
+// DB_CONN_MAX_LIFETIME end up read, refused when they are not numbers, and then
+// applied to nothing. Three variables that look applied and are not is worse
+// than three variables that do not exist.
 //
 // Zero on any of them is the adapter's default and never an unbounded pool.
 // Where the SQLite directory is created, and the message for a driver that is
@@ -180,9 +178,5 @@ func unknownCommand(command string, migrationCommands []console.Command) error {
 // two ways to connect is two places for a DSN to be built differently, and the
 // one nobody runs daily is the one that drifts.
 func Open(cfg appconfig.Config) (*data.DB, func(), error) {
-	connection := cfg.Database.Connection
-	connection.MaxOpenConns = cfg.Database.MaxOpenConns
-	connection.MaxIdleConns = cfg.Database.MaxIdleConns
-	connection.ConnMaxLifetime = cfg.Database.ConnMaxLifetime
-	return database.Open(connection)
+	return database.Open(cfg.Database.Connection)
 }

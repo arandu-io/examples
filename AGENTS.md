@@ -63,14 +63,14 @@ SQLite file in its own `t.TempDir()` — `sqliteEnv` at
 | `routes/web.go`, `routes/admin.go` | 51 registered routes across four modules, 32 of them this application's |
 | `bootstrap/app.go` | the whole wiring, top to bottom, in one function |
 | `database/migrations/`, `database/seeders/` | seven each |
-| `tests/Feature/`, `tests/Unit/` | 34 files, 140 test functions — 82 feature and 58 unit |
+| `tests/Feature/`, `tests/Unit/` | 34 files, 141 test functions — 82 feature and 59 unit |
 
 Counted with:
 
 ```sh
 find resources/views -name '*.kyse.go' | wc -l                      # 29
 find . -name '*_test.go' -not -path './storage/*' | wc -l           # 34
-grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l  # 140
+grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l  # 141
 ls app/Policies | wc -l                                             # 6
 GOWORK=off go run . routes | grep -cE '^  (GET|POST|PUT|PATCH|DELETE)'  # 51
 ```
@@ -93,7 +93,7 @@ exists to argue against. None of them is missing by accident.
 | an ORM, a query builder on the model, `$fillable` | an entity struct and parameterised SQL in the repository |
 | a template engine with runtime lookup | `.kyse.go`, compiled to Go. A missing field is a build error |
 | npm, a bundler, `node_modules`, a CDN script | nothing. `TestResourcesHoldNoJavaScript` and `TestTheOnlyScriptsServedAreTheEmbeddedOnes` walk the tree and the response |
-| a fixture that writes rows behind the policy without saying so | `security.SystemGrant` with a `//arandu:system-grant <reason>` line directly above it. Thirteen of them in this repository, and every one carries its reason |
+| a fixture that writes rows behind the policy without saying so | `security.SystemGrant` with a `//arandu:system-grant <reason>` line directly above it. Fifteen of them in this repository, and every one carries its reason |
 
 ## The two rules everything else follows from
 
@@ -144,11 +144,12 @@ in English. A test name is a sentence about what the application does:
 `TestAGuestIsRefusedTheDraftBehindAKnownAddress`,
 `TestTheConsoleSeesTheQueriesOfTheRequest`.
 
-A doc comment documents its symbol and nothing beyond it. Two here have drifted
-off theirs and are worth not copying: `bootstrap/console.go:30` opens
-"tenantID is…" above `func Tenant()`, and `bootstrap/console.go:149` says the
-connection is made by "whatever `DB_CONNECTION` says" — that variable appears
-nowhere else in the repository, and the configuration reads `DATABASE_URL`.
+A doc comment documents its symbol and nothing beyond it. One here has drifted
+off its own and is worth not copying: `bootstrap/console.go:32` opens
+"tenantID is…" above `func Tenant()`. There were two — the doc on `Open` said
+the connection was made by "whatever `DB_CONNECTION` says", a variable that
+appears nowhere else here — and that one went when `Open` was rewritten to hand
+the adapter the whole parsed connection.
 
 Every test lives under `tests/Feature` or `tests/Unit`, in an external `_test`
 package, with a capitalised directory and a lowercase package clause. The

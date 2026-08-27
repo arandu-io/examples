@@ -100,10 +100,7 @@ func From(base bootstrap.Configuration) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	database, err := loadDatabase(base)
-	if err != nil {
-		return Config{}, err
-	}
+	database := loadDatabase(base)
 	filesystems, err := loadFilesystems()
 	if err != nil {
 		return Config{}, err
