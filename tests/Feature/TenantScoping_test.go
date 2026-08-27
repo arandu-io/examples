@@ -10,9 +10,11 @@ import (
 	"github.com/arandu-io/framework/data"
 	"github.com/arandu-io/framework/security"
 
+	requests "github.com/arandu-io/examples/app/Http/Requests"
 	models "github.com/arandu-io/examples/app/Models"
 	policies "github.com/arandu-io/examples/app/Policies"
 	repositories "github.com/arandu-io/examples/app/Repositories"
+	services "github.com/arandu-io/examples/app/Services"
 	"github.com/arandu-io/examples/bootstrap"
 )
 
@@ -299,40 +301,69 @@ func TestNoCommentQueryReadsAnotherTenantsRows(t *testing.T) {
 
 // TestNoCategoryQueryReadsAnotherTenantsRows.
 //
-// The section list is on every page of the site, and FindBySlug takes the half
+// The section list is on every page of the site, and BySlug takes the half
 // of the address a reader can type. The fixture gives both tenants a section
 // with the slug "reports" on purpose: without the tenant in the lookup there are
 // two rows that match and the answer is whichever the engine reached first.
+//
+// # What changed under these assertions, and what did not
+//
+// Every case below used to call CategoryRepository, where each statement
+// carried a tenant predicate of its own and each one was watched to survive
+// losing it. The repository is gone -- every statement in it was CRUD over one
+// table -- and the statements are now built through the model, in
+// CategoryService.
+//
+// So the five predicates are one predicate. The model adds
+// `categories.tenant_id = ?` to every statement it compiles, from
+// data.Tenant(g), and a Grant with no tenant is refused before any SQL is
+// built. That is worth saying plainly rather than leaving these cases to look
+// like five independent proofs of five independent filters: they now watch one
+// filter reach five different statements -- a lookup by key, a keyset page, an
+// ordered listing, a lookup by a unique column, and a delete -- which is still
+// what a mistake would break, because the mistake available now is a statement
+// built somewhere the model is not.
+//
+// They go through the service rather than the model, and that is deliberate:
+// the service is the door, and it is where a query is written. A test against
+// the model directly would prove the library and skip the code this repository
+// is an example of.
 func TestNoCategoryQueryReadsAnotherTenantsRows(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	scopedFixture(t, db)
 
-	repo := repositories.NewCategoryRepository(db)
+	svc := services.NewCategoryService(db)
 	ours := bootstrap.Tenant()
+	// The tenant of the Grant comes off the subject, which is what a session
+	// carries. It is the same value SystemGrant was handed before, arriving the
+	// way a request would bring it.
+	actor := security.Subject{ID: "u1", Tenant: ours, Roles: []string{"admin"}}
 
-	t.Run("Find", func(t *testing.T) {
-		g := security.SystemGrant(policies.CategoryView, ours)
-		if _, err := repo.Find(ctx, g, ourCategory); err != nil {
-			t.Fatalf("our own section was not readable: %v", err)
+	t.Run("Get", func(t *testing.T) {
+		if _, err := svc.Get(ctx, actor, ourCategory); err != nil {
+			t.Fatalf("our own section was not readable, so a refusal below would prove nothing: %v", err)
 		}
-		if _, err := repo.Find(ctx, g, theirCategory); err == nil {
-			t.Fatal("another tenant's section was read by id")
+		if _, err := svc.Get(ctx, actor, theirCategory); !errors.Is(err, models.ErrCategoryNotFound) {
+			t.Fatalf("Get = %v, and another tenant's section is one this tenant does not have", err)
 		}
 	})
 
 	t.Run("List", func(t *testing.T) {
-		g := security.SystemGrant(policies.CategoryList, ours)
-		found, err := repo.List(ctx, g, data.Query{Limit: 50})
+		found, err := svc.List(ctx, actor, data.Query{Limit: 50})
 		if err != nil {
 			t.Fatal(err)
 		}
 		assertOnlyOurs(t, ours, tenantsOfCategories(found), 1)
 	})
 
+	// The cursor is the id of the last row read and it arrives from the client,
+	// so the value it sorts by is looked up before the page is built. That
+	// lookup used to be a correlated subquery that needed a tenant of its own;
+	// it is now a terminal, which cannot run without one. Handed an id from
+	// another tenant it resolves to nothing and the page is empty.
 	t.Run("List from another tenant's cursor", func(t *testing.T) {
-		g := security.SystemGrant(policies.CategoryList, ours)
-		found, err := repo.List(ctx, g, data.Query{Limit: 50, Cursor: theirCategory})
+		found, err := svc.List(ctx, actor, data.Query{Limit: 50, Cursor: theirCategory})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -342,17 +373,15 @@ func TestNoCategoryQueryReadsAnotherTenantsRows(t *testing.T) {
 	})
 
 	t.Run("All", func(t *testing.T) {
-		g := security.SystemGrant(policies.CategoryList, ours)
-		found, err := repo.All(ctx, g)
+		found, err := svc.All(ctx, actor)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assertOnlyOurs(t, ours, tenantsOfCategories(found), 1)
 	})
 
-	t.Run("FindBySlug", func(t *testing.T) {
-		g := security.SystemGrant(policies.CategoryView, ours)
-		found, err := repo.FindBySlug(ctx, g, "reports")
+	t.Run("BySlug", func(t *testing.T) {
+		found, err := svc.BySlug(ctx, actor, "reports")
 		if err != nil {
 			t.Fatalf("our own section was not found by its slug: %v", err)
 		}
@@ -360,6 +389,126 @@ func TestNoCategoryQueryReadsAnotherTenantsRows(t *testing.T) {
 			t.Fatalf("the slug resolved to the section of tenant %q, which carries the same slug", found.TenantID)
 		}
 	})
+
+	// The two statements that write. A read that crosses tenants shows somebody
+	// a row; a write that crosses tenants changes one, and there is no version
+	// of that which is recoverable by refreshing the page. Neither existed
+	// against the repository -- they were watched on posts alone -- and they are
+	// here now because the model is what carries the predicate for both.
+	t.Run("Update of another tenant's section", func(t *testing.T) {
+		_, err := svc.Update(ctx, actor, requests.UpdateCategory{
+			ID: theirCategory, Name: "Rewritten", Slug: "rewritten",
+		})
+		if !errors.Is(err, models.ErrCategoryNotFound) {
+			t.Fatalf("Update = %v, and another tenant's section is one this tenant does not have", err)
+		}
+		if name := categoryName(t, db, theirCategory); name != "Dispatches" {
+			t.Fatalf("another tenant's section now reads %q", name)
+		}
+	})
+
+	t.Run("Delete of another tenant's section", func(t *testing.T) {
+		if err := svc.Delete(ctx, actor, theirCategory); !errors.Is(err, models.ErrCategoryNotFound) {
+			t.Fatalf("Delete = %v, and another tenant's section is one this tenant does not have", err)
+		}
+		if name := categoryName(t, db, theirCategory); name == "" {
+			t.Fatal("another tenant's section is gone")
+		}
+	})
+}
+
+// TestTheSectionRelationHoldsNoArticleOfAnotherTenant.
+//
+// The relation is the eager load this application has: models.PostsOf is a
+// has-many from a section to the articles filed under it, and the children are
+// fetched by the key of a parent that was already scoped. That is exactly what
+// makes the second query easy to leave unscoped -- the section id being asked
+// about is ours, so the filter looks redundant.
+//
+// It is not. posts.category_id is a plain id column with no tenant beside it, so
+// a post of another tenant filed under OUR section is a row nothing in the
+// schema forbids, and the fixture writes one. A relation that trusted the key
+// would hand it to the delete guard, and the guard would refuse to empty a
+// section that this tenant sees as empty.
+//
+// The read back is the second half. A models.Category is a plain struct with no
+// field pointing at its model, so model.Related and Model.Load -- the two ways
+// to read a relation off a row -- are not reachable from it. What is reachable
+// is the relation itself: PostsIn loads it under the Grant and unwraps what came
+// back with model.Unref. This asserts on the entities that came out of that,
+// because a relation that loads and cannot be read back is a relation nobody
+// can use.
+func TestTheSectionRelationHoldsNoArticleOfAnotherTenant(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	scopedFixture(t, db)
+
+	ours := bootstrap.Tenant()
+	//arandu:system-grant a fixture needs a Grant for a tenant no session in this test carries
+	g := security.SystemGrant(policies.PostList, ours)
+
+	filed, err := models.PostsIn(ctx, g, db, models.Category{ID: ourCategory, TenantID: ours})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertOnlyOurs(t, ours, tenantsOfPosts(filed), 2)
+
+	// The two halves together. Two articles came back for our section, and the
+	// table holds three under that id -- so the number is a filter that ran and
+	// not a row that was never written.
+	if n := postsInCategory(t, db, ourCategory); n != 3 {
+		t.Fatalf("the table holds %d posts under our section id, and the fixture filed three: "+
+			"the third is another tenant's, and the relation above is only worth reading because it is there", n)
+	}
+
+	// The other tenant's own section, asked for under our Grant. Its article
+	// exists and is not ours, and the relation is narrowed by a parent key that
+	// belongs to nobody this Grant can see.
+	theirs, err := models.PostsIn(ctx, g, db, models.Category{ID: theirCategory, TenantID: theirTenant})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(theirs) != 0 {
+		t.Fatalf("another tenant's section loaded %d of its articles", len(theirs))
+	}
+}
+
+// TestASectionThatStillHoldsArticlesIsNotDeleted.
+//
+// The policy says so in prose -- "a category with posts in it is not deleted, it
+// is emptied first" -- and cannot enforce it: the count is not on the entity,
+// and a policy that queried would be a policy with a data layer under it. The
+// service is the layer that can, and the guard it uses is the relation.
+//
+// Both directions, because a guard that refuses everything passes the first
+// half perfectly.
+func TestASectionThatStillHoldsArticlesIsNotDeleted(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	scopedFixture(t, db)
+
+	svc := services.NewCategoryService(db)
+	ours := bootstrap.Tenant()
+	actor := security.Subject{ID: "u1", Tenant: ours, Roles: []string{"admin"}}
+
+	if err := svc.Delete(ctx, actor, ourCategory); !errors.Is(err, models.ErrCategoryNotEmpty) {
+		t.Fatalf("Delete = %v, and our section holds two articles", err)
+	}
+	if name := categoryName(t, db, ourCategory); name == "" {
+		t.Fatal("the section was deleted despite still holding articles")
+	}
+
+	// An empty one goes. The section of another tenant is filed with articles of
+	// its own, so the empty one is written here rather than borrowed.
+	const emptySection = "00000000-0000-4000-8000-0000000bb009"
+	seedCategory(t, db, emptySection, ours, "Empty", "empty")
+
+	if err := svc.Delete(ctx, actor, emptySection); err != nil {
+		t.Fatalf("an empty section was not deleted: %v", err)
+	}
+	if name := categoryName(t, db, emptySection); name != "" {
+		t.Fatalf("the empty section is still there as %q", name)
+	}
 }
 
 // TestTheTenantOnAWriteComesFromTheGrant.
@@ -399,15 +548,34 @@ func TestTheTenantOnAWriteComesFromTheGrant(t *testing.T) {
 		}
 	})
 
+	// The section is written through the model, because that is where the
+	// guarantee moved: the repository overwrote the field in Go, and the model
+	// writes data.Tenant(g) into the tenant column of every row it inserts,
+	// over whatever the caller put there. The candidate below carries another
+	// tenant on purpose, and it is the same candidate the repository was handed.
 	t.Run("category", func(t *testing.T) {
 		g := security.SystemGrant(policies.CategoryCreate, ours)
-		created, err := repositories.NewCategoryRepository(db).Create(ctx, g,
-			models.Category{TenantID: theirTenant, Name: "Reports", Slug: "reports"})
+
+		instance, err := models.Categories(db).NewInstance(nil, false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if created.TenantID != ours {
-			t.Fatalf("the section was filed under %q, which the caller chose", created.TenantID)
+		id, err := data.NewID()
+		if err != nil {
+			t.Fatal(err)
+		}
+		*instance.Entity = models.Category{
+			ID: id, TenantID: theirTenant, Name: "Reports", Slug: "reports",
+		}
+		if _, err := instance.Save(ctx, g); err != nil {
+			t.Fatal(err)
+		}
+
+		// Read off the table rather than off the value in hand: the struct still
+		// holds what the caller wrote, and the question is what the INSERT put
+		// in the column.
+		if tenant := categoryTenant(t, db, id); tenant != ours {
+			t.Fatalf("the section was filed under %q, which the caller chose", tenant)
 		}
 	})
 }
@@ -720,6 +888,37 @@ func commentRow(t *testing.T, db *data.DB, id string) (postID, body string) {
 		t.Fatalf("reading the comment: %v", err)
 	}
 	return postID, body
+}
+
+// categoryName answers with the empty string when the row is gone, and
+// categoryTenant reads the column an insert is meant to have chosen. Both read
+// the table straight, because a service cannot be asked about a row it is meant
+// to refuse -- and a row that is meant to be untouched has to be looked at to
+// prove it.
+func categoryName(t *testing.T, db *data.DB, id string) string {
+	t.Helper()
+
+	var name string
+	err := db.QueryRowContext(context.Background(),
+		`SELECT name FROM categories WHERE id = ?`, id).Scan(&name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ""
+	}
+	if err != nil {
+		t.Fatalf("reading the section: %v", err)
+	}
+	return name
+}
+
+func categoryTenant(t *testing.T, db *data.DB, id string) string {
+	t.Helper()
+
+	var tenant sql.NullString
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT tenant_id FROM categories WHERE id = ?`, id).Scan(&tenant); err != nil {
+		t.Fatalf("reading the section's tenant: %v", err)
+	}
+	return tenant.String
 }
 
 // titleOf answers with the empty string when the row is gone, which is what the

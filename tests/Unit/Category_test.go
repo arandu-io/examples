@@ -8,58 +8,99 @@ import (
 	"github.com/arandu-io/framework/data"
 	"github.com/arandu-io/framework/security"
 
+	requests "github.com/arandu-io/examples/app/Http/Requests"
 	models "github.com/arandu-io/examples/app/Models"
 	policies "github.com/arandu-io/examples/app/Policies"
-	repositories "github.com/arandu-io/examples/app/Repositories"
+	services "github.com/arandu-io/examples/app/Services"
 )
 
-// These tests need no database: every repository method checks the Grant before
-// touching the handle, which is exactly the property under test.
-func categoryRepoWithoutDB() *repositories.CategoryRepository {
-	return repositories.NewCategoryRepository(nil)
+// These tests need no database, and the nil handle is what proves it: every
+// method below asks the Policy before it builds a statement, which is exactly
+// the property under test. A method that panics here is a method that
+// authorized too late.
+//
+// They used to be written against CategoryRepository, where the door was
+// g.Check as the first line of each method. That repository is gone -- every
+// statement in it was CRUD over one table, so the CRUD moved to the model --
+// and the door is now CategoryService, which asks the Policy and spends the
+// Grant it gets in the same function body.
+//
+// What is asserted is the same guarantee at the new door, and it is worth
+// naming what could not come with it: g.Check answered "was this Grant issued
+// for this exact action", and a model terminal does not ask that -- it takes
+// the tenant off the Grant and nothing else. That question is only answerable
+// where a Grant crosses a boundary, and here it crosses none: nothing hands
+// this service a Grant, it mints its own. The two repositories that remain
+// still check, because they are still handed one.
+func categoryServiceWithoutDB() *services.CategoryService {
+	return services.NewCategoryService(nil)
 }
 
-// TestEveryCategoryMethodRequiresItsGrant is the framework thesis at runtime:
-// the zero Grant -- the only one a caller outside the security package can build
-// -- never gets through, and a grant for one action does not open another.
-func TestEveryCategoryMethodRequiresItsGrant(t *testing.T) {
-	repo := categoryRepoWithoutDB()
+// TestEveryCategoryMethodRefusesASubjectNobodyFilledIn is the framework thesis
+// at runtime, one layer up from where it used to be: the zero Subject -- a
+// session that failed to load -- never gets through, on a read as much as on a
+// write.
+//
+// Authorize refuses it before the Policy is even consulted, which is the right
+// order: answering an authorization question about nobody is how a hole opens
+// by accident.
+func TestEveryCategoryMethodRefusesASubjectNobodyFilledIn(t *testing.T) {
+	svc := categoryServiceWithoutDB()
 	ctx := context.Background()
-	var zero security.Grant
+	var nobody security.Subject
 
-	calls := map[string]func(security.Grant) error{
-		"Find": func(g security.Grant) error {
-			_, err := repo.Find(ctx, g, "id")
+	// Valid input, so that Create fails the authorization rather than the
+	// validation: a refusal for the wrong reason proves nothing about the door.
+	valid := requests.StoreCategory{Name: "Reports", Slug: "reports", Description: "A section."}
+
+	calls := map[string]func(security.Subject) error{
+		"Create": func(s security.Subject) error { _, err := svc.Create(ctx, s, valid); return err },
+		"Get":    func(s security.Subject) error { _, err := svc.Get(ctx, s, "id"); return err },
+		"List":   func(s security.Subject) error { _, err := svc.List(ctx, s, data.Query{}); return err },
+		"Update": func(s security.Subject) error {
+			_, err := svc.Update(ctx, s, requests.UpdateCategory{
+				ID: "id", Name: "Reports", Slug: "reports", Description: "A section.",
+			})
 			return err
 		},
-		"List": func(g security.Grant) error {
-			_, err := repo.List(ctx, g, data.Query{})
-			return err
-		},
-		"Create": func(g security.Grant) error {
-			_, err := repo.Create(ctx, g, models.Category{})
-			return err
-		},
-		"Update": func(g security.Grant) error {
-			_, err := repo.Update(ctx, g, models.Category{})
-			return err
-		},
-		"Delete": func(g security.Grant) error {
-			return repo.Delete(ctx, g, "id")
-		},
+		"Delete": func(s security.Subject) error { return svc.Delete(ctx, s, "id") },
+		"BySlug": func(s security.Subject) error { _, err := svc.BySlug(ctx, s, "reports"); return err },
+		"All":    func(s security.Subject) error { _, err := svc.All(ctx, s); return err },
 	}
 
 	for name, call := range calls {
-		t.Run(name+" with no grant", func(t *testing.T) {
-			if err := call(zero); !errors.Is(err, security.ErrForbidden) {
+		t.Run(name, func(t *testing.T) {
+			// nil is passed as the database on purpose: refusing has to happen
+			// before anything is asked of it.
+			if err := call(nobody); !errors.Is(err, security.ErrForbidden) {
 				t.Fatalf("error = %v, want ErrForbidden", err)
 			}
 		})
-		t.Run(name+" with a grant for another action", func(t *testing.T) {
-			if err := call(security.SystemGrant("some.other.action", "t1")); !errors.Is(err, security.ErrForbidden) {
-				t.Fatalf("error = %v, want ErrForbidden", err)
-			}
-		})
+	}
+}
+
+// TestCreatingASectionNeedsMoreThanAnAccount is the other half: permission for
+// one action does not open another.
+//
+// A reader may look at the sections -- the navigation is built from them, and a
+// navigation that disappears when you sign out was never public -- and may not
+// invent one. The subject below is allowed CategoryView and CategoryList by the
+// same policy that refuses this call, so what is proved is the boundary between
+// them rather than a subject nobody trusts.
+//
+// Update and Delete are not here, and that is not an omission: both read the
+// stored row before they authorize the write, so proving their refusal needs a
+// row, and that test is in the Feature suite where rows exist.
+func TestCreatingASectionNeedsMoreThanAnAccount(t *testing.T) {
+	svc := categoryServiceWithoutDB()
+	reader := security.Subject{ID: "u1", Tenant: "t1", Roles: []string{models.RoleMember}}
+
+	_, err := svc.Create(context.Background(), reader, requests.StoreCategory{
+		Name: "Reports", Slug: "reports", Description: "A section.",
+	})
+
+	if !errors.Is(err, security.ErrForbidden) {
+		t.Fatalf("error = %v, want ErrForbidden: an account is not an administrator", err)
 	}
 }
 
@@ -83,56 +124,20 @@ func TestTheCategoryPolicyDeniesWhatItDoesNotKnow(t *testing.T) {
 
 // TestCategoryListRejectsSortOutsideTheAllowlist keeps the one door a column
 // name could come through closed.
+//
+// The model layer quotes an identifier; it does not judge it. A sort field is a
+// column name, so the allowlist is what stands between the query builder and a
+// value from the address bar -- and it is checked before the handle is touched,
+// which is why this runs with none.
 func TestCategoryListRejectsSortOutsideTheAllowlist(t *testing.T) {
-	repo := categoryRepoWithoutDB()
-	// CategoryList, because listing is its own permission: a role may be
-	// allowed to open the record it was given and not to page through every one.
-	g := security.SystemGrant(policies.CategoryList, "t1")
+	svc := categoryServiceWithoutDB()
+	// A reader, because listing is open to everybody: the refusal below has to
+	// be the allowlist and not the policy.
+	reader := security.Subject{ID: "u1", Tenant: "t1", Roles: []string{models.RoleMember}}
 
-	_, err := repo.List(context.Background(), g, data.Query{Sort: "1; DROP TABLE categories"})
+	_, err := svc.List(context.Background(), reader, data.Query{Sort: "1; DROP TABLE categories"})
 
 	if !errors.Is(err, models.ErrCategorySort) {
 		t.Fatalf("error = %v, want ErrCategorySort", err)
 	}
 }
-
-// arandu:begin custom
-// Tests for the rules you wrote go here, and survive regeneration.
-
-// TestEveryCategoryQueryBeyondTheFiveRequiresItsGrant covers the two lookups
-// this application added.
-//
-// FindBySlug takes the half of the address a reader can type, and All builds the
-// navigation on every page of the site. Both are read by somebody with no
-// account, and neither is named in the generated table above.
-func TestEveryCategoryQueryBeyondTheFiveRequiresItsGrant(t *testing.T) {
-	repo := categoryRepoWithoutDB()
-	ctx := context.Background()
-	var zero security.Grant
-
-	calls := map[string]func(security.Grant) error{
-		"FindBySlug": func(g security.Grant) error {
-			_, err := repo.FindBySlug(ctx, g, "news")
-			return err
-		},
-		"All": func(g security.Grant) error {
-			_, err := repo.All(ctx, g)
-			return err
-		},
-	}
-
-	for name, call := range calls {
-		t.Run(name+" with no grant", func(t *testing.T) {
-			if err := call(zero); !errors.Is(err, security.ErrForbidden) {
-				t.Fatalf("error = %v, want ErrForbidden", err)
-			}
-		})
-		t.Run(name+" with a grant for another action", func(t *testing.T) {
-			if err := call(security.SystemGrant("some.other.action", "t1")); !errors.Is(err, security.ErrForbidden) {
-				t.Fatalf("error = %v, want ErrForbidden", err)
-			}
-		})
-	}
-}
-
-// arandu:end custom

@@ -53,7 +53,6 @@ func (PostSeeder) Run(ctx context.Context, d Deps) error {
 	}
 
 	repo := repositories.NewPostRepository(d.DB)
-	categories := repositories.NewCategoryRepository(d.DB)
 	now := time.Now().UTC()
 
 	// Three grants, because a Grant carries ONE action and Check compares it: a
@@ -73,7 +72,12 @@ func (PostSeeder) Run(ctx context.Context, d Deps) error {
 	if err != nil {
 		return fmt.Errorf("reading the posts: %w", err)
 	}
-	filed, err := categories.All(ctx, sectionList)
+	// The sections come through the model rather than through a repository:
+	// there is no CategoryRepository any more, because every statement it held
+	// was CRUD over one table. This read is the same one CategoryService.All
+	// makes, under a Grant of its own.
+	filed, err := models.Categories(d.DB).NewQuery().OrderBy("name").OrderBy("id").
+		Get(ctx, sectionList)
 	if err != nil {
 		return fmt.Errorf("reading the sections: %w", err)
 	}

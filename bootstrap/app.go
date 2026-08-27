@@ -203,7 +203,10 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 	// each -- two of them would be two policies to keep in step.
 	postService := services.NewPostService(repositories.NewPostRepository(db))
 	commentService := services.NewCommentService(repositories.NewCommentRepository(db))
-	categoryService := services.NewCategoryService(repositories.NewCategoryRepository(db))
+	// The sections take the handle rather than a repository: their statements
+	// are CRUD over one table, so they are written through the model, and
+	// *data.DB is a model connection with nothing in between.
+	categoryService := services.NewCategoryService(db)
 
 	// The Application is built here rather than below the controllers because
 	// two of them read its gauge registry, and it opens nothing: no connection,
