@@ -1,9 +1,19 @@
 // Package factories builds domain objects with sensible values.
 //
 // A seeder or a test says what it cares about and the factory fills the rest.
-// Nothing here touches the database: a factory returns a value, storing it is a
-// repository call, and a repository call needs a Grant -- so a factory cannot
-// become a back door around the policy that guards the table.
+//
+// # Two shapes, and the line between them is the Grant
+//
+// UserFactory below is the hand-written one: it returns a value and stores
+// nothing, so the storing is a repository call, and a repository call needs a
+// Grant.
+//
+// Categories is the typed model factory, and it can store -- but only through
+// Create, which takes the Grant every write in this collection takes and files
+// the row under data.Tenant(g). Make, beside it, takes none and touches nothing.
+// The two signatures are the guarantee: a factory is not a back door around the
+// policy that guards the table, and the way you can tell which half you are in
+// is whether you had to hold a Grant to get there.
 package factories
 
 import (
