@@ -4,9 +4,9 @@ go 1.26
 
 require (
 	github.com/arandu-io/framework v0.38.1
-	github.com/arandu-io/hesape v0.15.2
-	github.com/arandu-io/hesape/database/connectors/pgx v0.6.2
-	github.com/arandu-io/hesape/database/connectors/sqlite v0.6.2
+	github.com/arandu-io/hesape v0.16.0
+	github.com/arandu-io/hesape/database/connectors/pgx v0.7.0
+	github.com/arandu-io/hesape/database/connectors/sqlite v0.7.0
 	github.com/arandu-io/joaju v0.5.0
 )
 
