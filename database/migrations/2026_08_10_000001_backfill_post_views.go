@@ -42,18 +42,27 @@ func init() { migrations.Register(backfillPostViews{}) }
 //
 // # Why there is no Down
 //
-// A migration is reversed only if it has one: the rollback tests for Down and
-// passes over the migration that does not declare it, which is not an error and
-// not a wall in front of the migrations underneath.
+// There is nothing to undo. Putting the NULLs back would restore the defect, and
+// zero is a correct value under the schema before this migration and after it:
+// the column was nullable either way, and the rows this touched were rows nobody
+// had ever written a count to.
 //
-// There is nothing to undo here. Putting the NULLs back would restore the
-// defect, and zero is a correct value under the schema before this migration and
-// after it: the column was nullable either way, and the rows this touched were
-// rows nobody had ever written a count to.
+// That is said out loud rather than left to be inferred from a missing method.
+// An absent Down is indistinguishable from a forgotten one, and the migrator no
+// longer reads it as a decision -- it refuses the rollback unless the migration
+// says which of the two it is. Declaring it here keeps the batch moving: the
+// migrations above this one still roll back, and this one is reported as skipped
+// with the reason beside its name.
 type backfillPostViews struct{ migrations.BaseMigration }
 
 // GetName is this migration's identity. The date prefix carries the order.
 func (backfillPostViews) GetName() string { return "2026_08_10_000001_backfill_post_views" }
+
+// Irreversible says why nothing undoes this, and it is what lets a rollback pass
+// over it instead of stopping at it.
+func (backfillPostViews) Irreversible() string {
+	return "the rows it touched had no count, and writing NULL back would restore the defect it closed"
+}
 
 // Up sets the count on the rows that never had one.
 func (backfillPostViews) Up(ctx context.Context, conn migrations.Connection) error {
