@@ -325,7 +325,12 @@ func TestEachSuiteHoldsWhatItsNameSays(t *testing.T) {
 	// hole rather than an omission: it is the one way into tests/Unit for a test
 	// that migrates a database, and the suite somebody runs on every save is
 	// exactly the one that cannot afford it.
-	boots := regexp.MustCompile(`tests\.App\(|tests\.Boot\(|tests\.Kernel\(|bootstrap\.Dispatch\(|bootstrap\.Open\(|httptest\.NewRequest\(|httptest\.NewServer\(|migratedDB\(`)
+	//
+	// openForTest is on it for the same reason migratedDB is: both are helpers
+	// of the Feature suite that open a connection, and the check reads the text
+	// of a file rather than what it calls, so a helper that is not named here
+	// hides every test that reaches the database through it.
+	boots := regexp.MustCompile(`tests\.App\(|tests\.Boot\(|tests\.Kernel\(|bootstrap\.Dispatch\(|bootstrap\.Open\(|httptest\.NewRequest\(|httptest\.NewServer\(|migratedDB\(|openForTest\(`)
 
 	for _, suite := range []string{"Feature", "Unit"} {
 		dir := filepath.Join(tests.Root(t), "tests", suite)

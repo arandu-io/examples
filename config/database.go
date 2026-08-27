@@ -19,17 +19,21 @@ type Database struct {
 	// them. Hand it to the adapter; never build a DSN by hand.
 	Connection database.Config
 
-	// MaxOpenConns caps the connections in flight. Zero means unlimited, which
-	// is how a burst of traffic turns into "too many connections" on the server
-	// and takes every other application with it.
+	// MaxOpenConns caps the connections in flight. Zero is the adapter's
+	// default, never an unbounded pool: there is no way to ask for one, which
+	// is deliberate, because an unbounded pool is how a burst of traffic turns
+	// into "too many connections" on the server and takes every other
+	// application with it. SQLite ignores the number and gets a single writer.
 	MaxOpenConns int
 
-	// MaxIdleConns is how many stay open between queries.
+	// MaxIdleConns is how many stay open between queries. Zero is the adapter's
+	// default, and a number above the open limit is the open limit.
 	MaxIdleConns int
 
-	// ConnMaxLifetime retires a connection after this long. A managed database
-	// that rotates behind a proxy hands out connections that stop working, and
-	// a lifetime is what makes the pool notice without a failed request.
+	// ConnMaxLifetime retires a connection after this long. Zero is the
+	// adapter's default. A managed database that rotates behind a proxy hands
+	// out connections that stop working, and a lifetime is what makes the pool
+	// notice without a failed request.
 	ConnMaxLifetime time.Duration
 }
 

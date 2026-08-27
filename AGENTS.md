@@ -63,14 +63,14 @@ SQLite file in its own `t.TempDir()` — `sqliteEnv` at
 | `routes/web.go`, `routes/admin.go` | 51 registered routes across four modules, 32 of them this application's |
 | `bootstrap/app.go` | the whole wiring, top to bottom, in one function |
 | `database/migrations/`, `database/seeders/` | seven each |
-| `tests/Feature/`, `tests/Unit/` | 33 files, 135 test functions — 77 feature and 58 unit |
+| `tests/Feature/`, `tests/Unit/` | 34 files, 137 test functions — 79 feature and 58 unit |
 
 Counted with:
 
 ```sh
 find resources/views -name '*.kyse.go' | wc -l                      # 29
-find . -name '*_test.go' -not -path './storage/*' | wc -l           # 33
-grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l  # 135
+find . -name '*_test.go' -not -path './storage/*' | wc -l           # 34
+grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l  # 137
 ls app/Policies | wc -l                                             # 6
 GOWORK=off go run . routes | grep -cE '^  (GET|POST|PUT|PATCH|DELETE)'  # 51
 ```
@@ -128,7 +128,7 @@ Three consequences:
 - A number written in prose — in `README.md`, in a comment, in this file — is a
   measurement. Re-run the command before trusting it, and fix every copy
   together. `tests/test-layout-guard.sh` states two of them in its own comments
-  ("all 33 test files", "the 29 files under resources/views") and both are
+  ("all 34 test files", "the 29 files under resources/views") and both are
   currently right.
 
 ## Writing code
