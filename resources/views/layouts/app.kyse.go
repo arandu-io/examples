@@ -59,7 +59,6 @@ import (
 
 	<link rel="stylesheet" href="{{ view.URL("app.css") }}">
 	<script src="{{ view.URL("htmx.min.js") }}" defer></script>
-	<script src="{{ view.URL("alpine.min.js") }}" defer></script>
 	<script src="{{ view.URL("basecoat.bundle.js") }}" defer></script>
 	<script src="{{ view.URL("theme.js") }}"></script>
 </head>
