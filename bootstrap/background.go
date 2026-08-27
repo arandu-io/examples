@@ -11,7 +11,6 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/arandu-io/framework/kernel"
 	"github.com/arandu-io/framework/scheduler"
 	"github.com/arandu-io/hesape/queue"
 	"github.com/arandu-io/hesape/queue/jobs"
@@ -92,7 +91,15 @@ func scheduleRun(ctx context.Context, sched *scheduler.Module, args []string) er
 }
 
 // work drains a job queue until interrupted.
-func work(ctx context.Context, k *kernel.Kernel, store queue.Queue, args []string) error {
+//
+// It takes the whole application rather than the queue alone, because a handler
+// is a closure over the services it needs and those are fields of this struct. A
+// worker that was handed only the store could register nothing that sends mail,
+// reads a repository or publishes an event -- which is every job an application
+// of this shape has.
+func work(ctx context.Context, app App, args []string) error {
+	k := app.Kernel
+
 	flags := flag.NewFlagSet("work", flag.ContinueOnError)
 	// name rather than queue, because the package that builds the worker has
 	// that identifier: a local called queue would shadow it and hide the
@@ -111,7 +118,7 @@ func work(ctx context.Context, k *kernel.Kernel, store queue.Queue, args []strin
 	}
 	defer func() { _ = k.Shutdown() }()
 
-	w := queue.NewWorker(store, queue.WorkerOptions{
+	w := queue.NewWorker(app.Queue, queue.WorkerOptions{
 		Queue:       *name,
 		Concurrency: *workers,
 		// A finished job lands on /_arandu/debug with its queries and its
@@ -120,7 +127,7 @@ func work(ctx context.Context, k *kernel.Kernel, store queue.Queue, args []strin
 		// worker builds no Collector at all.
 		Recorder: k.Recorder(),
 	})
-	registerHandlers(w)
+	registerHandlers(w, app)
 
 	if len(w.Names()) == 0 {
 		return fmt.Errorf("no job handlers are registered.\n" +
@@ -146,9 +153,35 @@ func work(ctx context.Context, k *kernel.Kernel, store queue.Queue, args []strin
 // Explicit, like the module registration in bootstrap.Build: read it top to
 // bottom and you know every kind of work this application does in the
 // background.
-func registerHandlers(w *queue.Worker) {
+//
+// # What a handler is given
+//
+// A handler is a func(context.Context, auth.Grant, *jobs.Job) error, and the
+// Grant is not something it builds. The worker hands it the one the push was
+// authorized under, carrying that Grant's tenant, so a handler cannot widen its
+// own scope and has nothing to reconstruct a tenant from: reading one out of the
+// payload would be taking a tenant from data the job carries, which is the
+// finding `aru doctor` calls tenant-from-request wearing another hat.
+//
+// It reaches the application's services by closing over app, which is the same
+// wiring the relay gets in bootstrap.Build -- collaborators passed in, never
+// fetched from a container:
+//
+//	w.HandleFunc("mail.send", func(ctx context.Context, g auth.Grant, j *jobs.Job) error {
+//		return app.Mail.ToAddress(...).Send(ctx, ...)
+//	})
+//
+// # This application registers none, and that is the honest state
+//
+// Nothing here pushes a job yet. A handler registered with no producer is a
+// second way to do something that is currently done one way, and it would be
+// dead the day it was written -- so `aru work` says there are none rather than
+// draining a queue nothing fills. app is a parameter and not something the first
+// handler has to add, because the example above named an `invoiceModule` that
+// never existed in this project: an extension point whose example does not
+// compile is one nobody can follow.
+func registerHandlers(w *queue.Worker, app App) {
 	// arandu:begin custom
-	// w.HandleFunc("invoice.send", invoiceModule.SendInvoice)
 	// arandu:end custom
-	_ = w
+	_, _ = w, app
 }

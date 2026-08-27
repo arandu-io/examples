@@ -85,7 +85,7 @@ func Dispatch(command string, args []string) error {
 		return scheduleRun(ctx, app.Scheduler, args)
 
 	case "work":
-		return work(ctx, k, app.Queue, args)
+		return work(ctx, app, args)
 
 	case "Version":
 		fmt.Printf("%s %s (%s)\n", cfg.App.Name, Version, Commit)
