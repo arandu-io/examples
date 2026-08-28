@@ -52,7 +52,10 @@ func Dispatch(command string, args []string) error {
 	}
 	defer closeDB()
 
-	app := Build(cfg, db)
+	app, err := Build(cfg, db)
+	if err != nil {
+		return err
+	}
 	k := app.Kernel
 	ctx := context.Background()
 

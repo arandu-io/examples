@@ -14,11 +14,13 @@
 package bootstrap
 
 import (
+	"errors"
+	"fmt"
 	"strconv"
-	"time"
 
 	"github.com/arandu-io/framework/data"
 	"github.com/arandu-io/framework/events"
+	fhttp "github.com/arandu-io/framework/http"
 	"github.com/arandu-io/framework/http/middleware"
 	"github.com/arandu-io/framework/jobs"
 	"github.com/arandu-io/framework/kernel"
@@ -29,7 +31,9 @@ import (
 	"github.com/arandu-io/framework/scheduler"
 	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/framework/view"
+	"github.com/arandu-io/hesape/cache"
 	"github.com/arandu-io/hesape/queue"
+	hmiddleware "github.com/arandu-io/hesape/routing/middleware"
 	"github.com/arandu-io/joaju"
 	"github.com/arandu-io/joaju/protocols/pusher"
 
@@ -110,23 +114,39 @@ type App struct {
 // It does not boot, listen or migrate. main.go decides which of those the
 // requested command needs, which is what keeps `aru routes` from opening a
 // socket and `aru work` from starting a scheduler.
-func Build(cfg appconfig.Config, db *data.DB) App {
+//
+// It returns an error because some configurations describe a deployment this
+// binary cannot be: a cache store nothing here defines is one of them. Refusing
+// at the boot, naming the setting, is the alternative to starting and behaving
+// as though something else had been asked for.
+func Build(cfg appconfig.Config, db *data.DB) (App, error) {
 	fw := cfg.Framework
 
 	csrf := security.NewCSRF(fw.App.Key, cfg.Session.CSRFTTL)
 
+	// Every cache store this application has, by name. CACHE_STORE names the
+	// one the rate limit below counts in, and a name nothing defines is refused
+	// rather than quietly replaced.
+	stores := newCacheStores(cfg.Cache)
+
 	// The core ships the in-memory session backend, which is right for one
 	// instance and wrong for two: behind a load balancer, half the requests land
-	// on the replica that never saw the login. Behind more than one pod, swap
-	// the backend for one over the shared store:
-	//
-	//	security.NewSessionBackend(hredis.NewCacheBasedSessionHandler[security.Subject](cache))
-	//
-	// SESSION_DRIVER is what says which one is expected;
-	// the same applies to the limiter below.
+	// on the replica that never saw the login. SESSION_DRIVER is what says which
+	// one is expected.
 	sessions := security.NewSessionStore(fw.App.Key, cfg.Session.TTL, cfg.Session.Secure, security.NewMemoryBackend())
 
-	limiter := middleware.NewMemoryLimiter()
+	// The rate limit counts in a store rather than in this process, which is the
+	// difference between one budget and one budget per replica -- on the
+	// endpoints a limit is put there for.
+	//
+	// It counts in the store CACHE_STORE named, and the in-process one is the
+	// honest answer for a single instance: what it must not be is a shared store
+	// that everybody assumed was there. Which store it is says which.
+	limitStore, err := stores.Default()
+	if err != nil {
+		return App{}, err
+	}
+	limiter := cache.NewRateLimiter(limitStore.GetStore())
 
 	// The queue over the application's own database, which is what makes a job
 	// commitable by the same transaction as the row it is about. For volume
@@ -266,7 +286,17 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 			// what production does.
 			middleware.Observe(cfg.App.IsDev(), fw.Observability.TracingSecret, k.Recorder()),
 			middleware.SecurityHeaders(cfg.App.IsDev()),
-			middleware.RateLimit(limiter, 300, time.Minute, middleware.KeyBySession(sessions.IDFromRequest)),
+			// The budget and the window are one value, which is what a named
+			// limiter resolves to. The refusal is passed rather than assumed:
+			// how a 4xx is written belongs to the request layer, and this one
+			// adds HX-Refresh, without which somebody over the limit presses
+			// the button and the screen does not change.
+			//
+			// The key is unchanged, and it has to be: a counter in a shared
+			// store is keyed by the string KeyBySession returns, so a different
+			// one would hand every caller a fresh budget on deploy.
+			hmiddleware.Throttle(limiter, cache.PerMinute(300),
+				middleware.KeyBySession(sessions.IDFromRequest), fhttp.Refuse),
 			middleware.CSRFProtect(csrf, sessions.IDFromRequest),
 		).
 		Register(
@@ -321,7 +351,90 @@ func Build(cfg appconfig.Config, db *data.DB) App {
 	sched := scheduler.NewModule(k.Tasks(), scheduler.Options{Recorder: k.Recorder()})
 	k.Register(sched)
 
-	return App{Kernel: k, Auth: authService, Scheduler: sched, Relay: relay, Queue: queueStore, Mail: mailer}
+	return App{Kernel: k, Auth: authService, Scheduler: sched, Relay: relay, Queue: queueStore, Mail: mailer}, nil
+}
+
+// The names this application's cache stores are known by.
+//
+// They are the values CACHE_STORE takes, so the word in the environment and the
+// word in the wiring are one word.
+const (
+	memoryStore = string(appconfig.CacheMemory)
+	respStore   = string(appconfig.CacheRedis)
+)
+
+// errRESPStoreAbsent is why nothing here defines the store CACHE_STORE spells
+// redis and SESSION_DRIVER spells kv.
+//
+// The driver that builds it, and the session handler written over the same
+// connection, are in a module this one does not require, so no store defined
+// here reaches a server another replica can also read. Naming that store is
+// therefore a deployment asking for something this binary cannot be, and the
+// answer belongs at the boot rather than at the first request that finds no
+// entry where one was written.
+//
+// It is a value rather than a sentence repeated at each caller, so the two
+// settings that can name the store are refused in the same words.
+var errRESPStoreAbsent = errors.New(
+	"the RESP store is built by the hesape/redis module, which this application does not require, " +
+		"so nothing here can define it: REDIS_URL names an endpoint that no store in this binary opens")
+
+// cacheStores is every cache store this application has, by name.
+//
+// It is what stands where a nullable connection would, and the difference is
+// what a caller has to do in order to be wrong. A nullable connection is nil
+// for the in-process store and every consumer branches on it by hand; a branch
+// somebody forgets is a lock that locks nothing, because what a shared store
+// buys is state every replica sees and a store inside the process has none to
+// share.
+//
+// A name is not a branch, and the danger does not come back through it. The
+// manager answers with a store or with an error naming the store, never with
+// nil. The store named memory is always defined and it is the only one: see
+// errRESPStoreAbsent for the one this application cannot build.
+type cacheStores struct {
+	manager  *cache.CacheManager
+	settings appconfig.Cache
+}
+
+// newCacheStores defines the stores the configuration describes.
+//
+// It opens nothing and reaches no server. The in-process store has none to
+// reach, and a store that is defined is not a store that has been resolved.
+func newCacheStores(cfg appconfig.Cache) *cacheStores {
+	return &cacheStores{
+		manager: cache.NewCacheManager(cache.Config{
+			Default: string(cfg.Store),
+			Prefix:  cfg.Prefix,
+			Stores: map[string]cache.StoreConfig{
+				// In-process, which is what CACHE_STORE=memory says: a single
+				// replica, caching inside itself.
+				memoryStore: {Driver: "array"},
+			},
+		}),
+		settings: cfg,
+	}
+}
+
+// Store returns the named store, building it the first time it is asked for.
+//
+// A name the configuration does not define is an error naming it. That is the
+// property the whole type rests on: nothing stands in for the store that was
+// asked for.
+func (c *cacheStores) Store(name string) (*cache.Repository, error) {
+	store, err := c.manager.Store(name)
+	if err == nil {
+		return store, nil
+	}
+	if name == respStore {
+		return nil, fmt.Errorf("the cache store %q is not one this application defines: %w", name, errRESPStoreAbsent)
+	}
+	return nil, err
+}
+
+// Default returns the store CACHE_STORE named.
+func (c *cacheStores) Default() (*cache.Repository, error) {
+	return c.Store(string(c.settings.Store))
 }
 
 // The two identifiers joaju's routes carry. They are not credentials.
