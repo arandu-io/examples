@@ -129,11 +129,12 @@ func Build(cfg appconfig.Config, db *data.DB) (App, error) {
 	// rather than quietly replaced.
 	stores := newCacheStores(cfg.Cache)
 
-	// The core ships the in-memory session backend, which is right for one
-	// instance and wrong for two: behind a load balancer, half the requests land
-	// on the replica that never saw the login. SESSION_DRIVER is what says which
-	// one is expected.
-	sessions := security.NewSessionStore(fw.App.Key, cfg.Session.TTL, cfg.Session.Secure, security.NewMemoryBackend())
+	// The session, over the store SESSION_DRIVER named.
+	backend, err := sessionBackend(cfg.Session)
+	if err != nil {
+		return App{}, err
+	}
+	sessions := security.NewSessionStore(fw.App.Key, cfg.Session.TTL, cfg.Session.Secure, backend)
 
 	// The rate limit counts in a store rather than in this process, which is the
 	// difference between one budget and one budget per replica -- on the
@@ -187,11 +188,12 @@ func Build(cfg appconfig.Config, db *data.DB) (App, error) {
 	//
 	//	kernel.NewLocker(cache.NewLocks(redis.NewRedisStore(conn)))
 	//
-	// Nil says one replica, which is what the in-memory session backend and the
-	// in-memory limiter above already say about this deployment. What nil costs
-	// behind two is a duplicate delivery and never a lost event, and a publisher
-	// has to tolerate the repeat regardless: delivery is at-least-once by design,
-	// so a mark that fails after a successful publish sends the event again.
+	// Nil says one replica, which is what the in-process cache store and the
+	// in-process session backend above already say about this deployment. What
+	// nil costs behind two is a duplicate delivery and never a lost event, and a
+	// publisher has to tolerate the repeat regardless: delivery is at-least-once
+	// by design, so a mark that fails after a successful publish sends the event
+	// again.
 	relay := events.NewRelay(events.NewOutbox(db), listeners.NewEventLog(), events.RelayOptions{})
 
 	// A module that calls another service takes observability.Client, not one of
@@ -435,6 +437,50 @@ func (c *cacheStores) Store(name string) (*cache.Repository, error) {
 // Default returns the store CACHE_STORE named.
 func (c *cacheStores) Default() (*cache.Repository, error) {
 	return c.Store(string(c.settings.Store))
+}
+
+// sessionBackend builds the session backend SESSION_DRIVER named.
+//
+// The driver names a cache store, and not the cache's default one:
+// SESSION_DRIVER=kv beside CACHE_STORE=memory is a deployment that keeps its
+// sessions where every replica can read them and caches inside each process,
+// and that combination is right for anybody whose cache is cheap to lose and
+// whose sign-ins are not. The two settings are independent on purpose.
+//
+// This application defines one store and it is the in-process one, so the only
+// driver it can honour is memory. A driver naming any other is refused here, at
+// the boot, naming what was asked for -- and the refusal is the whole point. An
+// in-process backend satisfies every type it would be handed to and none of
+// what was asked for: the deployment it produces starts, reports itself
+// healthy, and signs half its visitors out on every request because the replica
+// beside it never saw the login. That is the failure this function exists to
+// end, and it is the one the wiring used to produce, because SESSION_DRIVER was
+// read by nothing at all.
+//
+// It refuses rather than warns for the same reason. A warning is read once, by
+// the person who already knew.
+func sessionBackend(cfg appconfig.Session) (security.SessionBackend, error) {
+	switch cfg.Driver {
+	case appconfig.SessionMemory:
+		// Right for one instance and wrong for two, and it is what
+		// SESSION_DRIVER=memory asks for.
+		return security.NewMemoryBackend(), nil
+
+	case appconfig.SessionKV:
+		// The store this driver names is the one CACHE_STORE spells redis --
+		// two words for one store. Nothing here builds it, and there is no
+		// weaker answer: the handler that writes a session over that connection
+		// ships in the same module as the driver.
+		return nil, fmt.Errorf("SESSION_DRIVER %q names the cache store %q: %w", cfg.Driver, respStore, errRESPStoreAbsent)
+
+	default:
+		// Unreachable through Load, which refuses the value first. It is here
+		// because a configuration built in Go skips that check, and a driver
+		// nobody recognises must not fall through to the in-process store: the
+		// sessions would be kept where nothing asked for them.
+		return nil, fmt.Errorf("SESSION_DRIVER has unsupported value %q; expected %s or %s",
+			cfg.Driver, appconfig.SessionMemory, appconfig.SessionKV)
+	}
 }
 
 // The two identifiers joaju's routes carry. They are not credentials.
