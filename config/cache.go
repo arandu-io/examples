@@ -25,7 +25,18 @@ const (
 type Cache struct {
 	Store CacheStore
 
-	// URL is the RESP endpoint, used only by CacheRedis.
+	// URL is the RESP endpoint. It is empty when REDIS_URL names none, and only
+	// then.
+	//
+	// It is read whether or not Store is the RESP one, because the cache is not
+	// the only thing that names that store: a deployment whose sessions are
+	// shared and whose cache stays in each process is a coherent one, and a
+	// store that existed only while the cache happened to default to it could
+	// not be named by anything else.
+	//
+	// One reader, here. Every feature that needs the endpoint reads this field
+	// rather than REDIS_URL, because two readers of one variable are two answers
+	// the day one of them grows a default the other has not.
 	URL string
 
 	// Prefix is prepended to every key. It carries the application name so two
@@ -41,9 +52,9 @@ type Cache struct {
 
 func loadCache(base bootstrap.Configuration) (Cache, error) {
 	store := CacheStore(env("CACHE_STORE", string(CacheMemory)))
-	// The endpoint is read here rather than taken off base: it points the cache
-	// and the session store of this application at a server, and nothing in the
-	// framework opens a connection to it.
+	// The endpoint is read here, and here only. It names the store the cache and
+	// the session store of this application can both point at, and nothing in
+	// the framework opens a connection to it.
 	url := env("REDIS_URL", "")
 	switch store {
 	case CacheMemory:

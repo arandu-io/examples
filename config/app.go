@@ -88,15 +88,16 @@ func From(base bootstrap.Configuration) (Config, error) {
 		return Config{}, fmt.Errorf("framework application configuration: %w", err)
 	}
 
-	session, err := loadSession(base)
+	cache, err := loadCache(base)
+	if err != nil {
+		return Config{}, err
+	}
+	// After the cache, because the session names one of its stores.
+	session, err := loadSession(base, cache)
 	if err != nil {
 		return Config{}, err
 	}
 	auth, err := loadAuth(session.TTL)
-	if err != nil {
-		return Config{}, err
-	}
-	cache, err := loadCache(base)
 	if err != nil {
 		return Config{}, err
 	}
