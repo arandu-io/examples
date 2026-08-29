@@ -34,7 +34,7 @@ jobs:
       # failure is `undefined: renderHome` rather than anything about views.
       - name: build the views
         run: |
-          go install github.com/arandu-io/aru@latest
+          go install github.com/arandu-io/aru@v0.35.0
           "$(go env GOPATH)/bin/aru" view:build
 
       - name: gofmt
@@ -103,7 +103,7 @@ jobs:
       # next thing to do. What changed is that a to-do is reported as a to-do.
       - name: doctor
         run: |
-          go install github.com/arandu-io/aru@latest
+          go install github.com/arandu-io/aru@v0.35.0
           aru doctor
 
       # The image, for real. Doc 17 promises one artifact that every platform
