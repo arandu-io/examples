@@ -94,11 +94,10 @@ fi
 # 2. A test outside tests/ has to need an unexported identifier, and says so in
 #    its name. Anything else belongs in a category.
 #
-#    Nothing in this repository is outside tests/ today: all 34 test files sit
-#    under tests/Feature or tests/Unit and not one is named _internal_test.go.
-#    The check is not therefore idle -- it is the only thing standing between
-#    that state and the first test dropped next to a handler in app/, which is
-#    where a suite starts to grow a second layout.
+#    Forty-seven test files sit under the capitalised categories in tests/. The
+#    only colocated test is app/Http/Controllers/Auth/redaction_internal_test.go,
+#    which needs unexported redaction helpers and names that exception. The check
+#    is what prevents an unrelated test from starting a second layout in app/.
 while IFS= read -r file; do
 	[ -z "$file" ] && continue
 
@@ -181,7 +180,7 @@ fi
 #    seen on the day it lands rather than on the day somebody counts.
 #
 #    kyse is deliberately not among them, and adding it would break this check
-#    rather than widen it. The 29 files under resources/views are templates
+#    rather than widen it. The 34 files under resources/views are templates
 #    whose build tag is the only thing excluding them from the compiler; listing
 #    with that tag hands `go list` a file that opens with @extends and stops it
 #    at a parse error.
