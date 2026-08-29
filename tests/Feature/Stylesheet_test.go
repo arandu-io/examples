@@ -3,15 +3,14 @@ package feature_test
 import (
 	"crypto/md5"
 	"encoding/hex"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 
-	fhttp "github.com/arandu-io/framework/http"
-	"github.com/arandu-io/framework/view"
+	"github.com/arandu-io/hesape/config"
+	"github.com/arandu-io/hesape/view"
 
 	"github.com/arandu-io/examples/tests"
 )
@@ -38,20 +37,14 @@ func TestTheBrowserGetsThisProjectsStylesheet(t *testing.T) {
 		t.Fatalf("assets/app.css is missing: it is committed so that `go build` works on a fresh clone: %v", err)
 	}
 
-	r := fhttp.NewRouter()
-	view.NewModule().Routes(r)
-	server := httptest.NewServer(r)
-	defer server.Close()
+	kernel := tests.Kernel(t, config.EnvProd)
+	recorder := httptest.NewRecorder()
+	kernel.Handler().ServeHTTP(recorder,
+		httptest.NewRequest(http.MethodGet, view.URL(view.Stylesheet), nil))
 
-	resp, err := http.Get(server.URL + view.URL(view.Stylesheet))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	served, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("the stylesheet answered %d", resp.StatusCode)
+	served := recorder.Body.Bytes()
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("the stylesheet answered %d", recorder.Code)
 	}
 
 	if sum(served) != sum(onDisk) {

@@ -47,14 +47,14 @@ func TestSomebodyArrivesAndEndsUpCommenting(t *testing.T) {
 	}
 
 	// 3. They register. It does not sign them in: a registration that opened a
-	//    session would make the verification link pointless.
+	//    session would make the verification code pointless.
 	client.Get("/auth/register").OK()
 	client.Post("/auth/register", map[string]string{
 		"name": "Grace Hopper", "email": email,
 		"password": password, "password_confirmation": password,
 	}).RedirectsTo("/auth/verify")
 
-	// 4. The message arrived, with both parts and a link.
+	// 4. The message arrived, with both parts and a single-use code.
 	sent, ok := box.Last()
 	if !ok {
 		t.Fatal("registering sent nothing")
@@ -62,9 +62,9 @@ func TestSomebodyArrivesAndEndsUpCommenting(t *testing.T) {
 	if sent.HTML == "" || sent.Text == "" {
 		t.Error("the message is missing a part: an HTML-only message is filed as spam more often")
 	}
-	link := journeyLink.FindString(sent.Text)
-	if link == "" {
-		t.Fatalf("no confirmation link in the message:\n%s", sent.Text)
+	code := emailCodePattern.FindString(sent.Text)
+	if code == "" {
+		t.Fatalf("no confirmation code in the message:\n%s", sent.Text)
 	}
 
 	// 5. Before confirming, they can read and cannot write.
@@ -74,7 +74,10 @@ func TestSomebodyArrivesAndEndsUpCommenting(t *testing.T) {
 		t.Error("an unconfirmed account was given a comment form the policy refuses")
 	}
 
-	client.Get(link).OK().See("confirmed")
+	client.Get("/auth/verify?email=" + email).OK()
+	client.Post("/auth/verify/confirm", map[string]string{
+		"email": email, "email_code": code,
+	}).OK().See("confirmed")
 
 	// 6. Now they sign in, and the comment form is there.
 	client.Get("/auth/login").OK()
@@ -111,34 +114,31 @@ func TestSomebodyArrivesAndEndsUpCommenting(t *testing.T) {
 		OK().See("on its way")
 
 	reset, _ := box.Last()
-	token := resetToken.FindStringSubmatch(reset.Text + reset.HTML)
-	if token == nil {
-		t.Fatalf("no reset token in the message:\n%s", reset.Text)
+	resetCode := emailCodePattern.FindString(reset.Text)
+	if resetCode == "" {
+		t.Fatalf("no reset code in the message:\n%s", reset.Text)
 	}
 
-	// The screen the link leads to knows which address it was sent to, and fills
-	// the field in. It asked for one, marked it Required, and filled in nothing:
-	// the person had to retype the address the message had just been sent to.
-	form := client.Get("/auth/password/reset?token=" + token[1]).OK().Body()
+	// The response that confirms delivery is already the form that accepts the
+	// code, and it keeps the address the person typed.
+	form := client.Get("/auth/password/reset?email=" + email).OK().Body()
 	if !strings.Contains(form, email) {
-		t.Errorf("the reset form does not carry the address the link was sent to:\n%s", form)
+		t.Errorf("the reset form does not carry the address the code was sent to:\n%s", form)
 	}
 
 	const changed = "the-second-password"
 	client.Post("/auth/password/update", map[string]string{
-		"token": token[1], "email": email,
+		"email_code": resetCode, "email": email,
 		"password": changed, "password_confirmation": changed,
 	}).OK().See("has been changed")
 
-	// And the link is spent. It carries a fingerprint of the password it was
-	// minted against, so changing the password is what kills it -- no row was
-	// written when it went out and none had to be deleted now. A forwarded
-	// message, or one read out of that mailbox next month, is not a way back in.
-	client.Get("/auth/password/reset?token=" + token[1]).OK()
+	// And the code is spent atomically. Its subject also carries the password
+	// fingerprint, so any password change invalidates every older code.
+	client.Get("/auth/password/reset?email=" + email).OK()
 	client.Post("/auth/password/update", map[string]string{
-		"token": token[1], "email": email,
+		"email_code": resetCode, "email": email,
 		"password": "a-third-password-entirely", "password_confirmation": "a-third-password-entirely",
-	}).Status(422).See("Ask for another one")
+	}).Status(422).See("not valid")
 
 	// 9. The new password works and the old one does not.
 	client.Get("/auth/login").OK()
@@ -161,7 +161,7 @@ func TestSomebodyArrivesAndEndsUpCommenting(t *testing.T) {
 // forced it exactly where they were, holding a cookie that still works.
 //
 // It is asserted from the session that did the resetting, because that one is
-// covered by the same rule: the link arrives in an inbox, and there is no
+// covered by the same rule: the code arrives in an inbox, and there is no
 // session on that request worth keeping.
 func TestAPasswordResetEndsTheSessionsThatWereAlreadyOpen(t *testing.T) {
 	client, db, box := tests.AppWithMailbox(t)
@@ -174,15 +174,15 @@ func TestAPasswordResetEndsTheSessionsThatWereAlreadyOpen(t *testing.T) {
 	client.Post("/auth/password/email", map[string]string{"email": email}).OK()
 
 	sent, _ := box.Last()
-	token := resetToken.FindStringSubmatch(sent.Text + sent.HTML)
-	if token == nil {
-		t.Fatalf("no reset token in the message:\n%s", sent.Text)
+	code := emailCodePattern.FindString(sent.Text)
+	if code == "" {
+		t.Fatalf("no reset code in the message:\n%s", sent.Text)
 	}
 
 	const changed = "a-completely-new-password"
-	client.Get("/auth/password/reset?token=" + token[1]).OK()
+	client.Get("/auth/password/reset?email=" + email).OK()
 	client.Post("/auth/password/update", map[string]string{
-		"token": token[1], "email": email,
+		"email_code": code, "email": email,
 		"password": changed, "password_confirmation": changed,
 	}).OK().See("has been changed")
 
@@ -278,14 +278,6 @@ func header(body string) string {
 	}
 	return body[start:end]
 }
-
-var (
-	journeyLink = regexp.MustCompile(`https?://[^\s]*?/auth/verify/confirm\?token=[A-Za-z0-9_.\-]+`)
-	// The dot is part of the token, not the end of a sentence: a signed token is
-	// payload.expiry.signature. Without it this matched the first segment only,
-	// and the test would report "that link is not valid" for a link that was.
-	resetToken = regexp.MustCompile(`/auth/password/reset\?token=([A-Za-z0-9_.\-]+)`)
-)
 
 // seedJourneyPost writes one published article to have somewhere to comment.
 //

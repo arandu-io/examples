@@ -16,7 +16,7 @@ import (
 // to get wrong and impossible to check while signed in as an administrator.
 //
 // It is created already verified. CommentPolicy refuses an unverified account,
-// and a seeded reader waiting for a link in a mailbox that does not exist is a
+// and a seeded reader waiting for a code in a mailbox that does not exist is a
 // demo that demonstrates nothing.
 type ReaderSeeder struct{}
 
@@ -32,8 +32,8 @@ const (
 
 // Run creates the reader, or leaves the existing one alone.
 func (ReaderSeeder) Run(ctx context.Context, d Deps) error {
-	if d.Auth == nil {
-		return errors.New("the auth service is not wired")
+	if d.Users == nil {
+		return errors.New("the user service is not wired")
 	}
 	if d.Tenant == "" {
 		return errors.New("the tenant is not wired: seeding into an empty tenant would create a user nobody can log in as")
@@ -44,7 +44,7 @@ func (ReaderSeeder) Run(ctx context.Context, d Deps) error {
 		return err
 	}
 
-	u, err := d.Auth.EnsureUser(ctx, d.Tenant, readerName, readerEmail, password, nil, true)
+	u, err := d.Users.EnsureUser(ctx, d.Tenant, readerName, readerEmail, password, nil, true)
 	if err != nil {
 		return err
 	}

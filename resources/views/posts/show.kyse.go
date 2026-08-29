@@ -6,7 +6,7 @@ import (
 	"github.com/arandu-io/kyse/components"
 	"github.com/arandu-io/kyse/icons"
 
-	"github.com/arandu-io/framework/view"
+	"github.com/arandu-io/hesape/view"
 )
 
 @go
@@ -37,7 +37,7 @@ type PostsShowData struct {
 	// rather than a sign-in link -- they ARE signed in, and being shown the
 	// sign-in link again is the most confusing answer available.
 	Unverified bool
-	// ResendURL is where they ask for another confirmation link.
+	// ResendURL is where they ask for another confirmation code.
 	ResendURL string
 }
 
@@ -191,12 +191,12 @@ func (c CommentRow) Badge() string {
 			<div class="mt-10">
 				{!! components.Alert(components.AlertProps{
 					Title:   "Confirm your address to comment",
-					Message: "We sent a link when you registered. Reading does not need it; writing does.",
+					Message: "We sent a code when you registered. Reading does not need it; writing does.",
 				}) !!}
 				<form class="mt-4" method="post" action="{{ .ResendURL }}">
 					@csrf
 					<button type="submit" class="btn" data-variant="outline" data-size="sm">
-						{!! icons.EnvelopeSimple(icons.Props{}) !!} Send the link again
+						{!! icons.EnvelopeSimple(icons.Props{}) !!} Send the code again
 					</button>
 				</form>
 			</div>

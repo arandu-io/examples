@@ -205,10 +205,16 @@ func TestLoginOnSQLite(t *testing.T) {
 		}
 
 		cookies := rec.Result().Cookies()
-		if len(cookies) != 1 || cookies[0].Name != security.SessionCookieName {
-			t.Fatalf("cookies = %+v, want one session cookie", cookies)
+		var session *http.Cookie
+		for _, cookie := range cookies {
+			if cookie.Name == security.SessionCookieName && cookie.MaxAge > 0 {
+				session = cookie
+			}
 		}
-		if !cookies[0].HttpOnly {
+		if session == nil {
+			t.Fatalf("cookies = %+v, want an active session cookie", cookies)
+		}
+		if !session.HttpOnly {
 			t.Error("the session cookie must be HttpOnly")
 		}
 		if strings.Contains(rec.Body.String(), "argon2") {

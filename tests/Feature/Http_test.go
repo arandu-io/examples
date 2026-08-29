@@ -135,7 +135,7 @@ func TestHealthFailsWithoutTheDatabase(t *testing.T) {
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "auth") {
+	if !strings.Contains(rec.Body.String(), "events") {
 		t.Errorf("the body must name the failing module, got %q", rec.Body.String())
 	}
 }

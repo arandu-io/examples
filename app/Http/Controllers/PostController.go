@@ -9,11 +9,10 @@ import (
 
 	"github.com/arandu-io/framework/data"
 	fhttp "github.com/arandu-io/framework/http"
-	"github.com/arandu-io/framework/modules/auth"
 	"github.com/arandu-io/framework/observability"
 	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/framework/validation"
-	"github.com/arandu-io/framework/view"
+	"github.com/arandu-io/hesape/view"
 
 	requests "github.com/arandu-io/examples/app/Http/Requests"
 	models "github.com/arandu-io/examples/app/Models"
@@ -36,11 +35,10 @@ type PostController struct {
 	// service the administrator's CRUD uses, because there is one policy over
 	// categories and a second door to them would be a second place to forget it.
 	categories *services.CategoryService
-	// people resolves the author of a comment to a name. It is the auth
-	// service, and it is here rather than a users repository of this
-	// application's own: the users table belongs to that module, and a second
-	// owner of a schema is how a migration breaks code nobody thought read it.
-	people *auth.Service
+	// people resolves the author of a comment to a name through the application-
+	// owned user service. Keeping that projection behind one interface avoids a
+	// second controller-owned query over the users schema.
+	people UserNames
 
 	// nav draws the header, the same way on every screen. See chrome.go.
 	nav      navigation
@@ -65,7 +63,7 @@ type PostController struct {
 // The session store and the CSRF issuer arrive through the constructor rather
 // than through the service: a screen is allowed to know about a token and a
 // cookie, and a service is not allowed to expose its own dependencies.
-func NewPostController(svc *services.PostService, comments *services.CommentService, categories *services.CategoryService, people *auth.Service, sessions *security.SessionStore, csrf *security.CSRF, appName, base, tenant string) *PostController {
+func NewPostController(svc *services.PostService, comments *services.CommentService, categories *services.CategoryService, people UserNames, sessions *security.SessionStore, csrf *security.CSRF, appName, base, tenant string) *PostController {
 	return &PostController{
 		svc: svc, comments: comments, categories: categories, people: people,
 		sessions: sessions, csrf: csrf,
@@ -289,7 +287,7 @@ func (c *PostController) Show(ctx *fhttp.Context) error {
 	return ctx.View("posts.show", views.PostsShowData{
 		Page:     c.article(ctx, actor, signedIn, token, found),
 		Post:     c.row(ctx, found, len(thread), byID),
-		Comments: c.thread(ctx, thread),
+		Comments: c.thread(ctx, actor, thread),
 
 		// The three addresses a guest does not get. An empty URL draws no
 		// control, so the policy reaches the markup as data rather than as a
@@ -504,7 +502,7 @@ func (c *PostController) article(ctx *fhttp.Context, actor security.Subject, sig
 }
 
 // thread turns the stored comments into rows the markup draws.
-func (c *PostController) thread(ctx *fhttp.Context, found []models.Comment) []views.CommentRow {
+func (c *PostController) thread(ctx *fhttp.Context, reader security.Subject, found []models.Comment) []views.CommentRow {
 	// The author column holds a subject id, and a thread signed with UUIDs is a
 	// thread that looks broken. The names are resolved in ONE query for the
 	// whole page -- twenty comments would otherwise be twenty lookups, on the
@@ -516,7 +514,7 @@ func (c *PostController) thread(ctx *fhttp.Context, found []models.Comment) []vi
 	// PublicNames authorizes against the reader, and the reader is whoever is
 	// looking at the page. The tenant on the subject is what scopes the lookup,
 	// which is why it is the controller's and not a parameter.
-	names, err := c.people.PublicNames(ctx.Ctx(), security.Subject{Tenant: c.tenant}, ids)
+	names, err := c.people.PublicNames(ctx.Ctx(), reader, ids)
 	if err != nil {
 		// Not fatal. An article is worth rendering with a thread that names
 		// people badly; it is not worth failing over one.

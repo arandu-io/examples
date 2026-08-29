@@ -44,8 +44,8 @@ const (
 
 // Run creates the administrator, or leaves the existing one alone.
 func (AdminSeeder) Run(ctx context.Context, d Deps) error {
-	if d.Auth == nil {
-		return errors.New("the auth service is not wired")
+	if d.Users == nil {
+		return errors.New("the user service is not wired")
 	}
 	tenant := d.Tenant
 	if tenant == "" {
@@ -65,10 +65,10 @@ func (AdminSeeder) Run(ctx context.Context, d Deps) error {
 		return err
 	}
 
-	// An administrator is created verified. Nobody is going to click a link in
+	// An administrator is created verified. Nobody is going to type a code from
 	// a mailbox that does not exist, and an administrator who cannot moderate
 	// because of it is a first run that ends at the sign-in screen.
-	user, err := d.Auth.EnsureUser(ctx, tenant, adminName, email, password, []string{"admin"}, true)
+	user, err := d.Users.EnsureUser(ctx, tenant, adminName, email, password, []string{"admin"}, true)
 	if err != nil {
 		return err
 	}

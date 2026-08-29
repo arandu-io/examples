@@ -17,8 +17,8 @@ import (
 )
 
 // The registration flow, end to end, through the same handlers a browser
-// reaches: a form, a signed link, a session, and a comment that is refused until
-// the link is followed.
+// reaches: a form, a purpose-bound code, a session, and a comment that is
+// refused until the code is consumed.
 //
 // It is a feature test and not four unit tests because the interesting part is
 // the seam between them. Every piece here has a unit test of its own -- the
@@ -33,7 +33,7 @@ const (
 // TestRegisteringDoesNotSignYouIn.
 //
 // A registration that opened a session would be a registration that made the
-// verification link pointless: whoever filled in the form is already in, and the
+// verification code pointless: whoever filled in the form is already in, and the
 // address is never confirmed by anybody.
 func TestRegisteringDoesNotSignYouIn(t *testing.T) {
 	client, _ := tests.App(t)
@@ -48,7 +48,7 @@ func TestRegisteringDoesNotSignYouIn(t *testing.T) {
 	res.RedirectsTo("/auth/verify")
 
 	// The notice, and it does not claim the account is ready.
-	client.Get("/auth/verify").OK().See("Check your inbox")
+	client.Get("/auth/verify").OK().See("Verify your email")
 }
 
 // TestAnUnconfirmedAccountReadsAndDoesNotWrite.
@@ -73,27 +73,30 @@ func TestAnUnconfirmedAccountReadsAndDoesNotWrite(t *testing.T) {
 	}
 }
 
-// TestTheVerificationLinkIsSignedAndScoped.
+// TestTheVerificationCodeIsPurposeBoundAndScoped.
 //
-// Two things are proved here and the second is the one that matters. A token
-// this application did not issue is refused, and a token it DID issue for
-// another purpose is refused too -- the purpose is inside the signature, so a
-// password reset link cannot confirm an address.
-func TestTheVerificationLinkIsSignedAndScoped(t *testing.T) {
-	client, _ := tests.App(t)
+// A code this application did not issue is refused, and a code it DID issue
+// for password reset is refused by verification. Purpose, tenant, account and
+// address all participate in the native CodeStore subject.
+func TestTheVerificationCodeIsPurposeBoundAndScoped(t *testing.T) {
+	client, _, box := tests.AppWithMailbox(t)
+	register(t, client)
 
-	for _, token := range []string{
-		"", "not-a-token", "a.b.c",
-		// A well-formed token signed by nobody.
-		"dTE.9999999999.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-	} {
-		// 422 and not 200. HTMX swaps the fragment of either, so a refused link
+	client.Get("/auth/password").OK()
+	client.Post("/auth/password/email", map[string]string{"email": newReader}).OK()
+	resetCode := verificationCode(t, box)
+
+	for _, code := range []string{"", "not-a-code", resetCode} {
+		client.Get("/auth/verify?email=" + newReader).OK()
+		// 422 and not 200. HTMX swaps the fragment of either, so a refused code
 		// answered 200 leaves the browser, the log and every dashboard agreeing
-		// that a forged token confirmed an address.
-		body := client.Get("/auth/verify/confirm?token=" + token).
+		// that a forged or wrong-purpose code confirmed an address.
+		body := client.Post("/auth/verify/confirm", map[string]string{
+			"email": newReader, "email_code": code,
+		}).
 			Status(http.StatusUnprocessableEntity).Body()
-		if !strings.Contains(body, "not valid") && !strings.Contains(body, "expired") {
-			t.Errorf("the token %q was not refused: %s", token, first200(body))
+		if !strings.Contains(body, "not valid") && !strings.Contains(body, "type the code") {
+			t.Errorf("the code %q was not refused: %s", code, first200(body))
 		}
 	}
 }
@@ -106,31 +109,42 @@ func TestConfirmingTheAddressOpensTheCommentForm(t *testing.T) {
 	client, db, box := tests.AppWithMailbox(t)
 
 	register(t, client)
-	link := verificationLink(t, box)
+	code := verificationCode(t, box)
 
-	client.Get(link).OK().See("confirmed")
-
+	client.Get("/auth/verify?email=" + newReader).OK()
+	client.Post("/auth/verify/confirm", map[string]string{
+		"email": newReader, "email_code": code,
+	}).OK().See("confirmed")
 	// Signing in AFTER confirming is what puts the verified flag in the session.
 	// Doing it the other way round leaves a session that is stale in the safe
 	// direction, and that is deliberate -- see security.Subject.Verified.
 	signIn(t, client)
 
 	post := seedOnePost(t, db)
-	client.Get("/posts/" + post).OK().See(`name="body"`)
+	body := client.Get("/posts/" + post).OK().Body()
+	if !strings.Contains(body, `name="body"`) {
+		t.Fatalf("confirmed account has no comment form (signed-in=%t, unverified=%t): %s",
+			strings.Contains(body, "Grace Hopper"), strings.Contains(body, "Confirm your address"), first200(body))
+	}
 }
 
-// TestTheSameLinkTwiceIsNotAnError.
+// TestTheVerificationCodeIsSingleUse.
 //
-// It happens every time somebody opens the message in a second mail client, and
-// answering it with a failure reads as the link being broken.
-func TestTheSameLinkTwiceIsNotAnError(t *testing.T) {
+// A code copied from the message must stop authorizing the instant it succeeds.
+func TestTheVerificationCodeIsSingleUse(t *testing.T) {
 	client, _, box := tests.AppWithMailbox(t)
 
 	register(t, client)
-	link := verificationLink(t, box)
+	code := verificationCode(t, box)
 
-	client.Get(link).OK().See("confirmed")
-	client.Get(link).OK().See("already confirmed")
+	client.Get("/auth/verify?email=" + newReader).OK()
+	client.Post("/auth/verify/confirm", map[string]string{
+		"email": newReader, "email_code": code,
+	}).OK().See("confirmed")
+	client.Get("/auth/verify?email=" + newReader).OK()
+	client.Post("/auth/verify/confirm", map[string]string{
+		"email": newReader, "email_code": code,
+	}).Status(http.StatusUnprocessableEntity).See("not valid")
 }
 
 // TestARegistrationCannotAskForARole.
@@ -209,26 +223,25 @@ func signIn(t *testing.T, client *arandutest.Client) {
 	}).RedirectsTo("/")
 }
 
-// verificationLink is the URL out of the message the application sent.
+// verificationCode is the purpose-bound code out of the last message.
 //
-// Read from the array transport rather than from a log line, so what is followed
-// is the link a person would click -- built by the handler, signed by the
-// signer, through the same code path production takes.
-func verificationLink(t *testing.T, box *mail.Array) string {
+// Read from the array transport rather than minted beside the application, so
+// it is the exact code a person receives through the production path.
+func verificationCode(t *testing.T, box *mail.Array) string {
 	t.Helper()
 
 	sent, ok := box.Last()
 	if !ok {
-		t.Fatal("no message was sent: registering produced no verification link")
+		t.Fatal("no message was sent: the flow produced no verification code")
 	}
 	// The text part, because a message with none is filed as spam and this is
 	// the assertion that notices when one stops being produced.
 	if sent.Text == "" {
 		t.Error("the message has no plain-text part")
 	}
-	found := linkPattern.FindString(sent.Text)
+	found := emailCodePattern.FindString(sent.Text)
 	if found == "" {
-		t.Fatalf("no confirmation link in the message: %s", first200(sent.Text))
+		t.Fatalf("no six-digit code in the message: %s", first200(sent.Text))
 	}
 	return found
 }
@@ -264,5 +277,5 @@ func first200(s string) string {
 	return s
 }
 
-// linkPattern finds the confirmation URL in the message.
-var linkPattern = regexp.MustCompile(`/auth/verify/confirm\?token=[A-Za-z0-9_.\-]+`)
+// emailCodePattern finds the native single-use code in a text message.
+var emailCodePattern = regexp.MustCompile(`\b[0-9]{6}\b`)

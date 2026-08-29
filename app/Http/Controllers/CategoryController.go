@@ -7,7 +7,6 @@ import (
 
 	"github.com/arandu-io/framework/data"
 	fhttp "github.com/arandu-io/framework/http"
-	"github.com/arandu-io/framework/modules/auth"
 	"github.com/arandu-io/framework/observability"
 	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/framework/validation"
@@ -41,7 +40,7 @@ type CategoryController struct {
 // The session store and the CSRF issuer arrive through the constructor rather
 // than through the service: a screen is allowed to know about a token and a
 // cookie, and a service is not allowed to expose its own dependencies.
-func NewCategoryController(svc *services.CategoryService, sessions *security.SessionStore, csrf *security.CSRF, appName string, people *auth.Service, tenant string) *CategoryController {
+func NewCategoryController(svc *services.CategoryService, sessions *security.SessionStore, csrf *security.CSRF, appName string, people UserNames, tenant string) *CategoryController {
 	return &CategoryController{svc: svc, sessions: sessions, csrf: csrf,
 		nav: navigation{appName: appName, people: people, tenant: tenant}}
 }

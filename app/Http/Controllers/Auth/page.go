@@ -1,15 +1,19 @@
 package authui
 
 import (
-	"github.com/arandu-io/framework/view"
+	"encoding/json"
+	"html/template"
+	"log/slog"
+
+	"github.com/arandu-io/hesape/view"
 	"github.com/arandu-io/kyse/components"
 )
 
 // AuthPage is what every screen of the starter kit renders from.
 //
-// One struct for the nine screens rather than one per page: they share a layout
+// One struct for the thirteen screens rather than one per page: they share a layout
 // and a shape, and a field a given screen does not use stays at its zero value
-// and is never read. That is cheaper than nine structs repeating the same form
+// and is never read. That is cheaper than thirteen structs repeating the same form
 // state, and it is why each view names this one in a single line.
 //
 // The chrome is not repeated here at all: the embedded view.Page carries the
@@ -21,6 +25,20 @@ import (
 // person are fields the handler filled in, so a name that drifts is a compile
 // error instead of a blank link -- and a form can never carry another session's
 // token under load.
+//
+// # Which side of a swap a field is on
+//
+// The form under resources/views/partials/ renders from this same struct:
+// @include hands the page's data through unchanged, so both the screen and the
+// one part of it that is answered alone read these fields. Nothing in the type
+// separates them, and the two are not refreshed together -- what the form draws
+// is replaced when the form is swapped, and what only the screen around it
+// draws is not redrawn at all.
+//
+// It decides what a handler may fill. Answering the form alone with a field
+// only the screen draws sends the value inside a response whose other half the
+// browser discards: the right status, the right markup in the hole, and a
+// sentence nobody ever reads. Fill what the form draws, or answer the screen.
 type AuthPage struct {
 	view.Page
 
@@ -31,17 +49,24 @@ type AuthPage struct {
 
 	// The addresses these screens post to and link to, beyond the navigation
 	// view.Page already carries. They come from the router, through the handler.
-	DashboardURL          string
-	PasswordRequestURL    string
-	PasswordEmailURL      string
-	PasswordUpdateURL     string
-	PasswordConfirmURL    string
-	VerificationResendURL string
+	DashboardURL             string
+	PasswordRequestURL       string
+	PasswordEmailURL         string
+	PasswordUpdateURL        string
+	PasswordConfirmURL       string
+	VerificationConfirmURL   string
+	VerificationResendURL    string
+	TwoFactorChallengeURL    string
+	TwoFactorRecoveryURL     string
+	TwoFactorSetupURL        string
+	TwoFactorSetupConfirmURL string
+	TwoFactorDisableURL      string
+	RecoveryCodesURL         string
 
 	// Status is the one-shot message a redirect left behind, such as the
-	// confirmation that a reset link was sent. Empty means nothing to say.
+	// confirmation that a reset code was sent. Empty means nothing to say.
 	Status string
-	// Resent says a fresh verification link just went out.
+	// Resent says a fresh verification code just went out.
 	Resent bool
 
 	// Name, Email and Remember are what the person typed on the attempt that
@@ -50,13 +75,19 @@ type AuthPage struct {
 	Email    string
 	Remember bool
 
-	// ResetToken is the one-time token carried by the link in the reset email.
-	ResetToken string
+	// Provisioning material is rendered once and deliberately omitted from
+	// MarshalJSON and LogValue.
+	QRCodeSVG         template.HTML
+	SecretKey         string
+	RecoveryCodesText string
 
 	// The validation messages, one field at a time. Empty means the field was
 	// accepted -- there is no @error directive to ask a bag on the side.
 	NameError                 string
 	EmailError                string
+	EmailCodeError            string
+	AuthenticatorCodeError    string
+	RecoveryCodeError         string
 	PasswordError             string
 	PasswordConfirmationError string
 }
@@ -70,9 +101,9 @@ var (
 
 // FieldError answers the question a kyse component asks about an input.
 //
-// components.FieldProps carries the page and the field name, and asks; it used
-// to carry the message as a third prop, which meant the field name was written
-// twice in one call and the two could disagree without anything saying so.
+// components.FieldProps carries the page and the field name, and asks; it does
+// not carry the message as a third prop, because that meant writing the field
+// name twice in one call and the two could disagree without anything saying so.
 // See the doc comment on components.FieldProps for the whole of that argument.
 //
 // These screens keep the messages in named fields rather than in the map
@@ -89,22 +120,133 @@ func (p AuthPage) FieldError(name string) string {
 		return p.NameError
 	case "email":
 		return p.EmailError
+	case "email_code":
+		return p.EmailCodeError
+	case "authenticator_code":
+		return p.AuthenticatorCodeError
+	case "recovery_code":
+		return p.RecoveryCodeError
 	case "password":
 		return p.PasswordError
 	case "password_confirmation":
 		return p.PasswordConfirmationError
 	}
-	return p.Page.FieldError(name)
+	return p.Page.First(name)
 }
 
-// RememberAttribute is the checked attribute of the remember-me box, or nothing.
+// RenderQRCode is the component seam for trusted SVG produced by hesape/qr.
+// Its typed input cannot be populated from an ordinary form string without an
+// explicit trust decision at the controller that called the QR encoder.
+func RenderQRCode(svg template.HTML) template.HTML { return svg }
+
+// redacted is what a secret looks like once it has left this package.
 //
-// A conditional attribute has no directive of its own, and inventing one would
-// grow the DSL for a single case. What does not fit a directive is written in
-// Go, which is here.
-func (p AuthPage) RememberAttribute() string {
-	if p.Remember {
-		return "checked"
+// The value never appears. Whether there was one does: an empty string stays
+// empty, and anything else becomes the marker. A secret that simply vanished
+// from the output would read exactly like a field nobody filled in, and "the
+// form posted an empty token" is the failure these pages are dumped to find.
+func redacted(secret string) string {
+	if secret == "" {
+		return ""
 	}
-	return ""
+	return "[redacted]"
+}
+
+// MarshalJSON keeps the CSRF token and two-factor provisioning material out of
+// anything that serializes the page.
+//
+// It names the fields that may leave, rather than the ones that may not. A
+// field added to the struct later does not appear until it is named here, which
+// is the direction that cannot leak by accident -- the reverse spelling grows a
+// hole every time somebody adds a field and does not think about this method.
+//
+// The CSRF token carries a marker; provisioning material is omitted entirely.
+func (p AuthPage) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Title         string
+		AppName       string
+		Path          string
+		Authenticated bool
+		UserName      string
+		Token         string
+
+		HasPasswordReset         bool
+		DashboardURL             string
+		PasswordRequestURL       string
+		PasswordEmailURL         string
+		PasswordUpdateURL        string
+		PasswordConfirmURL       string
+		VerificationConfirmURL   string
+		VerificationResendURL    string
+		TwoFactorChallengeURL    string
+		TwoFactorRecoveryURL     string
+		TwoFactorSetupURL        string
+		TwoFactorSetupConfirmURL string
+		TwoFactorDisableURL      string
+		RecoveryCodesURL         string
+
+		Status   string
+		Resent   bool
+		Name     string
+		Email    string
+		Remember bool
+
+		NameError                 string
+		EmailError                string
+		EmailCodeError            string
+		AuthenticatorCodeError    string
+		RecoveryCodeError         string
+		PasswordError             string
+		PasswordConfirmationError string
+	}{
+		Title:         p.Page.Title,
+		AppName:       p.Page.AppName,
+		Path:          p.Page.Path,
+		Authenticated: p.Page.Authenticated,
+		UserName:      p.Page.UserName,
+		Token:         redacted(p.Page.Token),
+
+		HasPasswordReset:         p.HasPasswordReset,
+		DashboardURL:             p.DashboardURL,
+		PasswordRequestURL:       p.PasswordRequestURL,
+		PasswordEmailURL:         p.PasswordEmailURL,
+		PasswordUpdateURL:        p.PasswordUpdateURL,
+		PasswordConfirmURL:       p.PasswordConfirmURL,
+		VerificationConfirmURL:   p.VerificationConfirmURL,
+		VerificationResendURL:    p.VerificationResendURL,
+		TwoFactorChallengeURL:    p.TwoFactorChallengeURL,
+		TwoFactorRecoveryURL:     p.TwoFactorRecoveryURL,
+		TwoFactorSetupURL:        p.TwoFactorSetupURL,
+		TwoFactorSetupConfirmURL: p.TwoFactorSetupConfirmURL,
+		TwoFactorDisableURL:      p.TwoFactorDisableURL,
+		RecoveryCodesURL:         p.RecoveryCodesURL,
+
+		Status:   p.Status,
+		Resent:   p.Resent,
+		Name:     p.Name,
+		Email:    p.Email,
+		Remember: p.Remember,
+
+		NameError:                 p.NameError,
+		EmailError:                p.EmailError,
+		EmailCodeError:            p.EmailCodeError,
+		AuthenticatorCodeError:    p.AuthenticatorCodeError,
+		RecoveryCodeError:         p.RecoveryCodeError,
+		PasswordError:             p.PasswordError,
+		PasswordConfirmationError: p.PasswordConfirmationError,
+	})
+}
+
+// LogValue implements slog.LogValuer, so a log line handed the whole page
+// records which screen it was and nothing else.
+//
+// Shorter than MarshalJSON on purpose. A log line is shipped to an aggregator
+// and kept, and the address somebody typed into a sign-in form is not something
+// to keep there; the debug page is one request, on one laptop, in development.
+func (p AuthPage) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("path", p.Page.Path),
+		slog.String("title", p.Page.Title),
+		slog.Bool("authenticated", p.Page.Authenticated),
+	)
 }

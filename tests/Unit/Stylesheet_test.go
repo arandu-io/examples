@@ -43,7 +43,7 @@ func TestTheStylesheetCarriesTheClassesTheMarkupRenders(t *testing.T) {
 			"the theme menu has no width and collapses onto its trigger"},
 		{".size-4", "the icon beside each option of components.ThemeToggle",
 			"the icons have no size, so a menu of three modes shows three words and no marks"},
-		{".min-h-dvh", "the page column in layouts/app",
+		{".min-h-dvh", "the application page column in layouts/app",
 			"a short page stops at its content and the footer floats halfway up the window"},
 		{".text-right", "every number in a components.StatCard, on admin/sockets",
 			"the counts sit against the left edge under headings that are right-aligned, so no column lines up with the one above it"},

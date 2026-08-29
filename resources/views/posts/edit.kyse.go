@@ -5,7 +5,7 @@ package posts
 import (
 	"github.com/arandu-io/kyse/components"
 
-	"github.com/arandu-io/framework/view"
+	"github.com/arandu-io/hesape/view"
 )
 
 @go

@@ -2,7 +2,7 @@
 
 package categories
 
-import "github.com/arandu-io/framework/view"
+import "github.com/arandu-io/hesape/view"
 
 @go
 // CategoriesIndexData is what CategoryController.Index hands this page.

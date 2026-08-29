@@ -14,6 +14,7 @@ import (
 	"github.com/arandu-io/framework/observability"
 	"github.com/arandu-io/framework/security"
 
+	"github.com/arandu-io/examples/app/Policies"
 	"github.com/arandu-io/examples/bootstrap"
 	"github.com/arandu-io/examples/tests"
 )
@@ -42,10 +43,14 @@ func TestARegistrationReachesTheListenerThroughTheWiredRelay(t *testing.T) {
 	}
 
 	// Two events, both through the handlers a person drives: the form writes
-	// auth.user.registered and the link in the message writes
+	// auth.user.registered and the code in the message writes
 	// auth.email.verified. Neither is stored by this test.
 	register(t, booted.Client)
-	booted.Client.Get(verificationLink(t, booted.Mail)).OK().See("confirmed")
+	code := verificationCode(t, booted.Mail)
+	booted.Client.Get("/auth/verify?email=" + newReader).OK()
+	booted.Client.Post("/auth/verify/confirm", map[string]string{
+		"email": newReader, "email_code": code,
+	}).OK().See("confirmed")
 
 	ctx := context.Background()
 	outbox := events.NewOutbox(booted.DB)
@@ -94,14 +99,14 @@ func TestARegistrationReachesTheListenerThroughTheWiredRelay(t *testing.T) {
 	// listener handed the same pair for both would be reading something other
 	// than the row. Registering is authorized for a declared guest, which has no
 	// id; confirming an address runs on a system Grant, which is called system.
-	if got := published[0]["action"]; got != "auth.user.create" {
-		t.Errorf("the registration arrived with action %q, want auth.user.create", got)
+	if got := published[0]["action"]; got != string(policies.ActionUserCreate) {
+		t.Errorf("the registration arrived with action %q, want %s", got, policies.ActionUserCreate)
 	}
 	if got := published[0]["authorized_by"]; got != "" {
 		t.Errorf("the registration arrived authorized by %q, want the guest's absent subject", got)
 	}
-	if got := published[1]["action"]; got != "auth.user.update" {
-		t.Errorf("the confirmation arrived with action %q, want auth.user.update", got)
+	if got := published[1]["action"]; got != string(policies.ActionUserUpdate) {
+		t.Errorf("the confirmation arrived with action %q, want %s", got, policies.ActionUserUpdate)
 	}
 	if got := published[1]["authorized_by"]; got != "system" {
 		t.Errorf("the confirmation arrived authorized by %q, want system", got)

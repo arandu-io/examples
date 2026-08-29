@@ -87,7 +87,7 @@ func TestTheStoredPasswordIsArgon2idAtTheCompiledInParameters(t *testing.T) {
 
 // TestEveryPathThatWritesAPasswordWritesTheSameKind.
 //
-// Three routes write this column -- registration, the reset link, and the
+// Three routes write this column -- registration, the reset code, and the
 // operator's seeder -- and they are one path underneath, which is the property
 // worth pinning. A second writer that reached for a hasher of its own is how an
 // application ends up with rows nobody can explain: the account made from the
@@ -104,15 +104,15 @@ func TestEveryPathThatWritesAPasswordWritesTheSameKind(t *testing.T) {
 	const address = "grace.hopper@example.com"
 	registered := storedPassword(t, db, address)
 
-	// Through the reset link.
-	token := askForAResetLink(t, client, box, address)
-	const viaLink = "a-completely-new-password"
-	submitReset(client, token, address, viaLink).OK().See("has been changed")
+	// Through the reset code.
+	code := askForAResetCode(t, client, box, address)
+	const viaCode = "a-completely-new-password"
+	submitReset(client, code, address, viaCode).OK().See("has been changed")
 	afterReset := storedPassword(t, db, address)
 
 	// Through the service the seeder calls.
 	const viaTerminal = "changed-from-the-terminal"
-	if _, err := booted.App.Auth.SetPassword(
+	if _, err := booted.App.Users.SetPassword(
 		context.Background(), bootstrap.Tenant(), address, viaTerminal,
 	); err != nil {
 		t.Fatalf("replacing the password out of band: %v", err)
@@ -123,7 +123,7 @@ func TestEveryPathThatWritesAPasswordWritesTheSameKind(t *testing.T) {
 		by, hash, plain string
 	}{
 		{"registration", registered, "a-password-that-passes"},
-		{"the reset link", afterReset, viaLink},
+		{"the reset code", afterReset, viaCode},
 		{"the seeder's service call", afterSeeder, viaTerminal},
 	} {
 		params, ok := hashing.Info(written.hash)

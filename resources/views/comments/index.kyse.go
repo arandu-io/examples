@@ -2,7 +2,7 @@
 
 package comments
 
-import "github.com/arandu-io/framework/view"
+import "github.com/arandu-io/hesape/view"
 
 @go
 // CommentsIndexData is what CommentController.Index hands this page.

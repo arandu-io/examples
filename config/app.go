@@ -97,7 +97,7 @@ func From(base bootstrap.Configuration) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	auth, err := loadAuth(session.TTL)
+	auth, err := loadAuth()
 	if err != nil {
 		return Config{}, err
 	}

@@ -31,9 +31,10 @@
 // are handled by the connection, so the only reason to opt out is a statement an
 // engine refuses inside a transaction, and none of these is that either.
 //
-// The users table is not here, and neither is the outbox nor the jobs table:
-// they come from the auth, events and queue modules, each of which registers
-// its own. Repeating them here would apply each one twice.
+// The users and second-factor tables are application-owned migrations in this
+// package. The outbox and jobs tables come from the events and queue modules,
+// each of which registers its own. Repeating either one here would apply it
+// twice.
 //
 // A migration never runs at boot. `aru migrate` is a pipeline step: with N
 // replicas starting together, N migrations race. Every migration is also

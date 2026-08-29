@@ -1,13 +1,19 @@
 package controllers
 
 import (
+	"context"
+
 	"github.com/arandu-io/framework/http"
-	"github.com/arandu-io/framework/modules/auth"
 	"github.com/arandu-io/framework/security"
-	"github.com/arandu-io/framework/view"
+	"github.com/arandu-io/hesape/view"
 
 	authui "github.com/arandu-io/examples/app/Http/Controllers/Auth"
 )
+
+// UserNames is the tenant-scoped account projection these pages render.
+type UserNames interface {
+	PublicNames(context.Context, security.Subject, []string) (map[string]string, error)
+}
 
 // navigation is what the header is drawn from, in one place.
 //
@@ -28,7 +34,7 @@ type navigation struct {
 	// people resolves the signed-in id into a name. The session carries an id,
 	// deliberately -- a name in a session is a name that stays wrong after
 	// somebody changes it.
-	people *auth.Service
+	people UserNames
 
 	// tenant is whose rows a guest reads, and the tenant the name lookup
 	// runs in.

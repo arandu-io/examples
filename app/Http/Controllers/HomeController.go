@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"github.com/arandu-io/framework/http"
-	"github.com/arandu-io/framework/modules/auth"
 	"github.com/arandu-io/framework/security"
 
 	authui "github.com/arandu-io/examples/app/Http/Controllers/Auth"
@@ -37,13 +36,13 @@ type HomeController struct {
 	//
 	// The tenant is whose rows are read. It comes from the configuration,
 	// through bootstrap/app.go, and never from the request.
-	people *auth.Service
+	people authui.UserNames
 	tenant string
 }
 
 // NewHomeController returns the controller. bootstrap/app.go builds it and hands
 // it to the routes.
-func NewHomeController(appName string, sessions *security.SessionStore, csrf *security.CSRF, people *auth.Service, tenant string) *HomeController {
+func NewHomeController(appName string, sessions *security.SessionStore, csrf *security.CSRF, people authui.UserNames, tenant string) *HomeController {
 	return &HomeController{
 		appName: appName, sessions: sessions, csrf: csrf,
 		people: people, tenant: tenant,
@@ -80,8 +79,8 @@ func (c *HomeController) Index(ctx *http.Context) error {
 	// The header, from the one helper this application draws every header with.
 	// navigation adds what the kit cannot know: the reader's own area and, only
 	// for somebody the policy would let in, the moderation queue. It resolves
-	// the name through the same service the kit's version does, so this page and
-	// the other six greet the same person the same way.
+	// the name through the same application-owned service the kit uses, so this
+	// page and the other screens greet the same person the same way.
 	page := navigation{appName: c.appName, people: c.people, tenant: c.tenant}.
 		page(ctx, subject, signedIn, token, c.appName)
 
@@ -89,11 +88,9 @@ func (c *HomeController) Index(ctx *http.Context) error {
 		Page: page,
 
 		// The reset is wired: PasswordController answers /auth/password, mails
-		// a signed link and writes the new password. The link is drawn because
+		// a single-use code and writes the new password. The link is drawn because
 		// the handler exists, which is the only reason a link is ever drawn.
 		HasPasswordReset: true,
 	})
 	// arandu:end custom
 }
-
-// muda

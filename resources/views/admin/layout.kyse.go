@@ -2,7 +2,7 @@
 
 package admin
 
-import "github.com/arandu-io/framework/view"
+import "github.com/arandu-io/hesape/view"
 
 @go
 // AdminLayout is what this layout asks of the screens inside it.

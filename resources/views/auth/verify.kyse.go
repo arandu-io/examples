@@ -4,7 +4,6 @@ package auth
 
 import (
 	"github.com/arandu-io/kyse/components"
-	"github.com/arandu-io/kyse/icons"
 
 	authui "github.com/arandu-io/examples/app/Http/Controllers/Auth"
 )
@@ -18,46 +17,39 @@ type VerifyData = authui.AuthPage
 
 @section('content')
 	<div class="mx-auto w-full max-w-md">
-		<header class="mb-8 text-center">
-			<span class="auth-mark">{!! icons.EnvelopeSimple(icons.Props{}) !!}</span>
-			<h1 class="headline headline-lg mt-4">Check your inbox</h1>
-			<p class="text-muted-foreground mt-2 text-sm">
-				One link, and the account is yours.
-			</p>
-		</header>
-
-		{{-- A link that was not valid, or has expired. It is an error about
-		     something that already happened, so it is a banner rather than a
-		     message under a field: there is no field it belongs to. --}}
-		@if(.EmailError != "")
-			<div class="mb-6">
-				{!! components.Alert(components.AlertProps{Title: .EmailError, Variant: "destructive"}) !!}
-			</div>
-		@endif
-
-		@if(.Resent)
-			<div class="mb-6">
-				{!! components.Alert(components.AlertProps{
-					Title: "A fresh link is on its way",
-					Message: "Check the address you registered with.",
-				}) !!}
-			</div>
-		@endif
-
 		<section class="card">
-			<div class="flex flex-col gap-4 px-6 py-6 text-sm">
-				<p class="text-muted-foreground">
-					Until you follow it you can read everything here. Writing a
-					comment is what needs the address confirmed.
-				</p>
-				<p class="text-muted-foreground">
-					In development nothing is actually sent: the whole message,
-					link included, is in the output of <code class="font-mono text-xs">aru dev</code>.
-				</p>
+			<header class="border-b px-6 py-4">
+				<h1 class="text-base font-semibold tracking-tight">Verify your email</h1>
+			</header>
 
-				<form method="post" action="{{ .VerificationResendURL }}">
+			<div class="flex flex-col gap-4 px-6 py-6 text-sm">
+				@if(.Resent)
+					{!! components.Alert(components.AlertProps{
+						Title: "A fresh code is on its way",
+						Message: "Check the address you registered with.",
+					}) !!}
+				@endif
+
+				@if(.Status != "")
+					{!! components.Alert(components.AlertProps{Title: .Status}) !!}
+				@endif
+
+				<p class="text-muted-foreground">Type the single-use code sent to your email address.</p>
+
+				<form class="flex flex-col gap-4" method="post" action="{{ .VerificationConfirmURL }}">
 					@csrf
-					<button type="submit" class="btn" data-variant="outline">Send it again</button>
+					{!! components.Field(components.FieldProps{
+						Name: "email", Label: "Email", Type: "email",
+						Value: .Email, Page: ., Autocomplete: "email", Required: true,
+					}) !!}
+					{!! components.Field(components.FieldProps{
+						Name: "email_code", Label: "Email code",
+						Page: ., Autocomplete: "one-time-code", Required: true, Autofocus: true,
+					}) !!}
+					<div class="flex items-center gap-3">
+						<button type="submit" class="btn">Confirm address</button>
+						<button type="submit" class="btn" data-variant="outline" formaction="{{ .VerificationResendURL }}">Send another code</button>
+					</div>
 				</form>
 			</div>
 		</section>

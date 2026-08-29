@@ -97,12 +97,13 @@ func TestTheConsoleSeesTheQueriesOfTheRequest(t *testing.T) {
 	handler.ServeHTTP(detail, httptest.NewRequest(http.MethodGet, observability.ConsolePath+"/"+id+"?format=json", nil))
 
 	body := detail.Body.String()
-	if !strings.Contains(body, "FROM users") && !strings.Contains(body, "from users") {
+	if !strings.Contains(body, `from \"users\"`) {
 		t.Errorf("the console shows no query for a login attempt:\n%s", body)
 	}
-	// The origin is what saves the time: it has to name the repository file.
-	if !strings.Contains(body, "user.repo.go") {
-		t.Errorf("the query has no origin pointing at the repository:\n%s", body)
+	// The origin proves the query crossed the native Hesape model bridge rather
+	// than the removed Framework auth module.
+	if !strings.Contains(body, "database/dbmodel.go") {
+		t.Errorf("the query has no origin pointing at the native model bridge:\n%s", body)
 	}
 }
 

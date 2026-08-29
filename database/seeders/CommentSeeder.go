@@ -69,8 +69,8 @@ func (CommentSeeder) Run(ctx context.Context, d Deps) error {
 	if d.DB == nil {
 		return errors.New("the database is not wired")
 	}
-	if d.Auth == nil {
-		return errors.New("the auth service is not wired")
+	if d.Users == nil {
+		return errors.New("the user service is not wired")
 	}
 
 	posts := repositories.NewPostRepository(d.DB)
@@ -141,11 +141,11 @@ func (CommentSeeder) Run(ctx context.Context, d Deps) error {
 
 // readerID is the demo reader's id, which is what the author column holds.
 //
-// It goes through the auth service rather than querying the users table, because
-// the users table belongs to the auth module and a seeder with its own SELECT on
-// it is a second owner of that schema.
+// It goes through the application user service rather than querying the users
+// table here, because a seeder with its own SELECT would be a second owner of
+// the schema and its tenant rules.
 func readerID(ctx context.Context, d Deps) (string, error) {
-	u, err := d.Auth.Lookup(ctx, d.Tenant, readerEmail)
+	u, err := d.Users.Lookup(ctx, d.Tenant, readerEmail)
 	if err != nil {
 		return "", fmt.Errorf("the demo reader is missing -- run ReaderSeeder first (aru db:seed --class=ReaderSeeder): %w", err)
 	}

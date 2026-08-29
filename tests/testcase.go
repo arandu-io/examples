@@ -154,8 +154,8 @@ func App(t *testing.T) (*arandutest.Client, *data.DB) {
 //
 // The mailer is the array transport, so a test can read the message rather than
 // asserting that a log line happened. That is the difference between proving a
-// verification link works and proving a function was called: the link this
-// returns is the one a person would click, produced by the same code path
+// verification code works and proving a function was called: the code this
+// returns is the one a person would type, produced by the same code path
 // production takes.
 func AppWithMailbox(t *testing.T) (*arandutest.Client, *data.DB, *mail.Array) {
 	t.Helper()

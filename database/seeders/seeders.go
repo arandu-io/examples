@@ -10,17 +10,18 @@ package seeders
 import (
 	"context"
 	"github.com/arandu-io/framework/data"
-	"github.com/arandu-io/framework/modules/auth"
 	"github.com/arandu-io/hesape/database"
+
+	services "github.com/arandu-io/examples/app/Services"
 )
 
 // Deps carries what seeders are allowed to touch. It is explicit for the same
 // reason the rest of the wiring is: a seeder that can reach anything is a seeder
 // nobody can review.
 type Deps struct {
-	Auth *auth.Service
+	Users *services.UserService
 	// DB is the handle a seeder of domain data needs. The skeleton ships Deps
-	// with Auth and Tenant only, because the first user is the one thing every
+	// with Users and Tenant only, because the first user is the one thing every
 	// project seeds; anything else is this application's, and adding it here is
 	// the one line it costs.
 	DB *data.DB

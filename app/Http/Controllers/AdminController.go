@@ -8,7 +8,7 @@ import (
 	fhttp "github.com/arandu-io/framework/http"
 	"github.com/arandu-io/framework/observability"
 	"github.com/arandu-io/framework/security"
-	"github.com/arandu-io/framework/view"
+	"github.com/arandu-io/hesape/view"
 
 	models "github.com/arandu-io/examples/app/Models"
 	services "github.com/arandu-io/examples/app/Services"
