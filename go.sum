@@ -6,8 +6,8 @@ github.com/arandu-io/hesape/database/connectors/pgx v0.7.1 h1:QcK27YxrIlbctnsMS6
 github.com/arandu-io/hesape/database/connectors/pgx v0.7.1/go.mod h1:HVq+IRmKzm8lTE3e3yyTD0/xPoa65wIBLmJ1cMQQ3K4=
 github.com/arandu-io/hesape/database/connectors/sqlite v0.7.1 h1:WVzNGpZpaSUL+RHXyyxHT7miUk397RKh70yzmHDAYFM=
 github.com/arandu-io/hesape/database/connectors/sqlite v0.7.1/go.mod h1:UV7Sfqbq+AFZJahvkefxJv6BKETRtInpw4YMzMnhOuE=
-github.com/arandu-io/joaju v0.6.0 h1:ldr/HQ544wRCQ/FClDLO5MhxDnXlDkemHmIfqJhAYHE=
-github.com/arandu-io/joaju v0.6.0/go.mod h1:GJM+Ra9+lo7yFpX4t3gDpZswG5or1iwEObm8prIWqEU=
+github.com/arandu-io/joaju v0.6.1 h1:HOuFac5e+FLCc8o5c0TeJro0QPYHDF3vtGNVGGxnBqo=
+github.com/arandu-io/joaju v0.6.1/go.mod h1:70FIFB1hlcs+CWrxkeyfMLGkWvliruKYimzX7xcPZuo=
 github.com/arandu-io/kyse v0.14.0 h1:sjyaHdkWCvAHjaSqeD6tYwKxIfnjNbBAP8JDp2WzuPk=
 github.com/arandu-io/kyse v0.14.0/go.mod h1:B/Dzi4IiM/+Thh3ZAUlYTGqj8U6J0pLWihNvUStCtKc=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
