@@ -8,8 +8,8 @@ github.com/arandu-io/hesape/database/connectors/sqlite v0.7.0 h1:k/2WJrwD4nbHK0Z
 github.com/arandu-io/hesape/database/connectors/sqlite v0.7.0/go.mod h1:5IgG8VnKQEVa8VJNcnopzJ3OVTVRRCYeAYNcYdifg7s=
 github.com/arandu-io/joaju v0.6.0 h1:ldr/HQ544wRCQ/FClDLO5MhxDnXlDkemHmIfqJhAYHE=
 github.com/arandu-io/joaju v0.6.0/go.mod h1:GJM+Ra9+lo7yFpX4t3gDpZswG5or1iwEObm8prIWqEU=
-github.com/arandu-io/kyse v0.13.0 h1:DVRWsmYCuqjujRepjw1Yqfd9+/qWZYUAK8UhlcQUcjY=
-github.com/arandu-io/kyse v0.13.0/go.mod h1:B/Dzi4IiM/+Thh3ZAUlYTGqj8U6J0pLWihNvUStCtKc=
+github.com/arandu-io/kyse v0.14.0 h1:sjyaHdkWCvAHjaSqeD6tYwKxIfnjNbBAP8JDp2WzuPk=
+github.com/arandu-io/kyse v0.14.0/go.mod h1:B/Dzi4IiM/+Thh3ZAUlYTGqj8U6J0pLWihNvUStCtKc=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
