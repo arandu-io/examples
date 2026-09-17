@@ -24,7 +24,7 @@ import (
 // and a boot that refuses the drivers this application cannot deliver.
 
 // hiddenField reads one hidden input out of a rendered form.
-var hiddenField = regexp.MustCompile(`<input type="hidden" name="_csrf" value="([^"]*)"`)
+var hiddenField = regexp.MustCompile(`<input type="hidden" name="_token" value="([^"]*)"`)
 
 // signInOn drives the sign-in form of one instance and returns the cookies a
 // browser would be holding afterwards.
@@ -42,13 +42,13 @@ func signInOn(t *testing.T, handler http.Handler, email, password string) []*htt
 	}
 	token := hiddenField.FindStringSubmatch(form.Body.String())
 	if token == nil {
-		t.Fatalf("the sign-in form carries no _csrf field, so nothing below can post to it:\n%s", form.Body.String())
+		t.Fatalf("the sign-in form carries no _token field, so nothing below can post to it:\n%s", form.Body.String())
 	}
 
 	body := url.Values{
 		"email":    {email},
 		"password": {password},
-		"_csrf":    {html.UnescapeString(token[1])},
+		"_token":   {html.UnescapeString(token[1])},
 	}
 	post := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(body.Encode()))
 	post.Header.Set("Content-Type", "application/x-www-form-urlencoded")

@@ -362,3 +362,10 @@
     );
   }
 }
+
+/* Native ThemeToggle shows one glyph for the mode chosen before first paint. */
+[data-theme-glyph="dark"] { display: none; }
+html.dark [data-theme-glyph="light"] { display: none; }
+html.dark [data-theme-glyph="dark"] { display: inline; }
+.htmx-indicator { opacity: 0; }
+.htmx-request .htmx-indicator, .htmx-request.htmx-indicator { opacity: 1; transition: opacity 200ms ease-in; }

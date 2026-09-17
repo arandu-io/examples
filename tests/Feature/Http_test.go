@@ -101,7 +101,7 @@ func TestLoginFormIsServedWithACSRFToken(t *testing.T) {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, `name="_csrf"`) {
+	if !strings.Contains(body, `name="_token"`) {
 		t.Error("the form carries no CSRF field")
 	}
 	// The attribute below is the single most common mistake in this stack: without

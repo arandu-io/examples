@@ -43,7 +43,7 @@ func TestAReaderWithNoAccountSeesThePublishedPosts(t *testing.T) {
 func TestTheSignInScreenCarriesAToken(t *testing.T) {
 	c, _ := tests.App(t)
 
-	c.Get("/auth/login").OK().See(`name="_csrf"`)
+	c.Get("/auth/login").OK().See(`name="_token"`)
 }
 
 // TestAWriteWithoutATokenIsRefused is the other half, and it is the one that
