@@ -95,10 +95,11 @@ func (c Chrome) ItemClass(item string) string {
 	     redirect to the sign-in screen. --}}
 	<meta name="robots" content="noindex, nofollow">
 
-	<link rel="stylesheet" href="{{ view.URL("app.css") }}">
-	<script src="{{ view.URL("htmx.min.js") }}" defer></script>
-	<script src="{{ view.URL("basecoat.bundle.js") }}" defer></script>
-	<script src="{{ view.URL("theme.js") }}"></script>
+	<link rel="stylesheet" href="{{ view.Asset("app.css") }}">
+	<script src="{{ view.Asset("htmx.min.js") }}" defer></script>
+	<script src="{{ view.Asset("ui.js") }}" defer></script>
+	<script src="{{ view.Asset("basecoat.bundle.js") }}" defer></script>
+	<script src="{{ view.Asset("theme.js") }}"></script>
 </head>
 <body hx-boost="true" hx-headers='{"X-CSRF-Token": "{{ .CSRFToken() }}"}' class="bg-background text-foreground min-h-full antialiased">
 	<div class="flex min-h-full">

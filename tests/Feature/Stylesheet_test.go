@@ -40,7 +40,7 @@ func TestTheBrowserGetsThisProjectsStylesheet(t *testing.T) {
 	kernel := tests.Kernel(t, config.EnvProd)
 	recorder := httptest.NewRecorder()
 	kernel.Handler().ServeHTTP(recorder,
-		httptest.NewRequest(http.MethodGet, view.URL(view.Stylesheet), nil))
+		httptest.NewRequest(http.MethodGet, view.Asset(view.Stylesheet), nil))
 
 	served := recorder.Body.Bytes()
 	if recorder.Code != http.StatusOK {

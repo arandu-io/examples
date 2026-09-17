@@ -281,7 +281,7 @@ func TestFreshRefusesOutsideDevelopment(t *testing.T) {
 
 func post(handler http.Handler, token, email, password string) *httptest.ResponseRecorder {
 	body := url.Values{
-		"_csrf":    {token},
+		"_token":   {token},
 		"email":    {email},
 		"password": {password},
 	}
@@ -295,7 +295,7 @@ func post(handler http.Handler, token, email, password string) *httptest.Respons
 
 func csrfToken(t *testing.T, html string) string {
 	t.Helper()
-	const marker = `name="_csrf" value="`
+	const marker = `name="_token" value="`
 	i := strings.Index(html, marker)
 	if i < 0 {
 		t.Fatalf("no CSRF field in the form:\n%s", html)

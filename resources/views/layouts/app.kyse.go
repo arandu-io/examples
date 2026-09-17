@@ -27,7 +27,7 @@ import (
 	     answer means, and a per-page opt-in would be a second way to answer a
 	     rejected form. A meta tag is not a script, so it costs nothing against
 	     script-src 'self'. --}}
-	<meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"422","swap":true},{"code":"[23]..","swap":true},{"code":"[45]..","swap":false,"error":true}]}'>
+	<meta name="htmx-config" content='{"includeIndicatorStyles":false,"responseHandling":[{"code":"204","swap":false},{"code":"422","swap":true},{"code":"[23]..","swap":true},{"code":"[45]..","swap":false,"error":true}]}'>
 	<title>{{ .PageTitle() }}</title>
 	<link rel="icon" href="/favicon.ico" sizes="any">
 	<link rel="icon" href="/favicon.png" type="image/png">
@@ -57,10 +57,11 @@ import (
 	     family is that command running and not this file changing. --}}
 	{!! fonts.Preloads() !!}
 
-	<link rel="stylesheet" href="{{ view.URL("app.css") }}">
-	<script src="{{ view.URL("htmx.min.js") }}" defer></script>
-	<script src="{{ view.URL("basecoat.bundle.js") }}" defer></script>
-	<script src="{{ view.URL("theme.js") }}"></script>
+	<link rel="stylesheet" href="{{ view.Asset("app.css") }}">
+	<script src="{{ view.Asset("htmx.min.js") }}" defer></script>
+	<script src="{{ view.Asset("ui.js") }}" defer></script>
+	<script src="{{ view.Asset("basecoat.bundle.js") }}" defer></script>
+	<script src="{{ view.Asset("theme.js") }}"></script>
 </head>
 <body hx-boost="true" hx-headers='{"X-CSRF-Token": "{{ .CSRFToken() }}"}' class="bg-background text-foreground antialiased">
 	{{-- min-h-dvh, not min-h-full.
@@ -89,7 +90,7 @@ import (
 					<span class="brand-word">{{ .BrandName() }}</span>
 				</a>
 				<div class="flex items-center gap-2 text-sm">
-					{!! components.ThemeToggle() !!}
+					{!! components.ThemeToggle(components.ThemeToggleProps{}) !!}
 					{{-- The icons here name the action rather than decorate it, which
 					     is the only reason any of them is in this file. A door you
 					     go in and a door you come out of look alike in words and do

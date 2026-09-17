@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -63,5 +64,40 @@ func TestTheStylesheetDoesNotReadItsOwnOutput(t *testing.T) {
 	}
 	if !strings.Contains(string(source), `@source "../views/`) {
 		t.Error("with automatic detection off, the views have to be declared, or the stylesheet compiles to nothing")
+	}
+}
+
+// Generated tooltip text cannot have descendants; its variants must not emit :has().
+func TestCompiledStylesheetHasNoEmptyRelationalSelectors(t *testing.T) {
+	source, err := os.ReadFile(filepath.Join(tests.Root(t), "assets", "app.css"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(source) == 0 {
+		t.Fatal("the compiled stylesheet is empty")
+	}
+	if regexp.MustCompile(`:has\(\s*\)`).Match(source) {
+		t.Fatal("the compiled stylesheet contains an empty relational selector")
+	}
+}
+
+// Local, CI and image builds must use the same released view compiler.
+func TestBuildEntrypointsUseTheReleasedCLI(t *testing.T) {
+	root := tests.Root(t)
+	for _, item := range []struct{ path, marker string }{
+		{"arandu.toml", `aru = "v0.56.1"`},
+		{"Dockerfile", "ARG ARU_VERSION=v0.56.1"},
+		{".github/workflows/ci.yml", "github.com/arandu-io/aru@v0.56.1"},
+	} {
+		body, err := os.ReadFile(filepath.Join(root, item.path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(body), item.marker) {
+			t.Errorf("%s does not use the verified CLI release", item.path)
+		}
+		if strings.Contains(string(body), "v0.35.0") {
+			t.Errorf("%s retains the obsolete CLI pin", item.path)
+		}
 	}
 }
