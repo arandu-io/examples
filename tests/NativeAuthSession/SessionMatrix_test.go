@@ -14,6 +14,7 @@ import (
 
 	authui "github.com/arandu-io/examples/app/Http/Controllers/Auth"
 	"github.com/arandu-io/examples/app/Models"
+	"github.com/arandu-io/examples/app/Services"
 	fhttp "github.com/arandu-io/framework/http"
 	"github.com/arandu-io/framework/security"
 	twofactor "github.com/arandu-io/hesape/2fa"
@@ -85,6 +86,46 @@ func TestPasswordAndPendingFactorSessionMatrix(t *testing.T) {
 		}, pending)
 		harness.assertWrites(t, 1)
 	})
+
+	// A locked challenge ends the pending sign-in instead of answering it as a
+	// wrong code: the cookie is cleared, the person is sent back to sign in,
+	// and Retry-After says how long the account waits. The lock matches
+	// twofactor.ErrInvalidCode as well, which is what makes the order of the
+	// checks in the controller something a test has to hold.
+	for _, challenge := range []struct {
+		path, field string
+		fail        func(*fakeFactors, error)
+	}{
+		{"/auth/two-factor/challenge", "authenticator_code", func(f *fakeFactors, err error) { f.verifyErr = err }},
+		{"/auth/two-factor/recovery", "recovery_code", func(f *fakeFactors, err error) { f.recoveryErr = err }},
+	} {
+		t.Run("locked "+challenge.path, func(t *testing.T) {
+			harness := newSessionHarness(t)
+			pending := harness.startPending(t)
+			challenge.fail(harness.factors, services.TwoFactorLockedError{RetryAfter: services.ChallengeWindow})
+			response := harness.postWithCookies(challenge.path, url.Values{
+				challenge.field: {"123456"},
+			}, pending)
+			harness.assertWrites(t, 0)
+
+			if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/auth/login" {
+				t.Fatalf("locked challenge answered %d to %q, want 303 to /auth/login",
+					response.Code, response.Header().Get("Location"))
+			}
+			if got, want := response.Header().Get("Retry-After"), "900"; got != want {
+				t.Errorf("Retry-After = %q, want %q", got, want)
+			}
+			cleared := false
+			for _, cookie := range response.Result().Cookies() {
+				if cookie.Name == "two-factor-pending" && cookie.MaxAge < 0 {
+					cleared = true
+				}
+			}
+			if !cleared {
+				t.Error("the locked challenge left the pending sign-in in place")
+			}
+		})
+	}
 
 	t.Run("tampered pending cookie", func(t *testing.T) {
 		harness := newSessionHarness(t)

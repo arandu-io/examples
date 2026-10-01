@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -128,6 +129,9 @@ func (m *Module) verifyTwoFactorChallenge(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if err := m.factors.VerifyAuthenticator(r.Context(), u.TenantID, u.ID, code); err != nil {
+		if m.challengeLocked(w, r, err) {
+			return
+		}
 		if errors.Is(err, twofactor.ErrInvalidCode) {
 			m.screenStatus(w, r, http.StatusUnprocessableEntity, "auth.two-factor.challenge", AuthPage{
 				Page: m.page(r, "Two-factor challenge"), AuthenticatorCodeError: "that code is not valid",
@@ -165,6 +169,9 @@ func (m *Module) verifyRecoveryChallenge(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err := m.factors.ConsumeRecovery(r.Context(), u.TenantID, u.ID, code); err != nil {
+		if m.challengeLocked(w, r, err) {
+			return
+		}
 		if errors.Is(err, twofactor.ErrInvalidCode) {
 			m.screenStatus(w, r, http.StatusUnprocessableEntity, "auth.two-factor.recovery", AuthPage{
 				Page: m.page(r, "Use a recovery code"), RecoveryCodeError: "that recovery code is not valid",
@@ -176,6 +183,27 @@ func (m *Module) verifyRecoveryChallenge(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	m.finishSignIn(w, r, u, remember)
+}
+
+// challengeLocked ends the pending sign-in when the account has offered too
+// many codes to the challenge, and reports whether it did.
+//
+// The pending cookie is cleared because nothing it carries can succeed until the
+// window passes: the count belongs to the account, so the same refusal waits on
+// every pending sign-in for it, in this browser or another. The person goes back
+// to the sign-in screen, and Retry-After says how long the account waits. The
+// lock is checked before the wrong-code case because it also matches
+// twofactor.ErrInvalidCode -- answering it as a wrong code would leave the
+// challenge on screen to be tried again.
+func (m *Module) challengeLocked(w http.ResponseWriter, r *http.Request, err error) bool {
+	var locked retryAfterError
+	if !errors.As(err, &locked) {
+		return false
+	}
+	m.clearPending(w)
+	w.Header().Set("Retry-After", strconv.Itoa(locked.Seconds()))
+	redirect(w, r, "/auth/login")
+	return true
 }
 
 func (m *Module) showTwoFactorSetup(w http.ResponseWriter, r *http.Request) {
