@@ -89,10 +89,10 @@ func Web(r *http.Router, d Deps) {
 
 	// The screen somebody lands on after signing in, and it is for them alone.
 	// Without the guard it answers 200 to anybody: the controller reads the
-	// session, treats a failure to load one as the anonymous case, and renders --
-	// which is right for a landing page and wrong for this one. The guard is what
-	// makes the difference, and it is on the route because that is where a reader
-	// of this file can see it.
+	// subject off the request, treats its absence as the anonymous case, and
+	// renders -- which is right for a landing page and wrong for this one. The
+	// guard is what makes the difference, and it is on the route because that is
+	// where a reader of this file can see it.
 	//
 	// It decides nothing beyond "there is a session". What this person may read
 	// is still the Policy's answer, on every service call the screen makes.

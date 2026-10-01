@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/arandu-io/framework/observability"
 	twofactor "github.com/arandu-io/hesape/2fa"
+	nativeauth "github.com/arandu-io/hesape/auth"
 	"github.com/arandu-io/hesape/otp"
 	"github.com/arandu-io/hesape/qr"
 
@@ -188,31 +190,48 @@ func (m *Module) verifyRecoveryChallenge(w http.ResponseWriter, r *http.Request)
 // challengeLocked ends the pending sign-in when the account has offered too
 // many codes to the challenge, and reports whether it did.
 //
-// The pending cookie is cleared because nothing it carries can succeed until the
-// window passes: the count belongs to the account, so the same refusal waits on
-// every pending sign-in for it, in this browser or another. The person goes back
-// to the sign-in screen, and Retry-After says how long the account waits. The
-// lock is checked before the wrong-code case because it also matches
-// twofactor.ErrInvalidCode -- answering it as a wrong code would leave the
-// challenge on screen to be tried again.
+// It runs before the wrong-code branch because a lock also matches
+// twofactor.ErrInvalidCode: answered as a wrong code, it would leave the
+// challenge on screen to be tried again, and every try would be refused. The
+// count belongs to the account, so nothing the pending cookie carries can
+// succeed until the window passes -- the cookie is cleared, the person is sent
+// back to sign in with the reason on the screen, and Retry-After says how long
+// the account waits.
 func (m *Module) challengeLocked(w http.ResponseWriter, r *http.Request, err error) bool {
 	var locked retryAfterError
 	if !errors.As(err, &locked) {
 		return false
 	}
 	m.clearPending(w)
+	m.flash.Write(w, map[string][]string{signInNotice: {lockedMessage(locked.Seconds())}}, nil)
 	w.Header().Set("Retry-After", strconv.Itoa(locked.Seconds()))
 	redirect(w, r, "/auth/login")
 	return true
+}
+
+// lockedMessage is what the sign-in screen says after a lock, in whole minutes
+// rounded up.
+func lockedMessage(seconds int) string {
+	minutes := (seconds + 59) / 60
+	if minutes <= 1 {
+		return "Too many codes. Sign in again in a minute."
+	}
+	return fmt.Sprintf("Too many codes. Sign in again in %d minutes.", minutes)
 }
 
 func (m *Module) showTwoFactorSetup(w http.ResponseWriter, r *http.Request) {
 	m.screen(w, r, "auth.two-factor.setup", AuthPage{Page: m.page(r, "Set up two-factor authentication")})
 }
 
+// beginTwoFactorSetup starts enrolment for the signed-in person.
+//
+// The setup, disable and recovery-code routes sit behind RequireAuth and
+// RequireConfirmedPassword, and each reads the subject the guard loaded from
+// the request context rather than loading the session a second time. A request
+// that arrives without one was routed past the guards, and is sent to sign in.
 func (m *Module) beginTwoFactorSetup(w http.ResponseWriter, r *http.Request) {
-	subject, err := m.sessions.Load(r.Context(), r)
-	if err != nil {
+	subject, ok := nativeauth.SubjectFrom(r.Context())
+	if !ok {
 		redirect(w, r, "/auth/login")
 		return
 	}
@@ -244,8 +263,8 @@ func (m *Module) beginTwoFactorSetup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) confirmTwoFactorSetup(w http.ResponseWriter, r *http.Request) {
-	subject, err := m.sessions.Load(r.Context(), r)
-	if err != nil {
+	subject, ok := nativeauth.SubjectFrom(r.Context())
+	if !ok {
 		redirect(w, r, "/auth/login")
 		return
 	}
@@ -272,8 +291,8 @@ func (m *Module) confirmTwoFactorSetup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) disableTwoFactor(w http.ResponseWriter, r *http.Request) {
-	subject, err := m.sessions.Load(r.Context(), r)
-	if err != nil {
+	subject, ok := nativeauth.SubjectFrom(r.Context())
+	if !ok {
 		redirect(w, r, "/auth/login")
 		return
 	}
@@ -286,8 +305,8 @@ func (m *Module) disableTwoFactor(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) regenerateRecoveryCodes(w http.ResponseWriter, r *http.Request) {
-	subject, err := m.sessions.Load(r.Context(), r)
-	if err != nil {
+	subject, ok := nativeauth.SubjectFrom(r.Context())
+	if !ok {
 		redirect(w, r, "/auth/login")
 		return
 	}

@@ -24,8 +24,11 @@ type ResetData = authui.AuthPage
 
 			<form class="flex flex-col gap-4 px-6 py-6" method="post" action="{{ .PasswordUpdateURL }}">
 				@csrf
-				@if(.Status != "")
+				@if(.Status != "" && !.StatusAsToast)
 					{!! components.Alert(components.AlertProps{Title: .Status}) !!}
+				@endif
+				@if(.Status != "" && .StatusAsToast)
+					{!! components.Toast(components.ToastProps{Title: .Status}) !!}
 				@endif
 				{!! components.Field(components.FieldProps{
 					Name: "email", Label: "Email", Type: "email",

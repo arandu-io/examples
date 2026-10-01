@@ -37,18 +37,33 @@ type RegisterData = authui.AuthPage
 					Autocomplete: "email", Required: true,
 				}) !!}
 
-				{!! components.Field(components.FieldProps{
-					Name: "password", Label: "Password", Type: "password",
-					Page: .,
-					Hint: "At least twelve characters.",
-					Autocomplete: "new-password", Required: true,
-				}) !!}
+				{{-- Both boxes are drawn only when the handler asks for them, and
+				     the same value decides both sides. An application whose
+				     identity is proved some other way draws neither, and one
+				     that decided a confirmation box is not worth the second
+				     typing draws only the first.
 
-				{!! components.Field(components.FieldProps{
-					Name: "password_confirmation", Label: "Confirm password", Type: "password",
-					Page: .,
-					Autocomplete: "new-password", Required: true,
-				}) !!}
+				     Plain fields with the hint, not the password component: its
+				     checklist grades against the component's default policy,
+				     eight characters, while the handler refuses anything under
+				     twelve. A panel that ticks a password the server then
+				     rejects is worse than a sentence that says the rule. --}}
+				@if(.AsksForPassword())
+					{!! components.Field(components.FieldProps{
+						Name: "password", Label: "Password", Type: "password",
+						Page: .,
+						Hint: "At least twelve characters.",
+						Autocomplete: "new-password", Required: true,
+					}) !!}
+				@endif
+
+				@if(.AsksForPasswordConfirmation())
+					{!! components.Field(components.FieldProps{
+						Name: "password_confirmation", Label: "Confirm password", Type: "password",
+						Page: .,
+						Autocomplete: "new-password", Required: true,
+					}) !!}
+				@endif
 
 				<div class="flex items-center justify-between gap-3">
 					<button type="submit" class="btn">Register</button>

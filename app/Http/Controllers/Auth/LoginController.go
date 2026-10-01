@@ -67,12 +67,17 @@ type Module struct {
 	csrf     *security.CSRF
 	mailer   *mail.Mailer
 	signer   *encryption.Signer
+	flash    *security.Flash
 	appName  string
 	tenant   TenantResolver
 	secure   bool
 }
 
 // New returns the authentication screen module.
+//
+// csrf is kept for the call bootstrap/app.go already makes, and no screen
+// issues a token with it: each draws the one CSRFProtect put on the request
+// context.
 func New(users Users, factors Factors, codes onetime.CodeStore, sessions *security.SessionStore, csrf *security.CSRF, mailer *mail.Mailer, appKey []byte, appName string, tenant TenantResolver, secure bool) *Module {
 	if tenant == nil {
 		tenant = FixedTenant("")
@@ -80,6 +85,7 @@ func New(users Users, factors Factors, codes onetime.CodeStore, sessions *securi
 	return &Module{
 		users: users, factors: factors, codes: codes, sessions: sessions,
 		csrf: csrf, mailer: mailer, signer: encryption.NewSigner(appKey),
+		flash:   security.NewFlash(appKey, secure),
 		appName: appName, tenant: tenant, secure: secure,
 	}
 }

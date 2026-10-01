@@ -274,7 +274,7 @@ func Build(cfg appconfig.Config, db *data.DB) (App, error) {
 	socket := buildSocket(cfg.Auth.Tenant, gauges)
 
 	deps := routes.Deps{
-		Home:     controllers.NewHomeController(cfg.App.Name, sessions, csrf, userService, cfg.Auth.Tenant),
+		Home:     controllers.NewHomeController(cfg.App.Name, userService, cfg.Auth.Tenant),
 		Post:     controllers.NewPostController(postService, commentService, categoryService, userService, sessions, cfg.App.Name, cfg.App.URL, cfg.Auth.Tenant),
 		Comment:  controllers.NewCommentController(commentService, sessions, cfg.App.Name, userService, cfg.Auth.Tenant),
 		Category: controllers.NewCategoryController(categoryService, sessions, cfg.App.Name, userService, cfg.Auth.Tenant),

@@ -30,8 +30,11 @@ type VerifyData = authui.AuthPage
 					}) !!}
 				@endif
 
-				@if(.Status != "")
+				@if(.Status != "" && !.StatusAsToast)
 					{!! components.Alert(components.AlertProps{Title: .Status}) !!}
+				@endif
+				@if(.Status != "" && .StatusAsToast)
+					{!! components.Toast(components.ToastProps{Title: .Status}) !!}
 				@endif
 
 				<p class="text-muted-foreground">Type the single-use code sent to your email address.</p>

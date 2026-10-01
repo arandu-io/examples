@@ -47,6 +47,42 @@ type AuthPage struct {
 	// rather than linking to a 404.
 	HasPasswordReset bool
 
+	// WithoutPasswordBox and WithoutConfirmationBox switch the sign-up form's
+	// two password inputs off. They come from the registration handler's own
+	// setting and from nothing a request carries.
+	//
+	// They are here rather than in the view because the handler validates
+	// against the same value: a box the screen does not draw is not one the
+	// handler requires. Read the other way round, a rule applied to an input
+	// nobody can see rejects every submission and points at a field that is not
+	// on the page.
+	//
+	// Stored as the negative, and that is the part worth keeping. This file is
+	// replaced on every publish and the registration handler is not, so a
+	// publish of the screens alone writes a new sign-up form beside a handler
+	// that predates the setting and fills neither field. What that project has
+	// to get is the form it had -- and false means the box is drawn, so it
+	// does. The positive spelling would have made the same republish quietly
+	// stop asking for a password.
+	WithoutPasswordBox     bool
+	WithoutConfirmationBox bool
+
+	// StatusAsToast draws the status line as a toast instead of the banner
+	// above the form.
+	//
+	// It comes from the handler's own setting and from nothing a request
+	// carries, like the two above -- and it is stored as the positive because
+	// the banner is what these screens have always drawn: a publish of the
+	// screens alone, beside a handler that predates the setting, leaves it
+	// false and the project keeps the banner it had.
+	//
+	// A banner sits above the form and stays; a toast appears at the edge and
+	// leaves. Which is right is a question about the application, and this is
+	// where it is answered rather than in five views: "we sent you a code" is a
+	// sentence somebody reads once, and "that link has expired" is one they
+	// need while they retype the address.
+	StatusAsToast bool
+
 	// The addresses these screens post to and link to, beyond the navigation
 	// view.Page already carries. They come from the router, through the handler.
 	DashboardURL             string
@@ -133,6 +169,15 @@ func (p AuthPage) FieldError(name string) string {
 	}
 	return p.Page.First(name)
 }
+
+// AsksForPassword reports whether the sign-up form draws a password box.
+//
+// The screen asks this rather than reading the field, so that the field can be
+// the negative and the zero value of this struct can be the form that asks.
+func (p AuthPage) AsksForPassword() bool { return !p.WithoutPasswordBox }
+
+// AsksForPasswordConfirmation reports whether it draws a second one.
+func (p AuthPage) AsksForPasswordConfirmation() bool { return !p.WithoutConfirmationBox }
 
 // RenderQRCode is the component seam for trusted SVG produced by hesape/qr.
 // Its typed input cannot be populated from an ordinary form string without an

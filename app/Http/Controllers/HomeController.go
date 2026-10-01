@@ -2,7 +2,7 @@ package controllers
 
 import (
 	"github.com/arandu-io/framework/http"
-	"github.com/arandu-io/framework/security"
+	hhttp "github.com/arandu-io/hesape/http"
 
 	authui "github.com/arandu-io/examples/app/Http/Controllers/Auth"
 )
@@ -20,14 +20,6 @@ type HomeController struct {
 	// environment is a controller no test can pin.
 	appName string
 
-	// sessions and csrf are what the chrome is drawn from: who is signed in,
-	// and the token every write of this session carries. They arrive through
-	// the constructor for the same reason appName does, and they are the same
-	// two every controller `aru make:module` writes takes -- a screen is
-	// allowed to know about a token and a cookie.
-	sessions *security.SessionStore
-	csrf     *security.CSRF
-
 	// people and tenant are how the id in a session becomes a name to greet.
 	// A session carries an id and not a name on purpose -- a name kept in one
 	// stays wrong after somebody changes theirs -- so the header costs one
@@ -42,11 +34,12 @@ type HomeController struct {
 
 // NewHomeController returns the controller. bootstrap/app.go builds it and hands
 // it to the routes.
-func NewHomeController(appName string, sessions *security.SessionStore, csrf *security.CSRF, people authui.UserNames, tenant string) *HomeController {
-	return &HomeController{
-		appName: appName, sessions: sessions, csrf: csrf,
-		people: people, tenant: tenant,
-	}
+//
+// There is no session store and no CSRF issuer here: the route puts who is
+// signed in on the request, and the middleware that protects forms puts the
+// token there, so the page reads both off the request it is answering.
+func NewHomeController(appName string, people authui.UserNames, tenant string) *HomeController {
+	return &HomeController{appName: appName, people: people, tenant: tenant}
 }
 
 // Compile-time proof that this controller answers GET / the way Resource and the
@@ -55,25 +48,29 @@ var _ http.Indexer = (*HomeController)(nil)
 
 // Index renders the landing page.
 //
-// The session and the token are read above the custom block, and deliberately:
+// The subject and the token are read above the custom block, and deliberately:
 // they are what the layout draws its navigation and its hx-headers from, so a
 // regeneration that carried over an edited block would otherwise carry over a
 // page that greets a signed-in visitor with a sign-in link.
+//
+// The route has to mount this behind a middleware that puts the subject on the
+// request: here it is RequireAuth on /dashboard, in routes/web.go, and on a
+// public route it would be middleware.LoadSubject. Without one nothing puts a
+// subject on the request, and every visitor is drawn the guest half.
 func (c *HomeController) Index(ctx *http.Context) error {
-	// Who is signed in, from the session cookie and never from the request. An
-	// error here is the anonymous case -- no cookie, a forged one, or a session
-	// that expired -- and the guest half of the navigation is what gets drawn.
-	subject, err := c.sessions.Load(ctx.Ctx(), ctx.Request)
-	signedIn := err == nil
+	// Who is signed in, put on the request by the route's guard from the
+	// session cookie and never from the request body. No subject is the
+	// anonymous case -- no cookie, a forged one, or a session that expired --
+	// and the guest half of the navigation is what gets drawn.
+	subject, signedIn := ctx.User()
 
 	// The token reaches the markup twice: the hidden field of the sign-out form
 	// and the hx-headers attribute on <body>. A page rendered without one
 	// answers 200 and then refuses the next write with 419, which reads like a
-	// broken session rather than a missing field.
-	token, err := c.csrf.Issue(c.sessions.IDFromRequest(ctx.Request))
-	if err != nil {
-		return err
-	}
+	// broken session rather than a missing field. CSRFProtect issued it for
+	// this request, bound to the session or, for a visitor with none, to their
+	// guest cookie, and put it on the request context.
+	token, _ := hhttp.CSRFTokenFrom(ctx.Ctx())
 
 	// arandu:begin custom
 	// The header, from the one helper this application draws every header with.
