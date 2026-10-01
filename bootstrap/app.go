@@ -320,7 +320,7 @@ func Build(cfg appconfig.Config, db *data.DB) (App, error) {
 			// store is keyed by the string KeyBySession returns, so a different
 			// one would hand every caller a fresh budget on deploy.
 			hmiddleware.Throttle(limiter, cache.PerMinute(300),
-				middleware.KeyBySession(sessions.IDFromRequest), fhttp.Refuse),
+				middleware.KeyBySession(sessions), fhttp.Refuse),
 			middleware.CSRFProtect(csrf, sessions.IDFromRequest),
 		).
 		Register(
