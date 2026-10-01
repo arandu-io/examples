@@ -222,6 +222,11 @@ func TestConfigurationUsesDefaultsForExplicitlyEmptyValues(t *testing.T) {
 		t.Errorf("queue defaults = %d workers, %s retry, %d attempts",
 			cfg.Queue.Workers, cfg.Queue.RetryAfter, cfg.Queue.MaxAttempts)
 	}
+	// Nobody is trusted to say where a request came from unless somebody wrote
+	// the proxy down, and a body is bounded whether or not anybody wrote a limit.
+	if cfg.HTTP.MaxBodyBytes != appconfig.DefaultMaxBodyBytes || len(cfg.HTTP.TrustedProxies) != 0 {
+		t.Errorf("http defaults = %d body bytes, %d trusted proxies", cfg.HTTP.MaxBodyBytes, len(cfg.HTTP.TrustedProxies))
+	}
 }
 
 func configurationBase() bootstrap.Configuration {
@@ -249,7 +254,46 @@ func clearParsedConfiguration(t *testing.T) {
 		"MAIL_URL",
 		"MAIL_MAILER", "MAIL_HOST", "MAIL_PORT", "MAIL_USERNAME",
 		"MAIL_PASSWORD", "MAIL_ENCRYPTION", "MAIL_KEY",
+		"HTTP_MAX_BODY_BYTES", "TRUSTED_PROXIES",
 	} {
 		t.Setenv(name, "")
+	}
+}
+
+// TestTheRequestBoundaryIsReadOrRefused: the two settings in front of every
+// handler either read as written or stop the boot. A wildcard proxy and a body
+// limit of zero are refused rather than read as "everybody" and "no limit",
+// because each is the failure its setting exists to prevent.
+func TestTheRequestBoundaryIsReadOrRefused(t *testing.T) {
+	clearParsedConfiguration(t)
+	t.Setenv("HTTP_MAX_BODY_BYTES", "65536")
+	t.Setenv("TRUSTED_PROXIES", "10.0.0.0/8, 192.0.2.7")
+
+	cfg, err := appconfig.From(configurationBase())
+	if err != nil {
+		t.Fatalf("From: %v", err)
+	}
+	if cfg.HTTP.MaxBodyBytes != 65536 {
+		t.Errorf("body limit = %d, want 65536", cfg.HTTP.MaxBodyBytes)
+	}
+	var got []string
+	for _, prefix := range cfg.HTTP.TrustedProxies {
+		got = append(got, prefix.String())
+	}
+	if strings.Join(got, ",") != "10.0.0.0/8,192.0.2.7/32" {
+		t.Errorf("trusted proxies = %v, want 10.0.0.0/8 and 192.0.2.7 alone", got)
+	}
+
+	for name, value := range map[string]string{
+		"TRUSTED_PROXIES":     "*",
+		"HTTP_MAX_BODY_BYTES": "0",
+	} {
+		t.Run(name, func(t *testing.T) {
+			clearParsedConfiguration(t)
+			t.Setenv(name, value)
+			if _, err := appconfig.From(configurationBase()); err == nil || !strings.Contains(err.Error(), name) {
+				t.Fatalf("%s=%q: error = %v, want a refusal naming the variable", name, value, err)
+			}
+		})
 	}
 }

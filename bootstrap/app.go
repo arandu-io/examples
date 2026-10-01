@@ -31,6 +31,7 @@ import (
 	"github.com/arandu-io/framework/security"
 	fwview "github.com/arandu-io/framework/view"
 	"github.com/arandu-io/hesape/cache"
+	httpmiddleware "github.com/arandu-io/hesape/http/middleware"
 	"github.com/arandu-io/hesape/onetime"
 	"github.com/arandu-io/hesape/queue"
 	hmiddleware "github.com/arandu-io/hesape/routing/middleware"
@@ -310,6 +311,31 @@ func Build(cfg appconfig.Config, db *data.DB) (App, error) {
 				// somebody is already looking at.
 				Diagnose: k.Diagnose,
 			}),
+			// The body limit, before anything below does work on the request:
+			// a body nobody bounded is read whole by the first form parse, and
+			// one POST with no credentials is enough to exhaust the process.
+			//
+			// Two layers, because a length is a header the client wrote.
+			// ValidatePostSize answers 413 to a body that declares itself too
+			// large, before the session is read or a CSRF token is checked.
+			// LimitBodySize covers the body that declares nothing -- a chunked
+			// one -- by refusing to read past the limit, whoever reads it.
+			//
+			// HTTP_MAX_BODY_BYTES is a ceiling for every route; config/http.go
+			// says what to do for a route that takes uploads.
+			httpmiddleware.ValidatePostSize(cfg.HTTP.MaxBodyBytes),
+			httpmiddleware.LimitBodySize(cfg.HTTP.MaxBodyBytes),
+			// The visitor's address, put back before anything keys on it: the
+			// request log, the throttle below and the sign-in throttle all read
+			// RemoteAddr. Behind a load balancer that is the balancer on every
+			// request, so the whole internet shares one budget and the first
+			// person locked out locks out everybody.
+			//
+			// X-Forwarded-For is believed only from a peer TRUSTED_PROXIES
+			// lists. The list is empty unless written, and then this does
+			// nothing: a header is a string the client chose, and believing it
+			// from anyone hands every visitor somebody else's counter.
+			httpmiddleware.TrustProxies(cfg.HTTP.TrustedProxies),
 			// k.Recorder() is the buffer behind /_arandu/debug. It is nil
 			// outside development, and passing nil records nothing -- which is
 			// what production does.

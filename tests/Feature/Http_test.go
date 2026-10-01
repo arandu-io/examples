@@ -124,6 +124,33 @@ func TestWriteWithoutCSRFIsRejected(t *testing.T) {
 	}
 }
 
+// TestABodyOverTheLimitIsRefusedBeforeAnythingReadsIt: the limit sits above
+// the session and the CSRF check, so a write that declares a body over it is
+// answered 413 -- and not 419 for the token it does not carry, which is what
+// the next layer down would have said once it had read the whole body.
+//
+// The same request under the limit is answered 419, which is what proves the
+// 413 came from the size and from nothing else.
+func TestABodyOverTheLimitIsRefusedBeforeAnythingReadsIt(t *testing.T) {
+	t.Setenv("HTTP_MAX_BODY_BYTES", "1024")
+	k := tests.Kernel(t, config.EnvDev)
+
+	write := func(body string) int {
+		r := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		k.Handler().ServeHTTP(rec, r)
+		return rec.Code
+	}
+
+	if got := write("email=" + strings.Repeat("a", 2048)); got != http.StatusRequestEntityTooLarge {
+		t.Fatalf("a body over the limit answered %d, want 413", got)
+	}
+	if got := write("email=a"); got != middleware.StatusCSRFExpired {
+		t.Fatalf("a body under the limit answered %d, want %d", got, middleware.StatusCSRFExpired)
+	}
+}
+
 // TestHealthFailsWithoutTheDatabase: the probe has to depend on the database, or
 // a pod with no connection keeps receiving traffic.
 func TestHealthFailsWithoutTheDatabase(t *testing.T) {

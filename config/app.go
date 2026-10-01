@@ -36,6 +36,7 @@ type Config struct {
 	Cache       Cache
 	Database    Database
 	Filesystems Filesystems
+	HTTP        HTTP
 	Logging     Logging
 	Mail        Mail
 	Queue       Queue
@@ -79,7 +80,7 @@ func Load() (Config, error) {
 //
 // It is separate from Load so a test can supply a configuration without an
 // environment: the test writes the framework part it cares about and gets the
-// ten domains filled from their defaults.
+// eleven domains filled from their defaults.
 //
 // The URL and the time zone are read off the parsed base rather than re-read
 // from the environment.
@@ -106,6 +107,10 @@ func From(base bootstrap.Configuration) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	httpConfig, err := loadHTTP()
+	if err != nil {
+		return Config{}, err
+	}
 	logging, err := loadLogging(base)
 	if err != nil {
 		return Config{}, err
@@ -125,6 +130,7 @@ func From(base bootstrap.Configuration) (Config, error) {
 		Cache:       cache,
 		Database:    database,
 		Filesystems: filesystems,
+		HTTP:        httpConfig,
 		Logging:     logging,
 		Mail:        mail,
 		Queue:       queue,
