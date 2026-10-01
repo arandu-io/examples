@@ -80,13 +80,24 @@ puts the session's subject on the context and nothing else; joaju answers 401
 when there is none. `tests/Feature/TenantScoping_test.go` is 513 lines of the
 other tenant seeing nothing.
 
-**A link is signed rather than stored.** `RegisterController.go:52` and
-`PasswordController.go:58` declare the two purpose strings, and the same
-application key signs both — so a verification link cannot be replayed as a
-reset. `TestTheVerificationLinkIsSignedAndScoped` and
-`TestTheSameLinkTwiceIsNotAnError`. The signing itself is
-`framework/modules/auth`; what this repository demonstrates is the wiring and
-the scoping, which is the half a project has to get right.
+**A code is spent rather than signed.** Address verification and password reset
+each mail a six-digit code from `hesape/onetime`: `codes.Issue` when it is sent,
+`codes.Consume` when it comes back. `RegisterController.go:21` and
+`PasswordController.go:21` declare the two purpose strings, and the subject a
+code is bound to is the tenant, the user and the normalised address —
+`emailCodeSubject` and `resetCodeSubject`, the second with the password
+fingerprint added, so changing the password by any route ends an outstanding
+reset. A verification code cannot be spent as a reset, and the right code works
+once. `TestTheVerificationCodeIsPurposeBoundAndScoped`,
+`TestTheVerificationCodeIsSingleUse`,
+`TestAResetCodeIsRefusedTheSecondTimeItIsUsed`,
+`TestAResetCodeDiesWhenThePasswordChangesByAnyOtherRoute` and
+`TestAResetCodeIsRefusedAtAnAddressItWasNotMintedFor`. The store is the cache
+`bootstrap/app.go` hands `onetime.New`, and
+`TestNoAuthenticationTokenTableIsCreatedForResetCodes` keeps a token table from
+coming back. Expiry, cooldown, the attempt limit and atomic consumption are
+`hesape/onetime`'s; what this repository demonstrates is the purpose and the
+subject, which is the half a project has to get right.
 
 ## The observability demonstrations
 
