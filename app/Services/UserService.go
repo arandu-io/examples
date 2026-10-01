@@ -16,6 +16,7 @@ import (
 	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/hesape/auth"
 	authusers "github.com/arandu-io/hesape/auth/users"
+	"github.com/arandu-io/hesape/database"
 	"github.com/arandu-io/hesape/database/model"
 	"github.com/arandu-io/hesape/database/query"
 	"github.com/arandu-io/hesape/hashing"
@@ -441,7 +442,8 @@ func nullableTime(value *time.Time) any {
 	return value.UTC()
 }
 
+// isUniqueViolation reports a duplicate key, decided by the connector from the
+// driver's own error code rather than from the text of its message.
 func isUniqueViolation(err error) bool {
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "unique") || strings.Contains(message, "duplicate") || strings.Contains(message, "23505")
+	return errors.Is(err, database.ErrUniqueViolation)
 }

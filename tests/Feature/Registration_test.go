@@ -2,6 +2,7 @@ package feature_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"regexp"
 	"strings"
@@ -11,7 +12,12 @@ import (
 	"github.com/arandu-io/framework/arandutest"
 	"github.com/arandu-io/framework/data"
 	"github.com/arandu-io/framework/mail"
+	"github.com/arandu-io/framework/security"
 
+	requests "github.com/arandu-io/examples/app/Http/Requests"
+	models "github.com/arandu-io/examples/app/Models"
+	repositories "github.com/arandu-io/examples/app/Repositories"
+	services "github.com/arandu-io/examples/app/Services"
 	"github.com/arandu-io/examples/bootstrap"
 	"github.com/arandu-io/examples/tests"
 )
@@ -279,3 +285,42 @@ func first200(s string) string {
 
 // emailCodePattern finds the native single-use code in a text message.
 var emailCodePattern = regexp.MustCompile(`\b[0-9]{6}\b`)
+
+// TestASecondRowUnderAUniqueKeyIsAConflict: the index refuses the second row,
+// and what turns that refusal into the application's own error is the driver's
+// error code, classified by the connector -- not a search of the message, which
+// changes with the server's language and the driver's version.
+//
+// Two write paths, because they reach the database two ways: an account is
+// inserted through the model inside the registration's transaction, and a post
+// through a repository's own statement.
+func TestASecondRowUnderAUniqueKeyIsAConflict(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	tenant := bootstrap.Tenant()
+
+	t.Run("an address already registered", func(t *testing.T) {
+		users := services.NewUserService(db)
+		if _, err := users.Register(ctx, tenant, "Ada", "ada@example.test", goodPassword); err != nil {
+			t.Fatalf("first registration: %v", err)
+		}
+		_, err := users.Register(ctx, tenant, "Ada again", "ADA@example.test", goodPassword)
+		if !errors.Is(err, services.ErrEmailTaken) {
+			t.Fatalf("second registration = %v, want ErrEmailTaken", err)
+		}
+	})
+
+	t.Run("a post slug already taken", func(t *testing.T) {
+		posts := services.NewPostService(repositories.NewPostRepository(db))
+		admin := security.Subject{ID: "u1", Tenant: tenant, Roles: []string{"admin"}}
+		in := requests.StorePost{Title: "First", Slug: "the-same-slug", Body: "A body."}
+		if _, err := posts.Create(ctx, admin, in); err != nil {
+			t.Fatalf("first post: %v", err)
+		}
+		in.Title = "Second"
+		_, err := posts.Create(ctx, admin, in)
+		if !errors.Is(err, models.ErrPostConflict) {
+			t.Fatalf("second post = %v, want ErrPostConflict", err)
+		}
+	})
+}

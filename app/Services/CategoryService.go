@@ -2,11 +2,13 @@ package services
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/arandu-io/framework/data"
 	"github.com/arandu-io/framework/observability"
 	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/database"
 	"github.com/arandu-io/hesape/database/model"
 
 	requests "github.com/arandu-io/examples/app/Http/Requests"
@@ -419,14 +421,10 @@ func entities(found []*models.Category) []models.Category {
 // case-insensitive on every engine.
 func normalize(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
 
-// conflict recognizes a duplicate key across engines by message, which is the
-// price of not importing a driver into a service.
+// conflict recognizes a duplicate key on every engine. The connector decides it
+// from the driver's own error code, so the service imports no driver and reads
+// no message -- a message changes with the server's language and the driver's
+// version, and a code does not.
 func conflict(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "unique constraint") ||
-		strings.Contains(msg, "duplicate key") ||
-		strings.Contains(msg, "duplicate entry")
+	return errors.Is(err, database.ErrUniqueViolation)
 }

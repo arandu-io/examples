@@ -6,12 +6,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/arandu-io/framework/data"
 	"github.com/arandu-io/framework/security"
 	twofactor "github.com/arandu-io/hesape/2fa"
+	"github.com/arandu-io/hesape/database"
 	"github.com/arandu-io/hesape/hashing"
 
 	"github.com/arandu-io/examples/app/Models"
@@ -251,7 +251,8 @@ func changed(result sql.Result, err error, operation string) (bool, error) {
 	return rows == 1, nil
 }
 
+// uniqueViolation reports a duplicate key, decided by the connector from the
+// driver's own error code rather than from the text of its message.
 func uniqueViolation(err error) bool {
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "unique") || strings.Contains(message, "duplicate") || strings.Contains(message, "23505")
+	return errors.Is(err, database.ErrUniqueViolation)
 }

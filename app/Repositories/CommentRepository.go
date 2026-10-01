@@ -10,6 +10,7 @@ import (
 
 	"github.com/arandu-io/framework/data"
 	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/database"
 
 	models "github.com/arandu-io/examples/app/Models"
 	policies "github.com/arandu-io/examples/app/Policies"
@@ -349,16 +350,12 @@ func (r *CommentRepository) normalize(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
 
-// conflict recognizes a duplicate key across engines by message, which is the
-// price of not importing a driver into a repository.
+// conflict recognizes a duplicate key on every engine. The connector decides it
+// from the driver's own error code, so the repository imports no driver and
+// reads no message -- a message changes with the server's language and the
+// driver's version, and a code does not.
 func (r *CommentRepository) conflict(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "unique constraint") ||
-		strings.Contains(msg, "duplicate key") ||
-		strings.Contains(msg, "duplicate entry")
+	return errors.Is(err, database.ErrUniqueViolation)
 }
 
 // arandu:begin custom
