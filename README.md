@@ -33,12 +33,16 @@ for this application to finish.
 - **A moderation panel that owns no data of its own** — `/admin` reads the
   same posts and comments through the same services and the same policies as
   the public screens, rather than opening a second path to the database.
-- **Two links that are signed rather than stored** — address verification and
-  password reset both carry their payload in an HMAC, so there is no token
-  table and no cleanup job; the purpose is part of the signature, so a
-  verification link cannot be replayed as a reset even though the same key
-  signs both. The reset is single use without a row to delete, because it
-  fingerprints the password it was minted against.
+- **Two codes that are spent rather than signed** — address verification and
+  password reset both mail a six-digit code from `hesape/onetime`. The cache
+  store keeps a keyed digest of it and never the code, so there is no token
+  table and no cleanup job: the entry expires on its own. Each code is bound to
+  its purpose, tenant, user and address, so a verification code cannot be
+  spent as a reset; issuing a new one replaces the old, a resend waits out a
+  cooldown, a code may be presented five times before it is finished, and the
+  right one is spent by the request that presents it. The reset code is also
+  bound to the password it was issued against, so changing the password ends
+  it.
 - **A sitemap that cannot leak a draft** — it authorizes as a guest through
   the same `PostPolicy` a browser uses, instead of holding a system grant that
   would list everything.
@@ -51,7 +55,7 @@ both wired through `.env` — an example is meant to show the shape of a real
 deployment, so it defaults to Postgres rather than the skeleton's SQLite default.
 
 Nothing is actually mailed: `MAIL_URL=log://`, the default, writes verification
-and password-reset links to the output of `aru dev` instead of sending them, so
+and password-reset codes to the output of `aru dev` instead of sending them, so
 the example runs without an SMTP server.
 
 Known limit: this is one process. `SESSION_DRIVER=memory` and
