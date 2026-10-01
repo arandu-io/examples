@@ -7,10 +7,10 @@ import "github.com/arandu-io/hesape/view"
 @go
 // CategoriesShowData is what CategoryController.Show hands this page.
 type CategoriesShowData struct {
-	// Page is the state the layout draws. Its Token is also what the delete
-	// button sends as a header: an hx-delete carries no form body, so the
-	// hidden field a form uses would never arrive and the request would be
-	// refused with 419.
+	// Page is the state the layout draws, the CSRF token included. The delete
+	// button sends no token of its own: an hx-delete carries no form body, so
+	// the header is what reaches the server, and the hx-headers the layout puts
+	// on <body> is inherited by every htmx request on the page.
 	view.Page
 	// Category is the record.
 	Category CategoryRow
@@ -35,7 +35,7 @@ var _ view.Layout = CategoriesShowData{}
 		<h1 class="text-3xl font-semibold tracking-tight">{{ .Title }}</h1>
 		<div class="flex items-center gap-3">
 			<a class="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-900" href="/categories/{{ .Category.ID }}/edit">Edit</a>
-			<button class="rounded-md border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950" type="button" hx-delete="/categories/{{ .Category.ID }}" hx-headers='{"X-CSRF-Token": "{{ .Token }}"}' hx-confirm="Delete this category?">Delete</button>
+			<button class="rounded-md border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950" type="button" hx-delete="/categories/{{ .Category.ID }}" hx-confirm="Delete this category?">Delete</button>
 		</div>
 	</div>
 

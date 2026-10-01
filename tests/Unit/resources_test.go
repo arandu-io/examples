@@ -42,6 +42,43 @@ func TestResourcesHoldNoJavaScript(t *testing.T) {
 	}
 }
 
+// TestOnlyTheLayoutsSetTheCSRFHeader is the same rule from inside the views. A
+// control that writes its own hx-headers with the token in it is a second place
+// the header is built by hand, and one that hides the layout's: hx-headers on
+// an element replaces what it would have inherited for that key, so the two
+// copies only agree for as long as nobody changes either.
+func TestOnlyTheLayoutsSetTheCSRFHeader(t *testing.T) {
+	root := filepath.Join(tests.Root(t), "resources", "views")
+	layouts := map[string]bool{
+		filepath.Join("layouts", "app.kyse.go"):  true,
+		filepath.Join("admin", "layout.kyse.go"): true,
+	}
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".kyse.go") {
+			return err
+		}
+		source, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		has := strings.Contains(string(source), "hx-headers=")
+		switch {
+		case layouts[rel] && !has:
+			t.Errorf("resources/views/%s no longer sets hx-headers on <body>, and every htmx write under it would be refused", rel)
+		case !layouts[rel] && has:
+			t.Errorf("resources/views/%s sets hx-headers itself; the CSRF header comes from the layout's <body>", rel)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walking resources/views: %v", err)
+	}
+}
+
 // TestTheStylesheetDoesNotReadItsOwnOutput is the guard for a build that was
 // not a function of its inputs.
 //
