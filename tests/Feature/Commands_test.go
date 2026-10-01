@@ -154,13 +154,13 @@ func TestLoginOnSQLite(t *testing.T) {
 	}
 	handler := k.Handler()
 
-	// The login form issues the CSRF token the POST has to carry.
+	// The login form issues the CSRF token the POST has to carry, and the guest
+	// cookie it is bound to.
 	form := httptest.NewRecorder()
 	handler.ServeHTTP(form, httptest.NewRequest(http.MethodGet, "/auth/login", nil))
-	token := csrfToken(t, form.Body.String())
 
 	t.Run("wrong password is refused", func(t *testing.T) {
-		rec := post(handler, token, "admin@example.test", "not-the-password")
+		rec := post(t, handler, form, "admin@example.test", "not-the-password")
 		if rec.Code != http.StatusUnauthorized {
 			t.Fatalf("status = %d, want 401", rec.Code)
 		}
@@ -170,7 +170,7 @@ func TestLoginOnSQLite(t *testing.T) {
 	})
 
 	t.Run("unknown user is refused the same way", func(t *testing.T) {
-		rec := post(handler, token, "nobody@example.test", "a-long-enough-password")
+		rec := post(t, handler, form, "nobody@example.test", "a-long-enough-password")
 		if rec.Code != http.StatusUnauthorized {
 			t.Fatalf("status = %d, want 401", rec.Code)
 		}
@@ -182,7 +182,7 @@ func TestLoginOnSQLite(t *testing.T) {
 	})
 
 	t.Run("correct password signs in", func(t *testing.T) {
-		rec := post(handler, token, "ADMIN@example.test", "a-long-enough-password")
+		rec := post(t, handler, form, "ADMIN@example.test", "a-long-enough-password")
 
 		// What matters is that the person is signed in and told where to go,
 		// and this asserts that rather than one shape of it.
@@ -279,14 +279,22 @@ func TestFreshRefusesOutsideDevelopment(t *testing.T) {
 	}
 }
 
-func post(handler http.Handler, token, email, password string) *httptest.ResponseRecorder {
+// post submits the sign-in form the way a browser would after drawing it: with
+// the token the form carried and the cookies its response set. A visitor with no
+// session has their token bound to a guest cookie, so a token sent without the
+// cookie it was issued for is refused 419 before the handler runs.
+func post(t *testing.T, handler http.Handler, form *httptest.ResponseRecorder, email, password string) *httptest.ResponseRecorder {
+	t.Helper()
 	body := url.Values{
-		"_token":   {token},
+		"_token":   {csrfToken(t, form.Body.String())},
 		"email":    {email},
 		"password": {password},
 	}
 	r := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(body.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for _, c := range form.Result().Cookies() {
+		r.AddCookie(c)
+	}
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, r)

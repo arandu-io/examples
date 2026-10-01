@@ -49,13 +49,12 @@ type SocketsController struct {
 	metrics policies.SocketMetricsPolicy
 
 	sessions *security.SessionStore
-	csrf     *security.CSRF
 }
 
 // NewSocketsController returns the controller. bootstrap builds it, with the
 // registry the socket server publishes into.
-func NewSocketsController(gauges *observability.Gauges, metrics policies.SocketMetricsPolicy, sessions *security.SessionStore, csrf *security.CSRF) *SocketsController {
-	return &SocketsController{gauges: gauges, metrics: metrics, sessions: sessions, csrf: csrf}
+func NewSocketsController(gauges *observability.Gauges, metrics policies.SocketMetricsPolicy, sessions *security.SessionStore) *SocketsController {
+	return &SocketsController{gauges: gauges, metrics: metrics, sessions: sessions}
 }
 
 // Index draws the two cards: connections per tenant, and the message totals.
@@ -64,10 +63,7 @@ func (c *SocketsController) Index(ctx *fhttp.Context) error {
 	if err != nil {
 		return ctx.Redirect("/auth/login")
 	}
-	token, err := c.csrf.Issue(c.sessions.IDFromRequest(ctx.Request))
-	if err != nil {
-		return err
-	}
+	token := csrfToken(ctx)
 
 	// The authorization, and it is not ceremony: nothing below this line touches
 	// a database, so this call is the ONLY thing standing between a session and

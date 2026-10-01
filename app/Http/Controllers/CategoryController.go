@@ -28,7 +28,6 @@ type CategoryController struct {
 
 	svc      *services.CategoryService
 	sessions *security.SessionStore
-	csrf     *security.CSRF
 
 	// nav draws the header, the same way on every screen. See chrome.go.
 	nav navigation
@@ -37,11 +36,12 @@ type CategoryController struct {
 // NewCategoryController returns the controller. bootstrap builds it and hands it to
 // the routes.
 //
-// The session store and the CSRF issuer arrive through the constructor rather
-// than through the service: a screen is allowed to know about a token and a
-// cookie, and a service is not allowed to expose its own dependencies.
-func NewCategoryController(svc *services.CategoryService, sessions *security.SessionStore, csrf *security.CSRF, appName string, people UserNames, tenant string) *CategoryController {
-	return &CategoryController{svc: svc, sessions: sessions, csrf: csrf,
+// The session store arrives through the constructor rather than through the
+// service: a screen is allowed to know about a cookie, and a service is not
+// allowed to expose its own dependencies. The CSRF token is not issued here --
+// csrfToken reads the one CSRFProtect put on the request.
+func NewCategoryController(svc *services.CategoryService, sessions *security.SessionStore, appName string, people UserNames, tenant string) *CategoryController {
+	return &CategoryController{svc: svc, sessions: sessions,
 		nav: navigation{appName: appName, people: people, tenant: tenant}}
 }
 
@@ -97,10 +97,7 @@ func (c *CategoryController) Index(ctx *fhttp.Context) error {
 	// form and every hx- request read the token off the page data. A listing
 	// rendered without one answers 200 and then refuses the next write with
 	// 419, which reads like a broken session.
-	token, err := c.token(ctx)
-	if err != nil {
-		return err
-	}
+	token := csrfToken(ctx)
 
 	// Keyset pagination picks up after the last id of the page. A partial page
 	// is the last page, and offering a cursor there would be a link to nothing.
@@ -131,10 +128,7 @@ func (c *CategoryController) Show(ctx *fhttp.Context) error {
 	// The token is for the delete button, which sends it as a header: an
 	// hx-delete carries no form body, so the hidden field a form uses would
 	// never arrive and the request would be refused with 419.
-	token, err := c.token(ctx)
-	if err != nil {
-		return err
-	}
+	token := csrfToken(ctx)
 
 	return ctx.View("categories.show", views.CategoriesShowData{
 		Page:     c.nav.page(ctx, actor, true, token, "Category"),
@@ -148,10 +142,7 @@ func (c *CategoryController) Create(ctx *fhttp.Context) error {
 	if err != nil {
 		return c.signIn(ctx)
 	}
-	token, err := c.token(ctx)
-	if err != nil {
-		return err
-	}
+	token := csrfToken(ctx)
 
 	return ctx.View("categories.create", views.CategoriesCreateData{
 		Page:   c.nav.page(ctx, actor, true, token, "New category"),
@@ -193,10 +184,7 @@ func (c *CategoryController) Edit(ctx *fhttp.Context) error {
 	if err != nil {
 		return c.fail(ctx, err)
 	}
-	token, err := c.token(ctx)
-	if err != nil {
-		return err
-	}
+	token := csrfToken(ctx)
 
 	return ctx.View("categories.edit", views.CategoriesEditData{
 		Page:   c.nav.page(ctx, actor, true, token, "Edit category"),
@@ -258,16 +246,6 @@ func (c *CategoryController) signIn(ctx *fhttp.Context) error {
 	return ctx.Redirect("/auth/login")
 }
 
-// token issues a CSRF token for the session that is rendering the page.
-//
-// Every page needs it, including the ones that write nothing: the sign-out form
-// and every hx- request read it off the page data. A page rendered without one
-// answers 200 and then refuses the next write with 419, which reads like a
-// broken session rather than a missing field.
-func (c *CategoryController) token(ctx *fhttp.Context) (string, error) {
-	return c.csrf.Issue(c.sessions.IDFromRequest(ctx.Request))
-}
-
 // row turns the entity into what the markup renders.
 //
 // Formatting happens here rather than in the view: a view that formats a
@@ -325,10 +303,7 @@ func (c *CategoryController) input(ctx *fhttp.Context) (requests.StoreCategory, 
 // rejectedCreate re-renders the creation form with its errors, as the 422
 // fragment HTMX swaps back in.
 func (c *CategoryController) rejectedCreate(ctx *fhttp.Context, actor security.Subject, form views.CategoryForm, errs validation.Errors) error {
-	token, err := c.token(ctx)
-	if err != nil {
-		return err
-	}
+	token := csrfToken(ctx)
 	return c.Invalid(ctx, "categories.create", views.CategoriesCreateData{
 		Page:   c.nav.page(ctx, actor, true, token, "New category"),
 		Form:   form,
@@ -338,10 +313,7 @@ func (c *CategoryController) rejectedCreate(ctx *fhttp.Context, actor security.S
 
 // rejectedEdit re-renders the edit form with its errors.
 func (c *CategoryController) rejectedEdit(ctx *fhttp.Context, actor security.Subject, form views.CategoryForm, errs validation.Errors) error {
-	token, err := c.token(ctx)
-	if err != nil {
-		return err
-	}
+	token := csrfToken(ctx)
 	return c.Invalid(ctx, "categories.edit", views.CategoriesEditData{
 		Page:   c.nav.page(ctx, actor, true, token, "Edit category"),
 		Form:   form,

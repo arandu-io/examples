@@ -43,7 +43,6 @@ type PostController struct {
 	// nav draws the header, the same way on every screen. See chrome.go.
 	nav      navigation
 	sessions *security.SessionStore
-	csrf     *security.CSRF
 
 	// appName is the brand in the navigation bar and the og:site_name, and base
 	// is the origin a canonical URL is absolute against. Both come from the
@@ -60,14 +59,14 @@ type PostController struct {
 // NewPostController returns the controller. bootstrap builds it and hands it to
 // the routes.
 //
-// The session store and the CSRF issuer arrive through the constructor rather
-// than through the service: a screen is allowed to know about a token and a
-// cookie, and a service is not allowed to expose its own dependencies.
-func NewPostController(svc *services.PostService, comments *services.CommentService, categories *services.CategoryService, people UserNames, sessions *security.SessionStore, csrf *security.CSRF, appName, base, tenant string) *PostController {
+// The session store arrives through the constructor rather than through the
+// service: a screen is allowed to know about a cookie, and a service is not
+// allowed to expose its own dependencies. The CSRF token is not issued here --
+// csrfToken reads the one CSRFProtect put on the request.
+func NewPostController(svc *services.PostService, comments *services.CommentService, categories *services.CategoryService, people UserNames, sessions *security.SessionStore, appName, base, tenant string) *PostController {
 	return &PostController{
 		svc: svc, comments: comments, categories: categories, people: people,
-		sessions: sessions, csrf: csrf,
-		appName: appName, base: base, tenant: tenant,
+		sessions: sessions, appName: appName, base: base, tenant: tenant,
 		nav: navigation{appName: appName, people: people, tenant: tenant},
 	}
 }
@@ -137,10 +136,7 @@ func (c *PostController) Index(ctx *fhttp.Context) error {
 	// form and every hx- request read the token off the page data. A listing
 	// rendered without one answers 200 and then refuses the next write with
 	// 419, which reads like a broken session.
-	token, err := c.token(ctx)
-	if err != nil {
-		return err
-	}
+	token := csrfToken(ctx)
 
 	// Keyset pagination picks up after the last id of the page. A partial page
 	// is the last page, and offering a cursor there would be a link to nothing.
@@ -189,10 +185,7 @@ func (c *PostController) Section(ctx *fhttp.Context) error {
 		rows = append(rows, c.row(ctx, p, 0, byID))
 	}
 
-	token, err := c.token(ctx)
-	if err != nil {
-		return err
-	}
+	token := csrfToken(ctx)
 
 	page := c.nav.page(ctx, actor, signedIn, token, category.Name)
 	page.Description = category.Description
@@ -264,10 +257,7 @@ func (c *PostController) Show(ctx *fhttp.Context) error {
 	// The token is for the delete button, which sends it as a header: an
 	// hx-delete carries no form body, so the hidden field a form uses would
 	// never arrive and the request would be refused with 419.
-	token, err := c.token(ctx)
-	if err != nil {
-		return err
-	}
+	token := csrfToken(ctx)
 
 	// The thread, and everybody reads it -- a blog where you have to sign in to
 	// see what people said is not a blog. What is NOT public is a comment
@@ -315,10 +305,7 @@ func (c *PostController) Create(ctx *fhttp.Context) error {
 	if err != nil {
 		return c.signIn(ctx)
 	}
-	token, err := c.token(ctx)
-	if err != nil {
-		return err
-	}
+	token := csrfToken(ctx)
 
 	return ctx.View("posts.create", views.PostsCreateData{
 		Page:   c.nav.page(ctx, actor, true, token, "New post"),
@@ -360,10 +347,7 @@ func (c *PostController) Edit(ctx *fhttp.Context) error {
 	if err != nil {
 		return c.fail(ctx, err)
 	}
-	token, err := c.token(ctx)
-	if err != nil {
-		return err
-	}
+	token := csrfToken(ctx)
 
 	return ctx.View("posts.edit", views.PostsEditData{
 		Page:   c.nav.page(ctx, actor, true, token, "Edit post"),
@@ -424,16 +408,6 @@ func (c *PostController) actor(ctx *fhttp.Context) (security.Subject, error) {
 // whole page inside a fragment.
 func (c *PostController) signIn(ctx *fhttp.Context) error {
 	return ctx.Redirect("/auth/login")
-}
-
-// token issues a CSRF token for the session that is rendering the page.
-//
-// Every page needs it, including the ones that write nothing: the sign-out form
-// and every hx- request read it off the page data. A page rendered without one
-// answers 200 and then refuses the next write with 419, which reads like a
-// broken session rather than a missing field.
-func (c *PostController) token(ctx *fhttp.Context) (string, error) {
-	return c.csrf.Issue(c.sessions.IDFromRequest(ctx.Request))
 }
 
 // row turns the entity into what the markup renders.
@@ -602,10 +576,7 @@ func (c *PostController) input(ctx *fhttp.Context) (requests.StorePost, views.Po
 // rejectedCreate re-renders the creation form with its errors, as the 422
 // fragment HTMX swaps back in.
 func (c *PostController) rejectedCreate(ctx *fhttp.Context, actor security.Subject, form views.PostForm, errs validation.Errors) error {
-	token, err := c.token(ctx)
-	if err != nil {
-		return err
-	}
+	token := csrfToken(ctx)
 	return c.Invalid(ctx, "posts.create", views.PostsCreateData{
 		Page:   c.nav.page(ctx, actor, true, token, "New post"),
 		Form:   form,
@@ -615,10 +586,7 @@ func (c *PostController) rejectedCreate(ctx *fhttp.Context, actor security.Subje
 
 // rejectedEdit re-renders the edit form with its errors.
 func (c *PostController) rejectedEdit(ctx *fhttp.Context, actor security.Subject, form views.PostForm, errs validation.Errors) error {
-	token, err := c.token(ctx)
-	if err != nil {
-		return err
-	}
+	token := csrfToken(ctx)
 	return c.Invalid(ctx, "posts.edit", views.PostsEditData{
 		Page:   c.nav.page(ctx, actor, true, token, "Edit post"),
 		Form:   form,

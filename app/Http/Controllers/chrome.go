@@ -5,6 +5,7 @@ import (
 
 	"github.com/arandu-io/framework/http"
 	"github.com/arandu-io/framework/security"
+	hhttp "github.com/arandu-io/hesape/http"
 	"github.com/arandu-io/hesape/view"
 
 	authui "github.com/arandu-io/examples/app/Http/Controllers/Auth"
@@ -106,4 +107,20 @@ func ifSignedIn(show bool, url string) string {
 		return url
 	}
 	return ""
+}
+
+// csrfToken is the token every form and every hx- request on the page carries.
+//
+// Every page needs it, including the ones that write nothing: the sign-out form
+// and every hx- request read it off the page data. A page rendered without one
+// answers 200 and then refuses the next write with 419, which reads like a
+// broken session rather than a missing field.
+//
+// No controller issues it. CSRFProtect did, for this request -- bound to the
+// session, or for a visitor with none to a signed guest cookie -- and put it on
+// the request context. On a write it accepted, the token there is the one that
+// was submitted, so a form drawn again after a rejection still validates.
+func csrfToken(ctx *http.Context) string {
+	token, _ := hhttp.CSRFTokenFrom(ctx.Ctx())
+	return token
 }

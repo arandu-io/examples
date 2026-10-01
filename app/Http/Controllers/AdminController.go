@@ -32,12 +32,11 @@ type AdminController struct {
 	posts    *services.PostService
 	comments *services.CommentService
 	sessions *security.SessionStore
-	csrf     *security.CSRF
 }
 
 // NewAdminController returns the controller. bootstrap builds it.
-func NewAdminController(posts *services.PostService, comments *services.CommentService, sessions *security.SessionStore, csrf *security.CSRF) *AdminController {
-	return &AdminController{posts: posts, comments: comments, sessions: sessions, csrf: csrf}
+func NewAdminController(posts *services.PostService, comments *services.CommentService, sessions *security.SessionStore) *AdminController {
+	return &AdminController{posts: posts, comments: comments, sessions: sessions}
 }
 
 // actor is who is asking, from the session cookie and never from the request.
@@ -48,12 +47,6 @@ func (c *AdminController) actor(ctx *fhttp.Context) (security.Subject, error) {
 // signIn sends an unauthenticated visitor to the sign-in screen.
 func (c *AdminController) signIn(ctx *fhttp.Context) error {
 	return ctx.Redirect("/auth/login")
-}
-
-// token issues a CSRF token for the session rendering the page. Every form in
-// the area posts, so every screen needs one.
-func (c *AdminController) token(ctx *fhttp.Context) (string, error) {
-	return c.csrf.Issue(c.sessions.IDFromRequest(ctx.Request))
 }
 
 // fail turns a service error into a status.
@@ -78,10 +71,7 @@ func (c *AdminController) Index(ctx *fhttp.Context) error {
 	if err != nil {
 		return c.signIn(ctx)
 	}
-	token, err := c.token(ctx)
-	if err != nil {
-		return err
-	}
+	token := csrfToken(ctx)
 
 	posts, err := c.posts.List(ctx.Ctx(), actor, data.Query{Limit: 200})
 	if err != nil {
@@ -123,10 +113,7 @@ func (c *AdminController) Comments(ctx *fhttp.Context) error {
 	if err != nil {
 		return c.signIn(ctx)
 	}
-	token, err := c.token(ctx)
-	if err != nil {
-		return err
-	}
+	token := csrfToken(ctx)
 
 	found, err := c.comments.List(ctx.Ctx(), actor, data.Query{Limit: 200})
 	if err != nil {

@@ -131,7 +131,12 @@ type App struct {
 func Build(cfg appconfig.Config, db *data.DB) (App, error) {
 	fw := cfg.Framework
 
-	csrf := security.NewCSRF(fw.App.Key, cfg.Session.CSRFTTL)
+	// The CSRF token is bound to the session, and a visitor without one is bound
+	// to a random id in a signed cookie of its own. That cookie carries Secure
+	// exactly when the session cookie does: over plain HTTP in development the
+	// browser would never send a Secure one back, and every form a guest
+	// submits would answer 419.
+	csrf := security.NewCSRF(fw.App.Key, cfg.Session.CSRFTTL).Secure(cfg.Session.Secure)
 
 	// Every cache store this application has, by name. CACHE_STORE names the
 	// one the rate limit below counts in, and a name nothing defines is refused
@@ -270,16 +275,16 @@ func Build(cfg appconfig.Config, db *data.DB) (App, error) {
 
 	deps := routes.Deps{
 		Home:     controllers.NewHomeController(cfg.App.Name, sessions, csrf, userService, cfg.Auth.Tenant),
-		Post:     controllers.NewPostController(postService, commentService, categoryService, userService, sessions, csrf, cfg.App.Name, cfg.App.URL, cfg.Auth.Tenant),
-		Comment:  controllers.NewCommentController(commentService, sessions, csrf, cfg.App.Name, userService, cfg.Auth.Tenant),
-		Category: controllers.NewCategoryController(categoryService, sessions, csrf, cfg.App.Name, userService, cfg.Auth.Tenant),
-		Admin:    controllers.NewAdminController(postService, commentService, sessions, csrf),
+		Post:     controllers.NewPostController(postService, commentService, categoryService, userService, sessions, cfg.App.Name, cfg.App.URL, cfg.Auth.Tenant),
+		Comment:  controllers.NewCommentController(commentService, sessions, cfg.App.Name, userService, cfg.Auth.Tenant),
+		Category: controllers.NewCategoryController(categoryService, sessions, cfg.App.Name, userService, cfg.Auth.Tenant),
+		Admin:    controllers.NewAdminController(postService, commentService, sessions),
 		// The operator's screen, and the socket server it reads. The screen is
 		// given the registry rather than the server's counter: it draws what was
 		// published, and buildSocket is what publishes it. A screen holding the
 		// counter would be a screen reading the process directly, and the read it
 		// makes crosses tenants.
-		Sockets: controllers.NewSocketsController(gauges, policies.SocketMetricsPolicy{Tenant: cfg.Auth.Tenant}, sessions, csrf),
+		Sockets: controllers.NewSocketsController(gauges, policies.SocketMetricsPolicy{Tenant: cfg.Auth.Tenant}, sessions),
 		Socket:  socket,
 		// The origin the sitemap builds absolute URLs on. A sitemap of relative
 		// paths is refused by every crawler that reads one, and the value cannot
@@ -316,11 +321,16 @@ func Build(cfg appconfig.Config, db *data.DB) (App, error) {
 			// adds HX-Refresh, without which somebody over the limit presses
 			// the button and the screen does not change.
 			//
-			// The key is unchanged, and it has to be: a counter in a shared
-			// store is keyed by the string KeyBySession returns, so a different
-			// one would hand every caller a fresh budget on deploy.
+			// The key is the session only while the store still holds it, and
+			// the address otherwise: a signed cookie proves only that its id was
+			// issued here once, and every expired id a client kept would be a
+			// fresh budget. A live session is counted under the same string as
+			// before, so a counter in a shared store survives a deploy.
 			hmiddleware.Throttle(limiter, cache.PerMinute(300),
 				middleware.KeyBySession(sessions), fhttp.Refuse),
+			// CSRFProtect checks every write and issues the token every page
+			// carries: view.New and csrfToken in app/Http/Controllers read it
+			// off the request, so no controller issues one by hand.
 			middleware.CSRFProtect(csrf, sessions.IDFromRequest),
 		).
 		Register(
