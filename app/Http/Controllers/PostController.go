@@ -320,7 +320,10 @@ func (c *PostController) Store(ctx *fhttp.Context) error {
 		return c.signIn(ctx)
 	}
 
-	in, form, errs := c.input(ctx)
+	in, form, errs, err := c.input(ctx)
+	if err != nil {
+		return err
+	}
 	if !c.Validated(errs) {
 		return c.rejectedCreate(ctx, actor, form, errs)
 	}
@@ -363,7 +366,10 @@ func (c *PostController) Update(ctx *fhttp.Context) error {
 		return c.signIn(ctx)
 	}
 
-	in, form, errs := c.input(ctx)
+	in, form, errs, err := c.input(ctx)
+	if err != nil {
+		return err
+	}
 	form.ID = ctx.Param("id")
 	if !c.Validated(errs) {
 		return c.rejectedEdit(ctx, actor, form, errs)
@@ -542,27 +548,31 @@ func (c *PostController) form(p models.Post) views.PostForm {
 	}
 }
 
-// input reads the submitted form.
+// input binds the submitted form.
 //
-// It returns three things: the typed request the service takes, the form as it
-// was typed -- so a rejected submission comes back filled in rather than blank --
-// and the errors parsing itself found. A number that is not a number is rejected
-// here, naming the field, rather than reaching the service as a silent zero.
-func (c *PostController) input(ctx *fhttp.Context) (requests.StorePost, views.PostForm, validation.Errors) {
+// It returns four things: the typed request the service takes, the form as it
+// is drawn again, so a rejected submission comes back filled in rather than
+// blank; the fields Bind could not convert; and any other error, which is about
+// the request rather than the form -- a body over the size limit answers 413
+// through it.
+//
+// Bind reads the body and nothing else -- never the query string of a write --
+// and writes only the fields requests.StorePost declares with a form tag. A
+// date that is not a date is rejected here, naming the field, rather than
+// reaching the service as a silent zero. The box is drawn empty then: what was
+// typed in it converted into nothing there is to draw.
+func (c *PostController) input(ctx *fhttp.Context) (requests.StorePost, views.PostForm, validation.Errors, error) {
+	var in requests.StorePost
 	errs := validation.Errors{}
-
-	in := requests.StorePost{
-		Title:       ctx.Input("title"),
-		Slug:        ctx.Input("slug"),
-		Body:        ctx.Input("body"),
-		PublishedAt: c.moment(ctx, "published_at", "2006-01-02T15:04", errs),
+	if err := ctx.Bind(&in); err != nil && !errors.As(err, &errs) {
+		return in, views.PostForm{}, nil, err
 	}
 
 	form := views.PostForm{
-		Title:       ctx.Input("title"),
-		Slug:        ctx.Input("slug"),
-		Body:        ctx.Input("body"),
-		PublishedAt: ctx.Input("published_at"),
+		Title:       in.Title,
+		Slug:        in.Slug,
+		Body:        in.Body,
+		PublishedAt: dateTimeLocal(in.PublishedAt),
 	}
 
 	// arandu:begin custom
@@ -570,7 +580,7 @@ func (c *PostController) input(ctx *fhttp.Context) (requests.StorePost, views.Po
 	// of two inputs, a default that depends on the actor.
 	// arandu:end custom
 
-	return in, form, errs
+	return in, form, errs, nil
 }
 
 // rejectedCreate re-renders the creation form with its errors, as the 422
@@ -616,19 +626,13 @@ func (c *PostController) fail(ctx *fhttp.Context, err error) error {
 	}
 }
 
-// moment reads a date or a timestamp, in the layout the matching HTML input
-// submits.
-func (c *PostController) moment(ctx *fhttp.Context, field, layout string, e validation.Errors) time.Time {
-	raw := ctx.Input(field)
-	if raw == "" {
-		return time.Time{}
+// dateTimeLocal spells a moment the way an <input type="datetime-local"> takes
+// it, and the zero time -- a draft -- as an empty box.
+func dateTimeLocal(t time.Time) string {
+	if t.IsZero() {
+		return ""
 	}
-	t, err := time.Parse(layout, raw)
-	if err != nil {
-		e.Add(field, "is not a valid date")
-		return time.Time{}
-	}
-	return t
+	return t.Format("2006-01-02T15:04")
 }
 
 // arandu:begin custom

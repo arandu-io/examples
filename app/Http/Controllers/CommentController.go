@@ -157,7 +157,10 @@ func (c *CommentController) Store(ctx *fhttp.Context) error {
 		return c.signIn(ctx)
 	}
 
-	in, form, errs := c.input(ctx)
+	in, form, errs, err := c.input(ctx)
+	if err != nil {
+		return err
+	}
 
 	// The post comes from the route, never from the form. A hidden field carrying
 	// it is a hidden field somebody edits and would let a comment be attached to
@@ -211,7 +214,10 @@ func (c *CommentController) Update(ctx *fhttp.Context) error {
 		return c.signIn(ctx)
 	}
 
-	in, form, errs := c.input(ctx)
+	in, form, errs, err := c.input(ctx)
+	if err != nil {
+		return err
+	}
 	form.ID = ctx.Param("id")
 	if !c.Validated(errs) {
 		return c.rejectedEdit(ctx, actor, form, errs)
@@ -285,27 +291,30 @@ func (c *CommentController) form(co models.Comment) views.CommentForm {
 	}
 }
 
-// input reads the submitted form.
+// input binds the submitted form.
 //
-// It returns three things: the typed request the service takes, the form as it
-// was typed -- so a rejected submission comes back filled in rather than blank --
-// and the errors parsing itself found. A number that is not a number is rejected
-// here, naming the field, rather than reaching the service as a silent zero.
-func (c *CommentController) input(ctx *fhttp.Context) (requests.StoreComment, views.CommentForm, validation.Errors) {
+// It returns four things: the typed request the service takes, the form as it
+// is drawn again, so a rejected submission comes back filled in rather than
+// blank; the fields Bind could not convert; and any other error, which is about
+// the request rather than the form -- a body over the size limit answers 413
+// through it.
+//
+// Bind reads the body and nothing else -- never the query string of a write --
+// and writes only the fields requests.StoreComment declares with a form tag.
+// The approved box is a checkbox: absent when it is not ticked, which Bind
+// reads as false, and "1" when it is.
+func (c *CommentController) input(ctx *fhttp.Context) (requests.StoreComment, views.CommentForm, validation.Errors, error) {
+	var in requests.StoreComment
 	errs := validation.Errors{}
-
-	in := requests.StoreComment{
-		PostId:   ctx.Input("post_id"),
-		Author:   ctx.Input("author"),
-		Body:     ctx.Input("body"),
-		Approved: ctx.Input("approved") != "",
+	if err := ctx.Bind(&in); err != nil && !errors.As(err, &errs) {
+		return in, views.CommentForm{}, nil, err
 	}
 
 	form := views.CommentForm{
-		PostId:   ctx.Input("post_id"),
-		Author:   ctx.Input("author"),
-		Body:     ctx.Input("body"),
-		Approved: ctx.Input("approved") != "",
+		PostId:   in.PostId,
+		Author:   in.Author,
+		Body:     in.Body,
+		Approved: in.Approved,
 	}
 
 	// arandu:begin custom
@@ -313,7 +322,7 @@ func (c *CommentController) input(ctx *fhttp.Context) (requests.StoreComment, vi
 	// of two inputs, a default that depends on the actor.
 	// arandu:end custom
 
-	return in, form, errs
+	return in, form, errs, nil
 }
 
 // rejectedCreate re-renders the creation form with its errors, as the 422

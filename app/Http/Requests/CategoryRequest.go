@@ -4,13 +4,13 @@ import (
 	"github.com/arandu-io/framework/validation"
 )
 
-// StoreCategory is the input contract of creation. Fields are explicit: there
-// is no mass assignment, so a field the client sends and this struct does not
-// declare goes nowhere.
+// StoreCategory is the input contract of creation. ctx.Bind fills it through
+// the form tags, and only those: there is no mass assignment, so a key the
+// client sends and this struct does not declare goes nowhere.
 type StoreCategory struct {
-	Name        string
-	Slug        string
-	Description string
+	Name        string `form:"name"`
+	Slug        string `form:"slug"`
+	Description string `form:"description"`
 }
 
 // Validate reports the errors per field.

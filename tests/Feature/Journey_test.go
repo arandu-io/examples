@@ -566,3 +566,36 @@ func TestTheScreenThatAsksForAPasswordAgainDrawsTheHeaderOfSomebodySignedIn(t *t
 		t.Errorf("a signed-in person is offered the guest half of the bar:\n%s", bar)
 	}
 }
+
+// TestAWriteReadsItsBodyAndNothingElse: the post form is bound from the body
+// alone, into the fields the request declares.
+//
+// A title in the action's query string is not a title. A form posts its fields
+// in the body, and a value riding on the address is one somebody wrote into a
+// link -- so the post below has none, is refused for it, and no row is stored.
+// A date that is not a date is refused the same way, naming its field, rather
+// than reaching the service as the zero time, which this application reads as
+// a draft.
+func TestAWriteReadsItsBodyAndNothingElse(t *testing.T) {
+	client, db := tests.App(t)
+	signInAs(t, client, db, "Grace Hopper", "admin")
+
+	client.Get("/posts/create").OK()
+	client.Post("/posts?title=From+the+address", map[string]string{
+		"slug": "from-the-body", "body": "A body, and no title in it.",
+	}).Status(422)
+
+	var stored int
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT count(*) FROM posts WHERE slug = ?`, "from-the-body").Scan(&stored); err != nil {
+		t.Fatalf("counting the posts: %v", err)
+	}
+	if stored != 0 {
+		t.Fatal("a post was stored with the title its address carried")
+	}
+
+	client.Get("/posts/create").OK()
+	client.Post("/posts", map[string]string{
+		"title": "Dated", "slug": "dated", "body": "A body.", "published_at": "the day after",
+	}).Status(422).See("is not a valid date")
+}

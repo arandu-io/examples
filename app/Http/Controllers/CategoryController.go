@@ -157,7 +157,10 @@ func (c *CategoryController) Store(ctx *fhttp.Context) error {
 		return c.signIn(ctx)
 	}
 
-	in, form, errs := c.input(ctx)
+	in, form, errs, err := c.input(ctx)
+	if err != nil {
+		return err
+	}
 	if !c.Validated(errs) {
 		return c.rejectedCreate(ctx, actor, form, errs)
 	}
@@ -200,7 +203,10 @@ func (c *CategoryController) Update(ctx *fhttp.Context) error {
 		return c.signIn(ctx)
 	}
 
-	in, form, errs := c.input(ctx)
+	in, form, errs, err := c.input(ctx)
+	if err != nil {
+		return err
+	}
 	form.ID = ctx.Param("id")
 	if !c.Validated(errs) {
 		return c.rejectedEdit(ctx, actor, form, errs)
@@ -271,25 +277,27 @@ func (c *CategoryController) form(ca models.Category) views.CategoryForm {
 	}
 }
 
-// input reads the submitted form.
+// input binds the submitted form.
 //
-// It returns three things: the typed request the service takes, the form as it
-// was typed -- so a rejected submission comes back filled in rather than blank --
-// and the errors parsing itself found. A number that is not a number is rejected
-// here, naming the field, rather than reaching the service as a silent zero.
-func (c *CategoryController) input(ctx *fhttp.Context) (requests.StoreCategory, views.CategoryForm, validation.Errors) {
+// It returns four things: the typed request the service takes, the form as it
+// is drawn again, so a rejected submission comes back filled in rather than
+// blank; the fields Bind could not convert; and any other error, which is about
+// the request rather than the form -- a body over the size limit answers 413
+// through it.
+//
+// Bind reads the body and nothing else -- never the query string of a write --
+// and writes only the fields requests.StoreCategory declares with a form tag.
+func (c *CategoryController) input(ctx *fhttp.Context) (requests.StoreCategory, views.CategoryForm, validation.Errors, error) {
+	var in requests.StoreCategory
 	errs := validation.Errors{}
-
-	in := requests.StoreCategory{
-		Name:        ctx.Input("name"),
-		Slug:        ctx.Input("slug"),
-		Description: ctx.Input("description"),
+	if err := ctx.Bind(&in); err != nil && !errors.As(err, &errs) {
+		return in, views.CategoryForm{}, nil, err
 	}
 
 	form := views.CategoryForm{
-		Name:        ctx.Input("name"),
-		Slug:        ctx.Input("slug"),
-		Description: ctx.Input("description"),
+		Name:        in.Name,
+		Slug:        in.Slug,
+		Description: in.Description,
 	}
 
 	// arandu:begin custom
@@ -297,7 +305,7 @@ func (c *CategoryController) input(ctx *fhttp.Context) (requests.StoreCategory, 
 	// of two inputs, a default that depends on the actor.
 	// arandu:end custom
 
-	return in, form, errs
+	return in, form, errs, nil
 }
 
 // rejectedCreate re-renders the creation form with its errors, as the 422

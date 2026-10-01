@@ -4,14 +4,14 @@ import (
 	"github.com/arandu-io/framework/validation"
 )
 
-// StoreComment is the input contract of creation. Fields are explicit: there
-// is no mass assignment, so a field the client sends and this struct does not
-// declare goes nowhere.
+// StoreComment is the input contract of creation. ctx.Bind fills it through
+// the form tags, and only those: there is no mass assignment, so a key the
+// client sends and this struct does not declare goes nowhere.
 type StoreComment struct {
-	PostId   string
-	Author   string
-	Body     string
-	Approved bool
+	PostId   string `form:"post_id"`
+	Author   string `form:"author"`
+	Body     string `form:"body"`
+	Approved bool   `form:"approved"`
 }
 
 // Validate reports the errors per field.

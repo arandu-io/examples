@@ -6,14 +6,14 @@ import (
 	"github.com/arandu-io/framework/validation"
 )
 
-// StorePost is the input contract of creation. Fields are explicit: there
-// is no mass assignment, so a field the client sends and this struct does not
-// declare goes nowhere.
+// StorePost is the input contract of creation. ctx.Bind fills it through
+// the form tags, and only those: there is no mass assignment, so a key the
+// client sends and this struct does not declare goes nowhere.
 type StorePost struct {
-	Title       string
-	Slug        string
-	Body        string
-	PublishedAt time.Time
+	Title       string    `form:"title"`
+	Slug        string    `form:"slug"`
+	Body        string    `form:"body"`
+	PublishedAt time.Time `form:"published_at"`
 }
 
 // Validate reports the errors per field.
