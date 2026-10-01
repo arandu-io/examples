@@ -96,10 +96,11 @@ The CLI documents itself. `aru help` lists every command, and each one explains
 what it writes and what to do with it. `aru doctor` explains what it found and
 what breaks, not which rule was violated.
 
-A guide and a website do not exist yet, and that is a decision rather than a
-gap: a guide written against an API that still moves is work done twice, and the
-second time is worse — there is wrong documentation published. The site is the
-next phase, and it will be an Arandu application.
+The site is [arandu.io/docs](https://arandu.io/docs), itself an Arandu
+application, and it is where the decisions this project has made are recorded
+with their reasons. A usage guide is not written yet, and that is a decision
+rather than a gap: a guide written against an API that still moves is work done
+twice, and the second time is worse — there is wrong documentation published.
 
 ## Contributing
 
