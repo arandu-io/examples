@@ -9,7 +9,6 @@ import (
 	"github.com/arandu-io/framework/observability"
 	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/hesape/database"
-	"github.com/arandu-io/hesape/database/model"
 
 	requests "github.com/arandu-io/examples/app/Http/Requests"
 	models "github.com/arandu-io/examples/app/Models"
@@ -107,24 +106,29 @@ func (s *CategoryService) Create(ctx context.Context, actor security.Subject, in
 		return models.Category{}, err
 	}
 
-	// A row is built by the model and then filled with the struct, rather than
+	// A row is built by the model and then filled field by field, rather than
 	// by handing the model a map of column names. The map is the shape that
-	// drops a key nobody noticed was misspelled; the struct is the one the
-	// compiler reads. The tenant is deliberately not set here -- whatever this
+	// drops a key nobody noticed was misspelled; the fields are the ones the
+	// compiler reads. Each is assigned on its own, because assigning the whole
+	// candidate over the row would replace the model it is wired with, and Save
+	// would refuse it. The tenant is deliberately not set here -- whatever this
 	// field holds, the insert writes data.Tenant(g) over it.
-	instance, err := models.Categories(s.db).NewInstance(nil, false)
+	row, err := models.Categories(s.db).New()
 	if err != nil {
 		return models.Category{}, err
 	}
-	*instance.Entity = candidate
+	row.ID = candidate.ID
+	row.Name = candidate.Name
+	row.Slug = candidate.Slug
+	row.Description = candidate.Description
 
-	if _, err := instance.Save(ctx, g); err != nil {
+	if _, err := row.Save(ctx, g); err != nil {
 		if conflict(err) {
 			return models.Category{}, models.ErrCategoryConflict
 		}
 		return models.Category{}, err
 	}
-	created := *instance.Entity
+	created := *row
 
 	// Guarded: the entity is a struct value, and boxing it into `any` allocates
 	// at the call site even though RecordEvent is a no-op on a nil Collector.
@@ -149,7 +153,7 @@ func (s *CategoryService) Get(ctx context.Context, actor security.Subject, id st
 	// to another tenant matches nothing, so it answers ErrCategoryNotFound
 	// rather than the row -- which is the same answer an id that does not exist
 	// gets, and telling the two apart is itself a leak.
-	found, err := models.Categories(s.db).NewQuery().WhereKey(id).First(ctx, g)
+	found, err := models.Categories(s.db).WhereKey(id).First(ctx, g)
 	if err != nil {
 		return models.Category{}, err
 	}
@@ -193,8 +197,7 @@ func (s *CategoryService) List(ctx context.Context, actor security.Subject, q da
 		limit = categoryMaxLimit
 	}
 
-	sections := models.Categories(s.db)
-	page := sections.NewQuery()
+	page := models.Categories(s.db)
 
 	if q.Cursor != "" {
 		// The anchor is read through a terminal of its own, and that is what
@@ -202,7 +205,7 @@ func (s *CategoryService) List(ctx context.Context, actor security.Subject, q da
 		// another tenant would once have decided where our page starts; here the
 		// lookup is a statement the model scopes by data.Tenant(g), so such an
 		// id resolves to nothing and the page is empty.
-		anchor, err := sections.NewQuery().WhereKey(q.Cursor).Value(ctx, g, column)
+		anchor, err := models.Categories(s.db).WhereKey(q.Cursor).Value(ctx, g, column)
 		if err != nil {
 			return nil, err
 		}
@@ -212,9 +215,9 @@ func (s *CategoryService) List(ctx context.Context, actor security.Subject, q da
 		// The predicate names the column the ORDER BY names, and the id breaks
 		// the tie: two rows sharing a created_at would otherwise page over each
 		// other forever.
-		page = page.Where(func(after *model.Builder[models.Category]) {
+		page = page.Where(func(after *models.CategoryQuery) {
 			after.Where(column, ">", anchor).
-				OrWhere(func(equal *model.Builder[models.Category]) {
+				OrWhere(func(equal *models.CategoryQuery) {
 					equal.Where(column, "=", anchor).Where("id", ">", q.Cursor)
 				})
 		})
@@ -256,7 +259,7 @@ func (s *CategoryService) Update(ctx context.Context, actor security.Subject, in
 	// list, where a value the caller chose could file the row under somebody
 	// else -- the where clause would still find only our row, and the row would
 	// leave.
-	changed, err := models.Categories(s.db).NewQuery().WhereKey(stored.ID).
+	changed, err := models.Categories(s.db).WhereKey(stored.ID).
 		Update(ctx, g, map[string]any{
 			"name":        stored.Name,
 			"slug":        stored.Slug,
@@ -279,7 +282,7 @@ func (s *CategoryService) Update(ctx context.Context, actor security.Subject, in
 		// So it is asked again. The window between the read and the write is
 		// real, and this is the read that closes it: the row is gone only if it
 		// is gone now.
-		gone, err := models.Categories(s.db).NewQuery().WhereKey(stored.ID).Count(ctx, g)
+		gone, err := models.Categories(s.db).WhereKey(stored.ID).Count(ctx, g)
 		if err != nil {
 			return models.Category{}, err
 		}
@@ -324,7 +327,7 @@ func (s *CategoryService) Delete(ctx context.Context, actor security.Subject, id
 		return models.ErrCategoryNotEmpty
 	}
 
-	removed, err := models.Categories(s.db).NewQuery().WhereKey(id).Delete(ctx, g)
+	removed, err := models.Categories(s.db).WhereKey(id).Delete(ctx, g)
 	if err != nil {
 		return err
 	}
@@ -363,7 +366,7 @@ func (s *CategoryService) BySlug(ctx context.Context, actor security.Subject, sl
 	// it because the model puts it there, not because this line remembered to.
 	// A slug is also the half of the address a reader can type, which makes this
 	// the query most likely to be handed another tenant's value.
-	found, err := models.Categories(s.db).NewQuery().
+	found, err := models.Categories(s.db).
 		Where("slug", "=", normalize(slug)).First(ctx, g)
 	if err != nil {
 		return models.Category{}, err
@@ -389,7 +392,7 @@ func (s *CategoryService) All(ctx context.Context, actor security.Subject) ([]mo
 	if err != nil {
 		return nil, err
 	}
-	found, err := models.Categories(s.db).NewQuery().
+	found, err := models.Categories(s.db).
 		OrderBy("name").OrderBy("id").Limit(categoryMaxLimit).Get(ctx, g)
 	if err != nil {
 		return nil, err
@@ -405,7 +408,10 @@ func (s *CategoryService) All(ctx context.Context, actor security.Subject) ([]mo
 //
 // The copy is the point rather than a cost. A view struct, a policy argument and
 // a template all take the entity by value here, and handing out the pointer the
-// query holds would let a template write into the row a policy was asked about.
+// query holds would let a template write into the row a policy was asked about
+// -- through its fields, and through the Save the embedded model promotes. A
+// copy's fields are its own, and Save, Update and Delete through it answer
+// model.ErrUnwired.
 func entities(found []*models.Category) []models.Category {
 	if len(found) == 0 {
 		return nil

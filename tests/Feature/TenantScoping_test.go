@@ -419,9 +419,10 @@ func TestNoCategoryQueryReadsAnotherTenantsRows(t *testing.T) {
 
 // TestTheSectionRelationHoldsNoArticleOfAnotherTenant.
 //
-// The relation is the eager load this application has: models.PostsOf is a
-// has-many from a section to the articles filed under it, and the children are
-// fetched by the key of a parent that was already scoped. That is exactly what
+// The relation is the eager load this application has: "posts", registered on
+// the categories table, is a has-many from a section to the articles filed
+// under it, and the children are fetched by the key of a parent that was
+// already scoped. That is exactly what
 // makes the second query easy to leave unscoped -- the section id being asked
 // about is ours, so the filter looks redundant.
 //
@@ -431,11 +432,12 @@ func TestNoCategoryQueryReadsAnotherTenantsRows(t *testing.T) {
 // would hand it to the delete guard, and the guard would refuse to empty a
 // section that this tenant sees as empty.
 //
-// The read back is the second half. A models.Category is a plain struct with no
-// field pointing at its model, so model.Related and Model.Load -- the two ways
-// to read a relation off a row -- are not reachable from it. What is reachable
-// is the relation itself: PostsIn loads it under the Grant and unwraps what came
-// back with model.Unref. This asserts on the entities that came out of that,
+// The read back is the second half. The models.Category values this
+// application hands around are copies, and a copy holds the model of the row it
+// was copied from, so Load -- the way to read a relation onto a row -- refuses
+// it. PostsIn builds the section as a row of its own from the id and the
+// tenant written below, loads the relation onto it under the Grant, and reads
+// it back with Related. This asserts on the entities that came out of that,
 // because a relation that loads and cannot be read back is a relation nobody
 // can use.
 func TestTheSectionRelationHoldsNoArticleOfAnotherTenant(t *testing.T) {
@@ -556,7 +558,7 @@ func TestTheTenantOnAWriteComesFromTheGrant(t *testing.T) {
 	t.Run("category", func(t *testing.T) {
 		g := security.SystemGrant(policies.CategoryCreate, ours)
 
-		instance, err := models.Categories(db).NewInstance(nil, false)
+		row, err := models.Categories(db).New()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -564,16 +566,15 @@ func TestTheTenantOnAWriteComesFromTheGrant(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		*instance.Entity = models.Category{
-			ID: id, TenantID: theirTenant, Name: "Reports", Slug: "reports",
-		}
-		if _, err := instance.Save(ctx, g); err != nil {
+		row.ID, row.TenantID, row.Name, row.Slug = id, theirTenant, "Reports", "reports"
+		if _, err := row.Save(ctx, g); err != nil {
 			t.Fatal(err)
 		}
 
-		// Read off the table rather than off the value in hand: the struct still
-		// holds what the caller wrote, and the question is what the INSERT put
-		// in the column.
+		// Read off the table rather than off the value in hand: the model sets the
+		// Grant's tenant on the struct as part of the insert, so the struct
+		// answers ours whatever the INSERT did, and the question is what the
+		// INSERT put in the column.
 		if tenant := categoryTenant(t, db, id); tenant != ours {
 			t.Fatalf("the section was filed under %q, which the caller chose", tenant)
 		}

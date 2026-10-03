@@ -76,7 +76,7 @@ func (PostSeeder) Run(ctx context.Context, d Deps) error {
 	// there is no CategoryRepository any more, because every statement it held
 	// was CRUD over one table. This read is the same one CategoryService.All
 	// makes, under a Grant of its own.
-	filed, err := models.Categories(d.DB).NewQuery().OrderBy("name").OrderBy("id").
+	filed, err := models.Categories(d.DB).OrderBy("name").OrderBy("id").
 		Get(ctx, sectionList)
 	if err != nil {
 		return fmt.Errorf("reading the sections: %w", err)

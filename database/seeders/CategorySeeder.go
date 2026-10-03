@@ -67,7 +67,7 @@ func (CategorySeeder) Run(ctx context.Context, d Deps) error {
 	// and a query inside a loop is the shape of an N+1. Pluck is the terminal
 	// that answers one column, so the round trip carries the slugs and not the
 	// rows behind them -- and it takes the Grant, like every other read.
-	taken, err := models.Categories(d.DB).NewQuery().Pluck(ctx, listing, "slug")
+	taken, err := models.Categories(d.DB).Pluck(ctx, listing, "slug")
 	if err != nil {
 		return fmt.Errorf("reading the sections: %w", err)
 	}

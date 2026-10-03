@@ -17,7 +17,6 @@ import (
 	"github.com/arandu-io/hesape/auth"
 	authusers "github.com/arandu-io/hesape/auth/users"
 	"github.com/arandu-io/hesape/database"
-	"github.com/arandu-io/hesape/database/model"
 	"github.com/arandu-io/hesape/database/query"
 	"github.com/arandu-io/hesape/hashing"
 
@@ -54,7 +53,7 @@ func (e TooManyAttemptsError) Error() string {
 	return "user: too many attempts, try again in " + strconv.Itoa(e.Seconds()) + " seconds"
 }
 
-// UserService owns application user rules and persistence through Model[User].
+// UserService owns application user rules and persistence through models.Users.
 type UserService struct {
 	db       *data.DB
 	policy   policies.UserPolicy
@@ -70,24 +69,47 @@ func NewUserService(db *data.DB) *UserService {
 }
 
 // credentialUser is the narrow private adapter the native provider hydrates.
-// Remember-token methods intentionally have no storage behind them: this
-// application creates sessions only through SessionStore after all factors.
-type credentialUser struct{ *model.Model[models.User] }
+// The provider reads the row as a record and hands it to SetRawAttributes,
+// where it becomes a models.User the way every other read makes one; the
+// rehash that follows a sign-in puts the new hash on it through the user's own
+// ForceFill. Remember-token methods intentionally have no storage behind them:
+// this application creates sessions only through SessionStore after all
+// factors.
+type credentialUser struct {
+	*models.User
+	db *data.DB
+}
 
+// newCredentialUser returns an adapter holding no account yet: the provider
+// asks it only for the name of the identifier column before filling it.
 func newCredentialUser(db *data.DB) *credentialUser {
-	return &credentialUser{Model: models.Users(db)}
+	return &credentialUser{User: &models.User{}, db: db}
+}
+
+// SetRawAttributes fills the adapter from the row the provider read, onto a
+// user wired to the connection the row came from.
+func (u *credentialUser) SetRawAttributes(attributes map[string]any, sync bool) error {
+	user, err := models.Users(u.db).New()
+	if err != nil {
+		return err
+	}
+	if err := user.SetRawAttributes(attributes, sync); err != nil {
+		return err
+	}
+	u.User = user
+	return nil
 }
 
 func (u *credentialUser) GetAuthIdentifierName() string { return "id" }
-func (u *credentialUser) GetAuthIdentifier() any        { return u.Entity.ID }
+func (u *credentialUser) GetAuthIdentifier() any        { return u.ID }
 func (u *credentialUser) GetAuthPasswordName() string   { return "password" }
-func (u *credentialUser) GetAuthPassword() string       { return u.Entity.Password }
+func (u *credentialUser) GetAuthPassword() string       { return u.Password }
 func (*credentialUser) GetRememberToken() string        { return "" }
 func (*credentialUser) SetRememberToken(string)         {}
 func (*credentialUser) GetRememberTokenName() string    { return "" }
 
 func (u *credentialUser) domain() (models.User, error) {
-	user := *u.Entity
+	user := *u.User
 	if err := user.DecodeRoles(); err != nil {
 		return models.User{}, fmt.Errorf("user: unreadable roles for %s: %w", user.ID, err)
 	}
@@ -111,7 +133,7 @@ func (s *UserService) credentials(tenant string) *auth.CredentialVerifier {
 	provider := authusers.NewModelUserProvider(
 		hashing.ForAuth(nil),
 		func() auth.Authenticatable { return newCredentialUser(s.db) },
-		func(context.Context) *query.Builder { return models.Users(s.db).NewBaseQueryBuilder() },
+		func(context.Context) *query.Builder { return models.Users(s.db).GetQuery() },
 		tenant,
 	)
 	return auth.NewCredentialVerifier(&credentialProvider{ModelUserProvider: provider}, nil, true, 0)
@@ -206,7 +228,7 @@ func (s *UserService) PublicNames(ctx context.Context, reader security.Subject, 
 	for i := range ids {
 		values[i] = ids[i]
 	}
-	rows, err := models.Users(s.db).NewQuery().WhereIn("id", values).Get(ctx, grant, "id", "name", "email")
+	rows, err := models.Users(s.db).WhereIn("id", values).Get(ctx, grant, "id", "name", "email")
 	if err != nil {
 		return nil, err
 	}

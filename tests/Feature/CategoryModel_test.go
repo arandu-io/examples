@@ -56,17 +56,19 @@ func TestNoSectionStatementRunsWithoutAGrant(t *testing.T) {
 	col := observability.NewCollector("no-grant")
 	ctx = observability.WithCollector(ctx, col)
 
-	sections := models.Categories(db)
 	var zero security.Grant
 
 	terminals := map[string]func() error{
-		"Get":    func() error { _, err := sections.NewQuery().Get(ctx, zero); return err },
-		"First":  func() error { _, err := sections.NewQuery().First(ctx, zero); return err },
-		"Value":  func() error { _, err := sections.NewQuery().Value(ctx, zero, "slug"); return err },
-		"Pluck":  func() error { _, err := sections.NewQuery().Pluck(ctx, zero, "slug"); return err },
-		"Count":  func() error { _, err := sections.NewQuery().Count(ctx, zero); return err },
-		"Update": func() error { _, err := sections.NewQuery().Update(ctx, zero, map[string]any{"name": "x"}); return err },
-		"Delete": func() error { _, err := sections.NewQuery().Delete(ctx, zero); return err },
+		"Get":   func() error { _, err := models.Categories(db).Get(ctx, zero); return err },
+		"First": func() error { _, err := models.Categories(db).First(ctx, zero); return err },
+		"Value": func() error { _, err := models.Categories(db).Value(ctx, zero, "slug"); return err },
+		"Pluck": func() error { _, err := models.Categories(db).Pluck(ctx, zero, "slug"); return err },
+		"Count": func() error { _, err := models.Categories(db).Count(ctx, zero); return err },
+		"Update": func() error {
+			_, err := models.Categories(db).Update(ctx, zero, map[string]any{"name": "x"})
+			return err
+		},
+		"Delete": func() error { _, err := models.Categories(db).Delete(ctx, zero); return err },
 	}
 
 	for name, run := range terminals {
@@ -203,9 +205,10 @@ func TestTheFactoryMakesWithoutAGrantAndCreatesWithOne(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Read off the table rather than off the value in hand: the struct still
-	// holds what the definition wrote, and the question is what the INSERT put
-	// in the column.
+	// Read off the table rather than off the value in hand: the model sets the
+	// Grant's tenant on the struct as part of the insert, so the struct
+	// answers ours whatever the INSERT did, and the question is what the INSERT
+	// put in the column.
 	if tenant := categoryTenant(t, db, stored.ID); tenant != ours {
 		t.Fatalf("the factory filed the row under %q, which its own definition chose", tenant)
 	}

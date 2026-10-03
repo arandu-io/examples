@@ -6,31 +6,31 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/arandu-io/framework/data"
 	"github.com/arandu-io/hesape/database/model"
 )
 
-// Post is the entity. It has no persistence methods: this is not Active
-// Record, and a type that can save itself can save itself from anywhere.
+// Post is the entity. It has no persistence methods of its own: this is not
+// Active Record.
 //
-// There is no Find, no Save and no query builder on this type. The table is
-// reached by PostRepository, and every method of a repository -- Find and
-// List included -- takes a security.Grant that only a Policy can issue. The
-// model is data; the Policy is the door.
+// The table is reached by PostRepository, and every method of a repository --
+// Find and List included -- takes a security.Grant that only a Policy can
+// issue. The model is data; the Policy is the door.
 //
-// # The db tags, and what they do not turn this into
+// # The embedded model and the db tags, and what they do not turn this into
 //
-// The tags name the column each field stands for. They are read by the model
-// layer, and nothing else in this file changed for them: a tag is a string on a
-// struct, not a method on it. The one query this application runs over posts
-// through the model is the section relation -- see PostsOf -- and its related
-// model is built by postsModel below, unexported, because PostRepository is
-// still the door to this table and a second exported one would be a second door.
+// The tags name the column each field stands for, and model.Model is the row
+// core a table's rows embed. Both are here for one statement: the section
+// relation, whose related side is postTable -- see PostsIn. The rows that
+// relation loads can answer Save, but only the row itself, under a Grant; every
+// Post this application hands around is a value the repository scanned or a
+// copy, and a statement through either answers model.ErrUnwired.
 //
 // The tag is written out even where the snake case of the field name would
 // answer the same, because "the name a reader can see" and "the name a
 // convention derives" stop agreeing at the first field somebody renames.
 type Post struct {
+	model.Model
+
 	ID string `db:"id"`
 
 	// TenantID is whose post this is. It is written from the Grant and never
@@ -60,28 +60,30 @@ type Post struct {
 	CreatedAt   time.Time `db:"created_at"`
 }
 
-// postsModel is the posts table as the model layer sees it, and it exists for
+// postTable is the posts table as the model layer sees it, and it exists for
 // the relation and for nothing else.
 //
-// Unexported deliberately. PostRepository is the door to this table; an
-// exported façade beside it would be a second way to read the same rows, which
-// is the one thing the collection refuses. What PostsOf needs is the related
-// side of a has-many, and a relation is not a door -- it is reachable only from
-// a section that was already read under a Grant.
+// A relation reads a table, so the related side of the section relation needs
+// one, and aru model:build generates a query beside every table: Posts and
+// PostQuery, in PostQuery.go, exported like every generated query. They are not
+// a second door. PostRepository is the door to this table, and nothing outside
+// this package calls Posts; what reaches posts through the model is the
+// relation, and a relation is reachable only from a section, under a Grant.
 //
-// The three settings are the three places posts is not the default model. The
-// key is a text identifier the application generates, so it does not increment;
-// the table has no updated_at, so nothing may try to write one. The tenant
-// column is left alone: it is tenant_id, which is what the model already
-// assumes, and turning the scoping off is the only thing that has to be said
-// out loud.
-func postsModel(db *data.DB) *model.Model[Post] {
-	m := model.NewModel[Post]("posts", db, db.GetQueryGrammar(), db.GetPostProcessor())
-	m.KeyType = "string"
-	m.Incrementing = false
-	m.UpdatedAtColumn = ""
-	return m
-}
+// The two settings are the two places posts is not the default table. The key
+// is a text identifier the application writes, so it neither increments nor is
+// drawn by the model; the table has no updated_at, so nothing may try to write
+// one. The tenant column is left alone: it is tenant_id, which is what the
+// model already assumes, and turning the scoping off is the only thing that has
+// to be said out loud.
+var postTable = model.NewTable(model.TableSpec{
+	Name:            "posts",
+	New:             func() model.Entity { return new(Post) },
+	ManualKey:       true,
+	UpdatedAtColumn: model.NoColumn,
+	// arandu:begin custom
+	// arandu:end custom
+})
 
 // Published reports whether the post is out.
 //
