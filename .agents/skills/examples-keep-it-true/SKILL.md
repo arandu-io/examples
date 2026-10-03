@@ -29,7 +29,7 @@ all six turns one legible failure into a bisect.
 
 ```sh
 go get github.com/arandu-io/framework@vX.Y.Z && go mod tidy
-aru view:build && go build ./... && go vet ./... && go test -race -count=1 ./...
+aru model:build && aru view:build && go build ./... && go vet ./... && go test -race -count=1 ./...
 aru doctor && bash tests/test-layout-guard.sh
 ```
 

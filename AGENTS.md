@@ -18,6 +18,7 @@ Nothing is finished until all of these exit zero. Measured on this tree.
 
 ```sh
 export GOWORK=off
+aru model:build
 aru view:build
 gofmt -l $(find . -name '*.go' -not -path '*/testdata/*' -not -name '*.kyse.go')
 go build ./...
@@ -27,7 +28,12 @@ aru doctor
 bash tests/test-layout-guard.sh
 ```
 
-`aru view:build` is first and is not optional on a fresh clone. The 34 files
+`aru model:build` writes the typed query beside each entity in `app/Models`
+(`CategoryQuery.go`, `PostQuery.go`, `UserQuery.go`) and the generated part of
+`database/factories/CategoryFactory.go`. Those files are committed, so on a
+clean tree it changes nothing; `aru doctor` reports one that is stale.
+
+`aru view:build` is not optional on a fresh clone. The 34 files
 under `resources/views/*.kyse.go` compile to 34 files under
 `storage/framework/views/`, and `.gitignore` keeps that output out of the tree —
 so before it has run, `go build ./...` fails with `undefined: renderHome` rather
@@ -89,7 +95,7 @@ exists to argue against. None of them is missing by accident.
 | a repository row read or write without a Grant | nothing. `tests/Unit/testdata/missing_grant/main.go` is the fixture that must not compile; the two `Health` methods only ping |
 | a second query filtered "for guests" | a named action with a query of its own — `PostPublicList` beside `PostList` in `app/Policies/PostPolicy.go` |
 | a tenant read off a path, a body, a query or a header | `data.Tenant(g)`. `withSubject` in `routes/web.go` takes the subject off the session cookie and nothing else |
-| a hand-written repository for routine CRUD | `Model[T]` and `Builder[T]`; parameterised SQL repositories remain for complex queries and operations |
+| a hand-written repository for routine CRUD | an entity that embeds `model.Model`, its table declared once beside it, and the typed query `aru model:build` generates there (`models.Categories(db)`); parameterised SQL repositories remain for complex queries and operations |
 | a template engine with runtime lookup | `.kyse.go`, compiled to Go. A missing field is a build error |
 | npm, a bundler, `node_modules`, a CDN script | nothing. `TestResourcesHoldNoJavaScript` and `TestTheOnlyScriptsServedAreTheEmbeddedOnes` walk the tree and the response |
 | production or seed data that writes behind a Policy without saying so | `security.SystemGrant` with a `//arandu:system-grant <reason>` line directly above it. Nineteen production and seeder calls carry that reason; tests use additional grants to arrange cases |
