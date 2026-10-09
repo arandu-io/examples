@@ -10,27 +10,15 @@ import (
 
 @go
 // CommentsEditData is what CommentController.Edit hands this page: the form
-// filled in with a stored record, or with what was typed when Update rejected it.
+// filled in with a stored record. A rejected update comes back to it with
+// what was typed in place of the stored values, from the flash on the page.
 type CommentsEditData struct {
-	// Page is the state the layout draws. Its Token is what @csrf writes into
-	// the hidden field.
+	// Page is the state the layout draws, and what every input asks for its
+	// message and for what was typed. Its Token is what @csrf writes into the
+	// hidden field.
 	view.Page
-	// Form is the record as text.
+	// Form is the stored record as text, which is what the inputs start at.
 	Form CommentForm
-	// Errors is the message per field, as validation produced it.
-	Errors map[string][]string
-}
-
-// FieldError is the first message for a field, or empty.
-//
-// A method rather than a lookup in the markup: a view that indexes a map has to
-// check the length first, and d.Errors["title"][0] without that check panics
-// on the happy path -- which is the request where nothing was wrong.
-func (d CommentsEditData) FieldError(field string) string {
-	if msgs := d.Errors[field]; len(msgs) > 0 {
-		return msgs[0]
-	}
-	return ""
 }
 
 // Compile-time proof that this page fits the layout it extends.
@@ -53,7 +41,7 @@ var _ view.Layout = CommentsEditData{}
 	<!-- hx-put, and no action: a browser form can only send GET and POST, and
 	the update route is PUT. HTMX sends the real method, which is why this
 	stack does not need a hidden _method field. -->
-	<form class="mt-8 space-y-6" hx-put="/comments/{{ .Form.ID }}" hx-target="this" hx-swap="outerHTML">
+	<form class="mt-8 space-y-6" hx-put="/comments/{{ .Form.ID }}">
 		@csrf
 		
 		{!! components.Field(components.FieldProps{
@@ -83,10 +71,13 @@ var _ view.Layout = CommentsEditData{}
 			Required: true,
 		}) !!}
 
-		<label class="flex items-center gap-2 text-sm">
-			<input class="input" id="approved" name="approved" type="checkbox" value="1" {{ .Form.ApprovedAttr() }}>
-			Approved
-		</label>
+		{!! components.Checkbox(components.CheckboxProps{
+			Name:    "approved",
+			Label:   "Approved",
+			Value:   "1",
+			Checked: .Form.Approved,
+			Page: .,
+		}) !!}
 
 		<div class="flex items-center gap-3">
 			<button class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-300" type="submit">Save</button>

@@ -2,6 +2,7 @@ package feature_test
 
 import (
 	"context"
+	"net/http"
 	"regexp"
 	"strings"
 	"testing"
@@ -453,15 +454,29 @@ func TestTheModerationAreaOpensForAnAdministrator(t *testing.T) {
 }
 
 // signInAs registers somebody, confirms their address and opens a session.
+func signInAs(t *testing.T, client *arandutest.Client, db *database.DB, name, role string) {
+	t.Helper()
+
+	email := prepareAccount(t, client, db, name, role)
+	client.Get("/auth/login").OK()
+	client.Post("/auth/login", map[string]string{"email": email, "password": accountPassword}).
+		RedirectsTo("/")
+}
+
+// accountPassword is what prepareAccount registers every account with.
+const accountPassword = "a-password-that-passes"
+
+// prepareAccount registers somebody through the form, confirms their address
+// and gives them the role, and answers the address they sign in with.
 //
 // The role is written to the row directly. It is not a form field, and it must
 // not become one: RegisterRequest has no field for it and the policy refuses a
 // candidate carrying any, which is what stops registration from being a way to
 // make yourself an administrator.
-func signInAs(t *testing.T, client *arandutest.Client, db *database.DB, name, role string) {
+func prepareAccount(t *testing.T, client *arandutest.Client, db *database.DB, name, role string) string {
 	t.Helper()
 
-	const password = "a-password-that-passes"
+	const password = accountPassword
 	email := strings.ToLower(strings.ReplaceAll(name, " ", ".")) + "@example.com"
 
 	client.Get("/auth/register").OK()
@@ -486,10 +501,7 @@ func signInAs(t *testing.T, client *arandutest.Client, db *database.DB, name, ro
 		time.Now(), roles, email); err != nil {
 		t.Fatalf("preparing the account: %v", err)
 	}
-
-	client.Get("/auth/login").OK()
-	client.Post("/auth/login", map[string]string{"email": email, "password": password}).
-		RedirectsTo("/")
+	return email
 }
 
 // TestSigningInLandsOnThePageTheGuardTurnedAwayFrom.
@@ -575,27 +587,28 @@ func TestTheScreenThatAsksForAPasswordAgainDrawsTheHeaderOfSomebodySignedIn(t *t
 // link -- so the post below has none, is refused for it, and no row is stored.
 // A date that is not a date is refused the same way, naming its field, rather
 // than reaching the service as the zero time, which this application reads as
-// a draft.
+// a draft. Both refusals send the form back with the message on it, and the
+// title from the address is not among what comes back typed: the flash carries
+// the body of the request, which is all the form ever sent.
 func TestAWriteReadsItsBodyAndNothingElse(t *testing.T) {
-	client, db := tests.App(t)
-	signInAs(t, client, db, "Grace Hopper", "admin")
+	booted := tests.Boot(t)
+	browser := browserAs(t, booted, "Grace Hopper", "admin")
 
-	client.Get("/posts/create").OK()
-	client.Post("/posts?title=From+the+address", map[string]string{
+	browser.Get("/posts/create").AssertOk()
+	browser.WithHeader("Referer", "/posts/create").Post("/posts?title=From+the+address", map[string]string{
 		"slug": "from-the-body", "body": "A body, and no title in it.",
-	}).Status(422)
-
-	var stored int
-	if err := db.QueryRowContext(context.Background(),
-		`SELECT count(*) FROM posts WHERE slug = ?`, "from-the-body").Scan(&stored); err != nil {
-		t.Fatalf("counting the posts: %v", err)
-	}
-	if stored != 0 {
+	}).AssertStatus(http.StatusSeeOther).AssertRedirect("/posts/create")
+	browser.Get("/posts/create").AssertOk().AssertSee("is required").AssertDontSee("From the address")
+	if got := postsWithSlug(t, booted, "from-the-body"); got != 0 {
 		t.Fatal("a post was stored with the title its address carried")
 	}
 
-	client.Get("/posts/create").OK()
-	client.Post("/posts", map[string]string{
+	browser.Post("/posts", map[string]string{
 		"title": "Dated", "slug": "dated", "body": "A body.", "published_at": "the day after",
-	}).Status(422).See("is not a valid date")
+	}).AssertStatus(http.StatusSeeOther).AssertRedirect("/posts/create")
+	browser.WithHeader("Referer", "")
+	browser.Get("/posts/create").AssertOk().AssertSee("is not a valid date")
+	if got := postsWithSlug(t, booted, "dated"); got != 0 {
+		t.Fatal("a post was stored with a date that is not a date")
+	}
 }

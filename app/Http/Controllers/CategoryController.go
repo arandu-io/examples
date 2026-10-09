@@ -11,7 +11,6 @@ import (
 	"github.com/arandu-io/hesape/database"
 	hhttp "github.com/arandu-io/hesape/http"
 	"github.com/arandu-io/hesape/log"
-	"github.com/arandu-io/hesape/validation"
 
 	requests "github.com/arandu-io/examples/app/Http/Requests"
 	models "github.com/arandu-io/examples/app/Models"
@@ -147,8 +146,7 @@ func (c *CategoryController) Create(ctx *hhttp.Context) error {
 	token := csrfToken(ctx)
 
 	return ctx.View("categories.create", views.CategoriesCreateData{
-		Page:   c.nav.page(ctx, actor, true, token, "New category"),
-		Errors: map[string][]string{},
+		Page: c.nav.page(ctx, actor, true, token, "New category"),
 	})
 }
 
@@ -159,20 +157,19 @@ func (c *CategoryController) Store(ctx *hhttp.Context) error {
 		return c.signIn(ctx)
 	}
 
-	in, form, errs, err := c.input(ctx)
-	if err != nil {
+	// Bind reads the body and nothing else -- never the query string of a
+	// write -- into the fields requests.StoreCategory declares with a form tag. A
+	// value it cannot convert comes back as validation.Errors naming the field,
+	// and so does what the service's rules refuse. Both are returned as they
+	// are: the router sends a page back to the form with the messages and what
+	// was typed, and answers a client that asked for JSON with a 422.
+	var in requests.StoreCategory
+	if err := ctx.Bind(&in); err != nil {
 		return err
-	}
-	if !c.Validated(errs) {
-		return c.rejectedCreate(ctx, actor, form, errs)
 	}
 
 	created, err := c.svc.Create(ctx.Ctx(), actor, in)
 	if err != nil {
-		var invalid validation.Errors
-		if errors.As(err, &invalid) {
-			return c.rejectedCreate(ctx, actor, form, invalid)
-		}
 		return c.fail(ctx, err)
 	}
 	return ctx.Redirect("/categories/" + created.ID)
@@ -192,9 +189,8 @@ func (c *CategoryController) Edit(ctx *hhttp.Context) error {
 	token := csrfToken(ctx)
 
 	return ctx.View("categories.edit", views.CategoriesEditData{
-		Page:   c.nav.page(ctx, actor, true, token, "Edit category"),
-		Form:   c.form(found),
-		Errors: map[string][]string{},
+		Page: c.nav.page(ctx, actor, true, token, "Edit category"),
+		Form: c.form(found),
 	})
 }
 
@@ -205,13 +201,9 @@ func (c *CategoryController) Update(ctx *hhttp.Context) error {
 		return c.signIn(ctx)
 	}
 
-	in, form, errs, err := c.input(ctx)
-	if err != nil {
+	var in requests.StoreCategory
+	if err := ctx.Bind(&in); err != nil {
 		return err
-	}
-	form.ID = ctx.Param("id")
-	if !c.Validated(errs) {
-		return c.rejectedEdit(ctx, actor, form, errs)
 	}
 
 	updated, err := c.svc.Update(ctx.Ctx(), actor, requests.UpdateCategory{
@@ -221,10 +213,6 @@ func (c *CategoryController) Update(ctx *hhttp.Context) error {
 		Description: in.Description,
 	})
 	if err != nil {
-		var invalid validation.Errors
-		if errors.As(err, &invalid) {
-			return c.rejectedEdit(ctx, actor, form, invalid)
-		}
 		return c.fail(ctx, err)
 	}
 	return ctx.Redirect("/categories/" + updated.ID)
@@ -277,58 +265,6 @@ func (c *CategoryController) form(ca models.Category) views.CategoryForm {
 		Slug:        ca.Slug,
 		Description: ca.Description,
 	}
-}
-
-// input binds the submitted form.
-//
-// It returns four things: the typed request the service takes, the form as it
-// is drawn again, so a rejected submission comes back filled in rather than
-// blank; the fields Bind could not convert; and any other error, which is about
-// the request rather than the form -- a body over the size limit answers 413
-// through it.
-//
-// Bind reads the body and nothing else -- never the query string of a write --
-// and writes only the fields requests.StoreCategory declares with a form tag.
-func (c *CategoryController) input(ctx *hhttp.Context) (requests.StoreCategory, views.CategoryForm, validation.Errors, error) {
-	var in requests.StoreCategory
-	errs := validation.Errors{}
-	if err := ctx.Bind(&in); err != nil && !errors.As(err, &errs) {
-		return in, views.CategoryForm{}, nil, err
-	}
-
-	form := views.CategoryForm{
-		Name:        in.Name,
-		Slug:        in.Slug,
-		Description: in.Description,
-	}
-
-	// arandu:begin custom
-	// Anything the form carries that the fields above do not: a value composed
-	// of two inputs, a default that depends on the actor.
-	// arandu:end custom
-
-	return in, form, errs, nil
-}
-
-// rejectedCreate re-renders the creation form with its errors, as the 422
-// fragment HTMX swaps back in.
-func (c *CategoryController) rejectedCreate(ctx *hhttp.Context, actor auth.Subject, form views.CategoryForm, errs validation.Errors) error {
-	token := csrfToken(ctx)
-	return c.Invalid(ctx, "categories.create", views.CategoriesCreateData{
-		Page:   c.nav.page(ctx, actor, true, token, "New category"),
-		Form:   form,
-		Errors: errs,
-	})
-}
-
-// rejectedEdit re-renders the edit form with its errors.
-func (c *CategoryController) rejectedEdit(ctx *hhttp.Context, actor auth.Subject, form views.CategoryForm, errs validation.Errors) error {
-	token := csrfToken(ctx)
-	return c.Invalid(ctx, "categories.edit", views.CategoriesEditData{
-		Page:   c.nav.page(ctx, actor, true, token, "Edit category"),
-		Form:   form,
-		Errors: errs,
-	})
 }
 
 // fail turns a domain error into a status, in one place.

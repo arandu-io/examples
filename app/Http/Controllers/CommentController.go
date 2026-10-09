@@ -11,7 +11,6 @@ import (
 	"github.com/arandu-io/hesape/database"
 	hhttp "github.com/arandu-io/hesape/http"
 	"github.com/arandu-io/hesape/log"
-	"github.com/arandu-io/hesape/validation"
 
 	requests "github.com/arandu-io/examples/app/Http/Requests"
 	models "github.com/arandu-io/examples/app/Models"
@@ -147,8 +146,7 @@ func (c *CommentController) Create(ctx *hhttp.Context) error {
 	token := csrfToken(ctx)
 
 	return ctx.View("comments.create", views.CommentsCreateData{
-		Page:   c.nav.page(ctx, actor, true, token, "New comment"),
-		Errors: map[string][]string{},
+		Page: c.nav.page(ctx, actor, true, token, "New comment"),
 	})
 }
 
@@ -159,8 +157,14 @@ func (c *CommentController) Store(ctx *hhttp.Context) error {
 		return c.signIn(ctx)
 	}
 
-	in, form, errs, err := c.input(ctx)
-	if err != nil {
+	// Bind reads the body and nothing else -- never the query string of a
+	// write -- into the fields requests.StoreComment declares with a form tag. A
+	// value it cannot convert comes back as validation.Errors naming the field,
+	// and so does what the service's rules refuse. Both are returned as they
+	// are: the router sends a page back to the form with the messages and what
+	// was typed, and answers a client that asked for JSON with a 422.
+	var in requests.StoreComment
+	if err := ctx.Bind(&in); err != nil {
 		return err
 	}
 
@@ -170,16 +174,8 @@ func (c *CommentController) Store(ctx *hhttp.Context) error {
 	// every transport gets the same rule rather than copying this handler.
 	in.PostId = ctx.Param("id")
 
-	if !c.Validated(errs) {
-		return c.rejectedCreate(ctx, actor, form, errs)
-	}
-
 	created, err := c.svc.Create(ctx.Ctx(), actor, in)
 	if err != nil {
-		var invalid validation.Errors
-		if errors.As(err, &invalid) {
-			return c.rejectedCreate(ctx, actor, form, invalid)
-		}
 		return c.fail(ctx, err)
 	}
 	// Back to the article, which is where the person is. The comment they wrote
@@ -203,9 +199,8 @@ func (c *CommentController) Edit(ctx *hhttp.Context) error {
 	token := csrfToken(ctx)
 
 	return ctx.View("comments.edit", views.CommentsEditData{
-		Page:   c.nav.page(ctx, actor, true, token, "Edit comment"),
-		Form:   c.form(found),
-		Errors: map[string][]string{},
+		Page: c.nav.page(ctx, actor, true, token, "Edit comment"),
+		Form: c.form(found),
 	})
 }
 
@@ -216,13 +211,11 @@ func (c *CommentController) Update(ctx *hhttp.Context) error {
 		return c.signIn(ctx)
 	}
 
-	in, form, errs, err := c.input(ctx)
-	if err != nil {
+	// The approved box is a checkbox: absent when it is not ticked, which Bind
+	// reads as false, and "1" when it is.
+	var in requests.StoreComment
+	if err := ctx.Bind(&in); err != nil {
 		return err
-	}
-	form.ID = ctx.Param("id")
-	if !c.Validated(errs) {
-		return c.rejectedEdit(ctx, actor, form, errs)
 	}
 
 	updated, err := c.svc.Update(ctx.Ctx(), actor, requests.UpdateComment{
@@ -233,10 +226,6 @@ func (c *CommentController) Update(ctx *hhttp.Context) error {
 		Approved: in.Approved,
 	})
 	if err != nil {
-		var invalid validation.Errors
-		if errors.As(err, &invalid) {
-			return c.rejectedEdit(ctx, actor, form, invalid)
-		}
 		return c.fail(ctx, err)
 	}
 	return ctx.Redirect("/comments/" + updated.ID)
@@ -291,61 +280,6 @@ func (c *CommentController) form(co models.Comment) views.CommentForm {
 		Body:     co.Body,
 		Approved: co.Approved,
 	}
-}
-
-// input binds the submitted form.
-//
-// It returns four things: the typed request the service takes, the form as it
-// is drawn again, so a rejected submission comes back filled in rather than
-// blank; the fields Bind could not convert; and any other error, which is about
-// the request rather than the form -- a body over the size limit answers 413
-// through it.
-//
-// Bind reads the body and nothing else -- never the query string of a write --
-// and writes only the fields requests.StoreComment declares with a form tag.
-// The approved box is a checkbox: absent when it is not ticked, which Bind
-// reads as false, and "1" when it is.
-func (c *CommentController) input(ctx *hhttp.Context) (requests.StoreComment, views.CommentForm, validation.Errors, error) {
-	var in requests.StoreComment
-	errs := validation.Errors{}
-	if err := ctx.Bind(&in); err != nil && !errors.As(err, &errs) {
-		return in, views.CommentForm{}, nil, err
-	}
-
-	form := views.CommentForm{
-		PostId:   in.PostId,
-		Author:   in.Author,
-		Body:     in.Body,
-		Approved: in.Approved,
-	}
-
-	// arandu:begin custom
-	// Anything the form carries that the fields above do not: a value composed
-	// of two inputs, a default that depends on the actor.
-	// arandu:end custom
-
-	return in, form, errs, nil
-}
-
-// rejectedCreate re-renders the creation form with its errors, as the 422
-// fragment HTMX swaps back in.
-func (c *CommentController) rejectedCreate(ctx *hhttp.Context, actor auth.Subject, form views.CommentForm, errs validation.Errors) error {
-	token := csrfToken(ctx)
-	return c.Invalid(ctx, "comments.create", views.CommentsCreateData{
-		Page:   c.nav.page(ctx, actor, true, token, "New comment"),
-		Form:   form,
-		Errors: errs,
-	})
-}
-
-// rejectedEdit re-renders the edit form with its errors.
-func (c *CommentController) rejectedEdit(ctx *hhttp.Context, actor auth.Subject, form views.CommentForm, errs validation.Errors) error {
-	token := csrfToken(ctx)
-	return c.Invalid(ctx, "comments.edit", views.CommentsEditData{
-		Page:   c.nav.page(ctx, actor, true, token, "Edit comment"),
-		Form:   form,
-		Errors: errs,
-	})
 }
 
 // fail turns a domain error into a status, in one place.

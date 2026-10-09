@@ -14,19 +14,18 @@ import (
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 
-	{{-- What a rejected form means.
-	     htmx swaps a response only when its table of response handling says to,
-	     and the default in the copy this framework embeds ends with
-	     {"code":"[45]..","swap":false} -- so a 422 is fetched, is correct, and is
-	     thrown away. The person sees the form they submitted, unchanged, with no
-	     message on it, and concludes the button does nothing: a password one
-	     character short answers 422 with the reason in the body, and the screen
-	     says nothing at all.
-	     422 comes before the catch-all because htmx takes the first entry that
-	     matches. It lives here, once: the layout is what decides what a fragment
-	     answer means, and a per-page opt-in would be a second way to answer a
-	     rejected form. A meta tag is not a script, so it costs nothing against
-	     script-src 'self'. --}}
+	{{-- htmx writes a <style> element for its request indicators unless told
+	     not to, and style-src 'self' refuses an inline one.
+
+	     The 422 entry is for the sign-in screens and nothing else. They are
+	     the published authentication kit, and they still answer a refused
+	     code or password with a 422 fragment of their own form; without this
+	     entry htmx throws that answer away and the screen says nothing. This
+	     application's own forms are never answered that way: a rejected post,
+	     section or comment goes back through the router's redirect, which htmx
+	     follows as a navigation, so a reload asks for the page instead of
+	     posting the form again. The entry leaves when the kit's screens answer
+	     the same way. --}}
 	<meta name="htmx-config" content='{"includeIndicatorStyles":false,"responseHandling":[{"code":"204","swap":false},{"code":"422","swap":true},{"code":"[23]..","swap":true},{"code":"[45]..","swap":false,"error":true}]}'>
 	<title>{{ .PageTitle() }}</title>
 	<link rel="icon" href="/favicon.ico" sizes="any">

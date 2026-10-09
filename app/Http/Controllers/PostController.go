@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	fhttp "github.com/arandu-io/framework/http"
 	"github.com/arandu-io/framework/security"
@@ -13,7 +12,6 @@ import (
 	"github.com/arandu-io/hesape/database"
 	hhttp "github.com/arandu-io/hesape/http"
 	"github.com/arandu-io/hesape/log"
-	"github.com/arandu-io/hesape/validation"
 	"github.com/arandu-io/hesape/view"
 
 	requests "github.com/arandu-io/examples/app/Http/Requests"
@@ -310,8 +308,7 @@ func (c *PostController) Create(ctx *hhttp.Context) error {
 	token := csrfToken(ctx)
 
 	return ctx.View("posts.create", views.PostsCreateData{
-		Page:   c.nav.page(ctx, actor, true, token, "New post"),
-		Errors: map[string][]string{},
+		Page: c.nav.page(ctx, actor, true, token, "New post"),
 	})
 }
 
@@ -322,20 +319,21 @@ func (c *PostController) Store(ctx *hhttp.Context) error {
 		return c.signIn(ctx)
 	}
 
-	in, form, errs, err := c.input(ctx)
-	if err != nil {
+	// Bind reads the body and nothing else -- never the query string of a
+	// write -- into the fields requests.StorePost declares with a form tag. A
+	// value it cannot convert comes back as validation.Errors naming the field,
+	// so a date that is not a date is refused rather than reaching the service
+	// as the zero time, which this application reads as a draft. What the
+	// service's rules refuse comes back the same way. Both are returned as they
+	// are: the router sends a page back to the form with the messages and what
+	// was typed, and answers a client that asked for JSON with a 422.
+	var in requests.StorePost
+	if err := ctx.Bind(&in); err != nil {
 		return err
-	}
-	if !c.Validated(errs) {
-		return c.rejectedCreate(ctx, actor, form, errs)
 	}
 
 	created, err := c.svc.Create(ctx.Ctx(), actor, in)
 	if err != nil {
-		var invalid validation.Errors
-		if errors.As(err, &invalid) {
-			return c.rejectedCreate(ctx, actor, form, invalid)
-		}
 		return c.fail(ctx, err)
 	}
 	return ctx.Redirect("/posts/" + created.ID)
@@ -355,9 +353,8 @@ func (c *PostController) Edit(ctx *hhttp.Context) error {
 	token := csrfToken(ctx)
 
 	return ctx.View("posts.edit", views.PostsEditData{
-		Page:   c.nav.page(ctx, actor, true, token, "Edit post"),
-		Form:   c.form(found),
-		Errors: map[string][]string{},
+		Page: c.nav.page(ctx, actor, true, token, "Edit post"),
+		Form: c.form(found),
 	})
 }
 
@@ -368,13 +365,9 @@ func (c *PostController) Update(ctx *hhttp.Context) error {
 		return c.signIn(ctx)
 	}
 
-	in, form, errs, err := c.input(ctx)
-	if err != nil {
+	var in requests.StorePost
+	if err := ctx.Bind(&in); err != nil {
 		return err
-	}
-	form.ID = ctx.Param("id")
-	if !c.Validated(errs) {
-		return c.rejectedEdit(ctx, actor, form, errs)
 	}
 
 	updated, err := c.svc.Update(ctx.Ctx(), actor, requests.UpdatePost{
@@ -385,10 +378,6 @@ func (c *PostController) Update(ctx *hhttp.Context) error {
 		PublishedAt: in.PublishedAt,
 	})
 	if err != nil {
-		var invalid validation.Errors
-		if errors.As(err, &invalid) {
-			return c.rejectedEdit(ctx, actor, form, invalid)
-		}
 		return c.fail(ctx, err)
 	}
 	return ctx.Redirect("/posts/" + updated.ID)
@@ -550,62 +539,6 @@ func (c *PostController) form(p models.Post) views.PostForm {
 	}
 }
 
-// input binds the submitted form.
-//
-// It returns four things: the typed request the service takes, the form as it
-// is drawn again, so a rejected submission comes back filled in rather than
-// blank; the fields Bind could not convert; and any other error, which is about
-// the request rather than the form -- a body over the size limit answers 413
-// through it.
-//
-// Bind reads the body and nothing else -- never the query string of a write --
-// and writes only the fields requests.StorePost declares with a form tag. A
-// date that is not a date is rejected here, naming the field, rather than
-// reaching the service as a silent zero. The box is drawn empty then: what was
-// typed in it converted into nothing there is to draw.
-func (c *PostController) input(ctx *hhttp.Context) (requests.StorePost, views.PostForm, validation.Errors, error) {
-	var in requests.StorePost
-	errs := validation.Errors{}
-	if err := ctx.Bind(&in); err != nil && !errors.As(err, &errs) {
-		return in, views.PostForm{}, nil, err
-	}
-
-	form := views.PostForm{
-		Title:       in.Title,
-		Slug:        in.Slug,
-		Body:        in.Body,
-		PublishedAt: dateTimeLocal(in.PublishedAt),
-	}
-
-	// arandu:begin custom
-	// Anything the form carries that the fields above do not: a value composed
-	// of two inputs, a default that depends on the actor.
-	// arandu:end custom
-
-	return in, form, errs, nil
-}
-
-// rejectedCreate re-renders the creation form with its errors, as the 422
-// fragment HTMX swaps back in.
-func (c *PostController) rejectedCreate(ctx *hhttp.Context, actor auth.Subject, form views.PostForm, errs validation.Errors) error {
-	token := csrfToken(ctx)
-	return c.Invalid(ctx, "posts.create", views.PostsCreateData{
-		Page:   c.nav.page(ctx, actor, true, token, "New post"),
-		Form:   form,
-		Errors: errs,
-	})
-}
-
-// rejectedEdit re-renders the edit form with its errors.
-func (c *PostController) rejectedEdit(ctx *hhttp.Context, actor auth.Subject, form views.PostForm, errs validation.Errors) error {
-	token := csrfToken(ctx)
-	return c.Invalid(ctx, "posts.edit", views.PostsEditData{
-		Page:   c.nav.page(ctx, actor, true, token, "Edit post"),
-		Form:   form,
-		Errors: errs,
-	})
-}
-
 // fail turns a domain error into a status, in one place.
 //
 // Note what it does not do: it never writes the authorization error into the
@@ -626,15 +559,6 @@ func (c *PostController) fail(ctx *hhttp.Context, err error) error {
 	default:
 		return err
 	}
-}
-
-// dateTimeLocal spells a moment the way an <input type="datetime-local"> takes
-// it, and the zero time -- a draft -- as an empty box.
-func dateTimeLocal(t time.Time) string {
-	if t.IsZero() {
-		return ""
-	}
-	return t.Format("2006-01-02T15:04")
 }
 
 // arandu:begin custom

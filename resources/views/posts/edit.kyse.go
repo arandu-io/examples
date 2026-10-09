@@ -10,27 +10,15 @@ import (
 
 @go
 // PostsEditData is what PostController.Edit hands this page: the form
-// filled in with a stored record, or with what was typed when Update rejected it.
+// filled in with a stored record. A rejected update comes back to it with
+// what was typed in place of the stored values, from the flash on the page.
 type PostsEditData struct {
-	// Page is the state the layout draws. Its Token is what @csrf writes into
-	// the hidden field.
+	// Page is the state the layout draws, and what every input asks for its
+	// message and for what was typed. Its Token is what @csrf writes into the
+	// hidden field.
 	view.Page
-	// Form is the record as text.
+	// Form is the stored record as text, which is what the inputs start at.
 	Form PostForm
-	// Errors is the message per field, as validation produced it.
-	Errors map[string][]string
-}
-
-// FieldError is the first message for a field, or empty.
-//
-// A method rather than a lookup in the markup: a view that indexes a map has to
-// check the length first, and d.Errors["title"][0] without that check panics
-// on the happy path -- which is the request where nothing was wrong.
-func (d PostsEditData) FieldError(field string) string {
-	if msgs := d.Errors[field]; len(msgs) > 0 {
-		return msgs[0]
-	}
-	return ""
 }
 
 // Compile-time proof that this page fits the layout it extends.
@@ -53,7 +41,7 @@ var _ view.Layout = PostsEditData{}
 	<!-- hx-put, and no action: a browser form can only send GET and POST, and
 	the update route is PUT. HTMX sends the real method, which is why this
 	stack does not need a hidden _method field. -->
-	<form class="mt-8 space-y-6" hx-put="/posts/{{ .Form.ID }}" hx-target="this" hx-swap="outerHTML">
+	<form class="mt-8 space-y-6" hx-put="/posts/{{ .Form.ID }}">
 		@csrf
 		
 		{!! components.Field(components.FieldProps{

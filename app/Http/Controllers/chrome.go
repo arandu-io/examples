@@ -65,6 +65,14 @@ func (n navigation) page(ctx *hhttp.Context, actor auth.Subject, signedIn bool, 
 		UserName:      n.displayName(ctx, actor.ID),
 	})
 
+	// What a rejected attempt left behind: the messages and what was typed,
+	// which the router put in the flash when it sent the form back here. Every
+	// input handed this page asks it for both, so no action passes either --
+	// an action that had to would be a second way to answer a rejected form,
+	// and the one it forgot would come back blank.
+	state := ctx.State()
+	page.Errors, page.Old = state.Errors, state.Old
+
 	// The named route rather than the literal the kit assumes: this application
 	// registers its front page under a name, and a rename has to move the link
 	// with it.

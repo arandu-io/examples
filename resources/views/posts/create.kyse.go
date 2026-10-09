@@ -9,32 +9,22 @@ import (
 )
 
 @go
-// PostsCreateData is what PostController.Create hands this page, and what
-// Store hands it back when the submission was rejected: same view, same data,
-// with the messages filled in.
+// PostsCreateData is what PostController.Create hands this page.
+// A rejected submission comes back to it too: the router sends the browser
+// back here, and the page carries the messages and what was typed from the
+// flash. The controller passes nothing for that.
 type PostsCreateData struct {
 	// Page is the state the layout draws. Its Token is what @csrf writes into
 	// the hidden field, through Page.CSRFToken -- it comes from the page data
 	// rather than from a global, because a template that reaches for request
 	// state outside the data it was given is how a form ends up carrying
-	// another session's token under load.
+	// another session's token under load. It is also what every input asks for
+	// its message and for what was typed on a rejected attempt.
 	view.Page
-	// Form is what was typed, so a rejected submission comes back filled in.
+	// Form is what the inputs start at: empty here, and the stored record on the
+	// edit screen, which shares this type. What was typed on a rejected attempt
+	// wins over it, through the Page.
 	Form PostForm
-	// Errors is the message per field, as validation produced it.
-	Errors map[string][]string
-}
-
-// FieldError is the first message for a field, or empty.
-//
-// A method rather than a lookup in the markup: a view that indexes a map has to
-// check the length first, and d.Errors["title"][0] without that check panics
-// on the happy path -- which is the request where nothing was wrong.
-func (d PostsCreateData) FieldError(field string) string {
-	if msgs := d.Errors[field]; len(msgs) > 0 {
-		return msgs[0]
-	}
-	return ""
 }
 
 // Compile-time proof that this page fits the layout it extends.
@@ -42,8 +32,8 @@ var _ view.Layout = PostsCreateData{}
 
 // PostForm is the form as text, which is what a form carries.
 //
-// The value that comes back after a rejection is exactly what was typed,
-// including the number that failed to parse -- retyping a whole form because one
+// What comes back after a rejection is exactly what was typed, from the flash,
+// including a value that failed to parse -- retyping a whole form because one
 // field was wrong is how a screen becomes unpleasant.
 type PostForm struct {
 	// ID is empty on creation and set on edit, where it addresses the record.
@@ -72,7 +62,7 @@ type PostForm struct {
 
 	<h1 class="mt-2 text-3xl font-semibold tracking-tight">{{ .Title }}</h1>
 
-	<form class="mt-8 space-y-6" method="post" action="/posts" hx-post="/posts" hx-target="this" hx-swap="outerHTML">
+	<form class="mt-8 space-y-6" method="post" action="/posts" hx-post="/posts">
 		@csrf
 		
 		{!! components.Field(components.FieldProps{

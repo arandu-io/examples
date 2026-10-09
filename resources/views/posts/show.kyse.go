@@ -161,16 +161,19 @@ func (c CommentRow) Badge() string {
 		@endif
 
 		@if(.CommentURL != "")
-			{{-- The form posts over HTMX and the answer is appended to the list
-			     above, so writing a comment does not reload the article somebody
-			     is in the middle of reading. --}}
+			{{-- Both answers to this form are a navigation back to this article:
+			     with ?said=1 when the comment was taken, and through the flash when
+			     it was refused. The box is handed the page, so a refused comment
+			     comes back with its message under it and what was written still
+			     in it, and a reload shows the article rather than posting again. --}}
 			<form class="mt-10 flex flex-col gap-4" method="post" action="{{ .CommentURL }}"
-				hx-post="{{ .CommentURL }}" hx-target="this" hx-swap="outerHTML">
+				hx-post="{{ .CommentURL }}">
 				@csrf
 
 				{!! components.Textarea(components.TextareaProps{
 					Name:        "body",
 					Label:       "Say something",
+					Page:        .,
 					Rows:        4,
 					Placeholder: "Be kind.",
 					Hint:        "Comments are reviewed before they appear.",
