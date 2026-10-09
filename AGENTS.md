@@ -71,7 +71,7 @@ with PostgreSQL at the closed address `127.0.0.1:1`, without connecting.
 | --- | --- |
 | `app/Policies/` | seven files defining eight Policy structs. Application authorization decisions live here |
 | `app/Repositories/` | three repositories. Twenty-four of twenty-six exported methods take an `auth.Grant`; the two `Health` methods only ping the connection |
-| `app/Services/` | five services plus `TenantResolver`. Row access normally follows Subject → Policy → Grant; pre-authentication user and factor flows use annotated system grants |
+| `app/Services/` | five services. Row access normally follows Subject → Policy → Grant; pre-authentication user and factor flows use annotated system grants |
 | `app/Http/Controllers/` | seven application controllers over a shared `Controller` base. HTML, XML and process-wide gauges deliberately have different collaborators |
 | `app/Http/Controllers/Auth/` | not one of the seven application controllers: a `foundation.Module` with its own `Routes()`, published by `arandu-io/ui` |
 | `resources/views/` | 34 `.kyse.go` templates. Source; `storage/framework/views/` is the build output |
