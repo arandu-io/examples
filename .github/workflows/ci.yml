@@ -38,13 +38,18 @@ jobs:
           "$(go env GOPATH)/bin/aru" view:build
 
       - name: gofmt
-        # `gofmt -l .` skips nothing, and two things in this repository are not
-        # valid Go on purpose:
+        # `gofmt -l .` skips nothing, and two kinds of file here are not for it:
         #
-        #   testdata/    fixtures the doctor has to reject, including a file
-        #                that does not parse -- that one is the test
         #   *.kyse.go    kyse templates; the compiler excludes them through the
-        #                build tag, but gofmt ignores build tags
+        #                build tag, but gofmt ignores build tags and reports a
+        #                syntax error on every view
+        #   testdata/    one fixture, tests/Unit/testdata/missing_grant/main.go.
+        #                It parses and is formatted; what it must not do is
+        #                type-check, which TestRepositoryWithoutGrantDoesNotCompile
+        #                asserts. gofmt passes it, so this filter changes nothing
+        #                today. It is the collection's command, kept whole: a
+        #                fixture that does not parse is a legitimate test, and
+        #                the day one lands here this step should not fail on it.
         #
         # `go build`, `go vet` and `go test` skip both on their own.
         run: |

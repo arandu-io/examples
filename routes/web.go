@@ -213,14 +213,12 @@ func withSubject(sessions *security.SessionStore) http.Middleware {
 // never in the global pipeline -- every other handler in this application wants
 // the wrapper exactly as it is.
 //
-// It is also not enough in development, and that is a second defect in a second
-// place. APP_ENV=dev adds the framework's live-reload middleware, whose
-// htmlRecorder wraps the writer to inject the reload script and implements no
-// Unwrap at all -- so the chain this walks stops there, one link short of the
-// connection, and the handshake answers 500. Nothing in this application can
-// reach past a wrapper that does not offer the method, so the socket is a
-// production and staging feature until framework/foundation's recorder grows the
-// same Unwrap middleware.Observe's already has.
+// It works in development too. APP_ENV=dev adds the framework's live-reload
+// middleware, whose recorder wraps the writer to inject the reload script; that
+// recorder implements Unwrap as middleware.Observe's wrapper does, so the chain
+// this walks reaches the connection through both, and a signed-in handshake
+// answers 101 under dev. Without this middleware the same handshake answers
+// 500.
 func upgradable(next nethttp.Handler) nethttp.Handler {
 	return nethttp.HandlerFunc(func(w nethttp.ResponseWriter, r *nethttp.Request) {
 		next.ServeHTTP(hijackable{ResponseWriter: w}, r)
