@@ -180,8 +180,10 @@ func seedPostForTenant(t *testing.T, db *database.DB, id, tenant, title, slug st
 // than shown a form that cannot be submitted.
 //
 // The controllers behind these load no session. A route that lost its guard
-// would reach them with nobody on the request and be refused by the policy --
-// a 403 rather than a way in -- and this test is what says the guard is there.
+// reaches them with nobody on the request: an action that touches a row is
+// then refused by auth.Authorize, a 403 rather than a way in, but one that only
+// draws an empty form answers 200 to a guest. This test is what says the guard
+// is there.
 func TestEveryScreenThatNeedsAnAccountSendsAGuestToSignIn(t *testing.T) {
 	booted := tests.Boot(t)
 	guest := booted.Client

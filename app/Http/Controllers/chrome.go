@@ -142,11 +142,14 @@ func csrfToken(ctx *hhttp.Context) string {
 //
 // The route's guard -- RequireAuth, or RequireRole for the moderation area --
 // loaded the session, sent a visitor with none to sign in, and put the subject
-// on the request, so this reads it rather than loading the session again. A
-// route registered without its guard reaches the service with the zero
-// subject, and auth.Authorize refuses a subject with no id that is not a
-// declared guest before any policy is asked: the request is refused rather than
-// answered for nobody, and the route table is where the missing guard shows.
+// on the request, so this reads it rather than loading the session again.
+//
+// A route registered without its guard hands back the zero subject. Every
+// action that reads or writes a row then passes it to a service, and
+// auth.Authorize refuses a subject with no id that is not a declared guest
+// before any policy is asked. An action that only draws an empty form asks no
+// service anything and would draw it for nobody -- which is why the guard is on
+// the route, where the table can be read and a test holds it.
 func guarded(ctx *hhttp.Context) auth.Subject {
 	actor, _ := ctx.User()
 	return actor
