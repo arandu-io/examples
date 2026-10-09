@@ -122,9 +122,9 @@ func TestCompiledStylesheetHasNoEmptyRelationalSelectors(t *testing.T) {
 func TestBuildEntrypointsUseTheReleasedCLI(t *testing.T) {
 	root := tests.Root(t)
 	for _, item := range []struct{ path, marker string }{
-		{"arandu.toml", `aru = "v0.58.0"`},
-		{"Dockerfile", "ARG ARU_VERSION=v0.58.0"},
-		{".github/workflows/ci.yml", "github.com/arandu-io/aru@v0.58.0"},
+		{"arandu.toml", `aru = "v0.63.0"`},
+		{"Dockerfile", "ARG ARU_VERSION=v0.63.0"},
+		{".github/workflows/ci.yml", "github.com/arandu-io/aru@v0.63.0"},
 	} {
 		body, err := os.ReadFile(filepath.Join(root, item.path))
 		if err != nil {
