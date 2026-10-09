@@ -15,7 +15,7 @@ named by the situation.
 ## The gates
 
 Nothing is finished until all of these exit zero. Measured on this tree with
-`aru` v0.69.1 (`go run github.com/arandu-io/aru@v0.69.1 <command>` runs that
+`aru` v0.69.2 (`go run github.com/arandu-io/aru@v0.69.2 <command>` runs that
 version without installing it).
 
 ```sh
@@ -81,7 +81,7 @@ they are put back by hand afterwards:
 - `HomeController`'s comment names the guard this application mounts it
   behind: `RequireAuth` on `/dashboard`.
 
-CI installs `aru` v0.69.1 for `view:build` and `doctor`, `arandu.toml` names it
+CI installs `aru` v0.69.2 for `view:build` and `doctor`, `arandu.toml` names it
 as the oldest CLI the views build with, and the Dockerfile builds them with it.
 `TestBuildEntrypointsUseTheReleasedCLI` reads every pin in those three files
 and in the three documents that say which version this tree was measured with

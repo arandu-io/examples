@@ -119,7 +119,7 @@ func TestCompiledStylesheetHasNoEmptyRelationalSelectors(t *testing.T) {
 }
 
 // releasedCLI is the aru release this tree is built and measured with.
-const releasedCLI = "v0.69.1"
+const releasedCLI = "v0.69.2"
 
 // Local, CI and image builds must use the same released view compiler, and
 // the files that tell a reader which one this tree was measured with must name
