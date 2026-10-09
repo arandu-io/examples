@@ -15,7 +15,7 @@ named by the situation.
 ## The gates
 
 Nothing is finished until all of these exit zero. Measured on this tree with
-`aru` v0.63.0 (`go run github.com/arandu-io/aru@v0.63.0 <command>` runs that
+`aru` v0.67.0 (`go run github.com/arandu-io/aru@v0.67.0 <command>` runs that
 version without installing it).
 
 ```sh
@@ -63,9 +63,12 @@ named from the hesape package that declares it (`auth.Grant`, `database.DB`,
 framework path (`fhttp.Router`, `security.SessionStore`). `aru imports:catalog`
 prints the path of every symbol for the version `go.mod` requires.
 
-CI installs `aru` v0.63.0 for `view:build` and `doctor`, `arandu.toml` names it
-as the oldest CLI the views build with, and the Dockerfile builds them with it:
-`TestBuildEntrypointsUseTheReleasedCLI` keeps the three on one version.
+CI installs `aru` v0.67.0 for `view:build` and `doctor`, `arandu.toml` names it
+as the oldest CLI the views build with, and the Dockerfile builds them with it.
+`TestBuildEntrypointsUseTheReleasedCLI` reads every pin in those three files
+and in the three documents that say which version this tree was measured with
+-- this one and two skills -- and keeps all of them on one version. Raising
+the pin is one commit that touches all six, never `ci.yml` alone.
 
 The suite needs no database server. Tests that exercise rows use temporary
 SQLite through `tests.Boot` (`tests/testcase.go:194-202`) or `sqliteEnv`

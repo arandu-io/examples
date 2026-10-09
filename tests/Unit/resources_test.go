@@ -118,23 +118,42 @@ func TestCompiledStylesheetHasNoEmptyRelationalSelectors(t *testing.T) {
 	}
 }
 
-// Local, CI and image builds must use the same released view compiler.
+// releasedCLI is the aru release this tree is built and measured with.
+const releasedCLI = "v0.67.0"
+
+// Local, CI and image builds must use the same released view compiler, and
+// the files that tell a reader which one this tree was measured with must name
+// it too.
+//
+// Every occurrence is read, not just the first: a workflow that installs aru
+// in two steps and was raised in one of them still contains the new version,
+// and the step left behind builds the views with the old one.
 func TestBuildEntrypointsUseTheReleasedCLI(t *testing.T) {
 	root := tests.Root(t)
-	for _, item := range []struct{ path, marker string }{
-		{"arandu.toml", `aru = "v0.63.0"`},
-		{"Dockerfile", "ARG ARU_VERSION=v0.63.0"},
-		{".github/workflows/ci.yml", "github.com/arandu-io/aru@v0.63.0"},
+	installs := regexp.MustCompile(`github\.com/arandu-io/aru@(v[0-9][^\s` + "`" + `]*)`)
+	for _, item := range []struct {
+		path string
+		pin  *regexp.Regexp
+	}{
+		{"arandu.toml", regexp.MustCompile(`(?m)^aru = "(v[^"]*)"`)},
+		{"Dockerfile", regexp.MustCompile(`ARG ARU_VERSION=(v\S*)`)},
+		{".github/workflows/ci.yml", installs},
+		{"AGENTS.md", installs},
+		{".agents/skills/examples-keep-it-true/SKILL.md", installs},
+		{".agents/skills/examples-run-the-blog/SKILL.md", installs},
 	} {
 		body, err := os.ReadFile(filepath.Join(root, item.path))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(string(body), item.marker) {
-			t.Errorf("%s does not use the verified CLI release", item.path)
+		found := item.pin.FindAllSubmatch(body, -1)
+		if len(found) == 0 {
+			t.Errorf("%s names no aru release", item.path)
 		}
-		if strings.Contains(string(body), "v0.35.0") {
-			t.Errorf("%s retains the obsolete CLI pin", item.path)
+		for _, match := range found {
+			if string(match[1]) != releasedCLI {
+				t.Errorf("%s uses aru %s, want %s", item.path, match[1], releasedCLI)
+			}
 		}
 	}
 }
