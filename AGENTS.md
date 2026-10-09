@@ -75,9 +75,14 @@ they are put back by hand afterwards:
   holds both.
 - Every code field -- `email_code` on the verify and reset screens,
   `authenticator_code` on the challenge and setup screens -- is a plain
-  `components.Field` with `Autocomplete: "one-time-code"`, not
-  `components.OneTimeCode`, which at kyse v0.30.0 does not write the field's
-  message.
+  `components.Field` with `Autocomplete: "one-time-code"`, not the kit's
+  `components.OneTimeCode`. The reason this started -- that component not
+  writing the field's message -- went with kyse v0.31.0; two others stay. Its
+  squares carry no name and the code submits through a hidden input that
+  `ui.js` fills as each square is typed, so without the script the form sends
+  an empty code. And the Basecoat vendored under `resources/css/basecoat` has
+  no rule for `otp` or `otp-square`, so the squares would draw as default
+  text inputs of default width.
 - `HomeController`'s comment names the guard this application mounts it
   behind: `RequireAuth` on `/dashboard`.
 

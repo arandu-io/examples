@@ -21,8 +21,8 @@ export GOWORK=off
 go list -m -f '{{if not .Indirect}}{{.Path}} {{.Version}}{{end}}' all | grep -v '^$'
 ```
 
-Today that is `framework v0.55.0`, `hesape v0.52.0`, the `pgx` and `sqlite`
-connectors at `v0.11.0`, `joaju v0.7.2` and `kyse v0.30.0`.
+Today that is `framework v0.55.1`, `hesape v0.52.0`, the `pgx` and `sqlite`
+connectors at `v0.11.0`, `joaju v0.7.3` and `kyse v0.33.0`.
 
 **2. Bump one at a time and run the gates between.** A single `go get -u` across
 all six turns one legible failure into a bisect.

@@ -82,7 +82,7 @@ see a refusal rather than reading about one.
 
 ## What answers, and where
 
-Measured against the booted application with `framework v0.55.0`, asking for
+Measured against the booted application with `framework v0.55.1`, asking for
 HTML. The status depends on `APP_ENV`, and that is the point of two of these:
 
 | path | prod | dev |
