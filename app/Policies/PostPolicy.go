@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
 
 	models "github.com/arandu-io/examples/app/Models"
 )
@@ -17,15 +17,15 @@ import (
 // compile past the first module.
 const (
 	// PostView is reading one record.
-	PostView security.Action = "post.view"
+	PostView auth.Action = "post.view"
 	// PostList is paging through the records.
-	PostList security.Action = "post.list"
+	PostList auth.Action = "post.list"
 	// PostCreate is adding one.
-	PostCreate security.Action = "post.create"
+	PostCreate auth.Action = "post.create"
 	// PostUpdate is changing one.
-	PostUpdate security.Action = "post.update"
+	PostUpdate auth.Action = "post.update"
 	// PostDelete is removing one.
-	PostDelete security.Action = "post.delete"
+	PostDelete auth.Action = "post.delete"
 
 	// PostPublicList is the published listing: what a reader with no account
 	// sees, and what the sitemap is built from.
@@ -35,7 +35,7 @@ const (
 	// permission answering both is a permission whose meaning depends on who is
 	// asking, which is the kind nobody can audit. It has its own query, and the
 	// query is what makes a draft unreachable rather than merely unlisted.
-	PostPublicList security.Action = "post.list.public"
+	PostPublicList auth.Action = "post.list.public"
 )
 
 // PostPolicy is the only authority over who does what with Post.
@@ -46,10 +46,10 @@ const (
 type PostPolicy struct{}
 
 // Compile-time proof that the policy answers about this entity and no other.
-var _ security.Policy[models.Post] = PostPolicy{}
+var _ auth.Policy[models.Post] = PostPolicy{}
 
 // Can decides whether the subject may perform the action.
-func (PostPolicy) Can(ctx context.Context, s security.Subject, a security.Action, p models.Post) error {
+func (PostPolicy) Can(ctx context.Context, s auth.Subject, a auth.Action, p models.Post) error {
 
 	// arandu:begin custom
 	//
@@ -59,7 +59,7 @@ func (PostPolicy) Can(ctx context.Context, s security.Subject, a security.Action
 	// decided -- in the policy, like everything else, rather than by a
 	// middleware that lets a request past before anybody asked what it wanted.
 	//
-	// A guest is a subject security.Guest built on purpose. A Subject nobody
+	// A guest is a subject auth.Guest built on purpose. A Subject nobody
 	// filled in is not one, and Authorize still refuses it before reaching this
 	// method: an empty subject is almost always a session that failed to load,
 	// and answering an authorization question about nobody is how a hole opens

@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/arandu-io/framework/data"
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
+	"github.com/arandu-io/hesape/database"
 	"github.com/arandu-io/hesape/database/model"
 )
 
@@ -17,14 +17,14 @@ import (
 //
 // It has no persistence methods of its own: this is not Active Record. The
 // model.Model it embeds promotes Save, Delete and Load onto it, and each of them
-// takes a security.Grant, so nothing reaches the table without a Policy's
+// takes an auth.Grant, so nothing reaches the table without a Policy's
 // answer. The table is reached through Categories, generated beside this file in
 // CategoryQuery.go, and every terminal a query ends in -- Find and Get included
 // -- takes a Grant too. The model is data; the Policy is the door.
 //
 // # Why it is still handed around by value
 //
-// security.Policy[Category] takes the entity by value, and so does every
+// auth.Policy[Category] takes the entity by value, and so does every
 // service, request and view below it. The embedded model does not change that,
 // and it is part of why that is safe:
 //
@@ -73,7 +73,7 @@ type Category struct {
 // out loud about the scoping is turning it off, and nothing here does.
 //
 // Categories takes the handle a constructor was given. There is no adapter and
-// no second handle: *data.DB carries the five verbs a model connection needs
+// no second handle: *database.DB carries the five verbs a model connection needs
 // plus the grammar and the processor, so a statement built here runs on the
 // same pool, joins the same open transaction, and is recorded on the same
 // Collector as one the repositories next door issue.
@@ -124,7 +124,7 @@ func init() {
 //
 // It is a function rather than a method for the same reason: what a caller
 // holds is a value copy, and a method on it could load nothing.
-func PostsIn(ctx context.Context, g security.Grant, db *data.DB, ca Category) ([]Post, error) {
+func PostsIn(ctx context.Context, g auth.Grant, db *database.DB, ca Category) ([]Post, error) {
 	section, err := Categories(db).New()
 	if err != nil {
 		return nil, err

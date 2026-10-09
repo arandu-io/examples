@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
 
 	models "github.com/arandu-io/examples/app/Models"
 	policies "github.com/arandu-io/examples/app/Policies"
@@ -24,7 +24,7 @@ func TestAGuestReadsAPublishedPostAndNothingElse(t *testing.T) {
 
 	for _, c := range []struct {
 		what    string
-		action  security.Action
+		action  auth.Action
 		post    models.Post
 		allowed bool
 	}{
@@ -55,7 +55,7 @@ func TestAGuestReadsAPublishedPostAndNothingElse(t *testing.T) {
 		{"an unknown action", "post.something_new", models.Post{}, false},
 	} {
 		t.Run(c.what, func(t *testing.T) {
-			err := (policies.PostPolicy{}).Can(context.Background(), security.Guest("t1"), c.action, c.post)
+			err := (policies.PostPolicy{}).Can(context.Background(), auth.Guest("t1"), c.action, c.post)
 			switch {
 			case c.allowed && err != nil:
 				t.Errorf("a guest is refused %s: %v", c.what, err)
@@ -68,20 +68,20 @@ func TestAGuestReadsAPublishedPostAndNothingElse(t *testing.T) {
 
 // TestASubjectNobodyFilledInIsNotAGuest.
 //
-// The distinction is the whole reason security.Guest exists. An empty Subject is
+// The distinction is the whole reason auth.Guest exists. An empty Subject is
 // almost always a session that failed to load, and Authorize refuses it before
 // consulting a policy -- so this test is about Authorize, not about the policy:
 // what it pins is that a forgotten session cannot borrow the public path.
 func TestASubjectNobodyFilledInIsNotAGuest(t *testing.T) {
 	published := models.Post{ID: "p1", PublishedAt: time.Now().Add(-time.Hour)}
 
-	if _, err := security.Authorize(context.Background(), policies.PostPolicy{},
-		security.Subject{}, policies.PostView, published); err == nil {
+	if _, err := auth.Authorize(context.Background(), policies.PostPolicy{},
+		auth.Subject{}, policies.PostView, published); err == nil {
 		t.Fatal("an empty subject read a post: a forgotten session load is now a public request")
 	}
 
-	if _, err := security.Authorize(context.Background(), policies.PostPolicy{},
-		security.Guest("t1"), policies.PostView, published); err != nil {
+	if _, err := auth.Authorize(context.Background(), policies.PostPolicy{},
+		auth.Guest("t1"), policies.PostView, published); err != nil {
 		t.Fatalf("a declared guest was refused a published post: %v", err)
 	}
 }

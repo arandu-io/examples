@@ -3,9 +3,9 @@ package services
 import (
 	"context"
 
-	"github.com/arandu-io/framework/data"
-	"github.com/arandu-io/framework/observability"
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
+	"github.com/arandu-io/hesape/database"
+	"github.com/arandu-io/hesape/log"
 
 	requests "github.com/arandu-io/examples/app/Http/Requests"
 	models "github.com/arandu-io/examples/app/Models"
@@ -27,7 +27,7 @@ func NewPostService(repo *repositories.PostRepository) *PostService {
 
 // Create walks the mandatory path: validate, Authorize, Grant, Repository.
 // There is no other order that compiles.
-func (s *PostService) Create(ctx context.Context, actor security.Subject, in requests.StorePost) (models.Post, error) {
+func (s *PostService) Create(ctx context.Context, actor auth.Subject, in requests.StorePost) (models.Post, error) {
 	if errs := in.Validate(); errs.Any() {
 		return models.Post{}, errs
 	}
@@ -39,7 +39,7 @@ func (s *PostService) Create(ctx context.Context, actor security.Subject, in req
 		PublishedAt: in.PublishedAt,
 	}
 
-	g, err := security.Authorize(ctx, s.policy, actor, policies.PostCreate, candidate)
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.PostCreate, candidate)
 	if err != nil {
 		return models.Post{}, err
 	}
@@ -50,14 +50,14 @@ func (s *PostService) Create(ctx context.Context, actor security.Subject, in req
 	}
 	// Guarded: the entity is a struct value, and boxing it into `any` allocates
 	// at the call site even though RecordEvent is a no-op on a nil Collector.
-	if col := observability.FromContext(ctx); col != nil {
+	if col := log.FromContext(ctx); col != nil {
 		col.RecordEvent("post.created", created)
 	}
 	return created, nil
 }
 
 // Get returns one post.
-func (s *PostService) Get(ctx context.Context, actor security.Subject, id string) (models.Post, error) {
+func (s *PostService) Get(ctx context.Context, actor auth.Subject, id string) (models.Post, error) {
 	// Asked twice, and the second time is the one that matters.
 	//
 	// The first call is about the zero value, because the row has not been read
@@ -69,7 +69,7 @@ func (s *PostService) Get(ctx context.Context, actor security.Subject, id string
 	// Deciding only once, on the zero value, is how a policy that reads
 	// p.PublishedAt is written and never consulted -- the field it branches on
 	// is always empty, so the rule silently means something else.
-	g, err := security.Authorize(ctx, s.policy, actor, policies.PostView, models.Post{})
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.PostView, models.Post{})
 	if err != nil {
 		return models.Post{}, err
 	}
@@ -78,15 +78,15 @@ func (s *PostService) Get(ctx context.Context, actor security.Subject, id string
 	if err != nil {
 		return models.Post{}, err
 	}
-	if _, err := security.Authorize(ctx, s.policy, actor, policies.PostView, found); err != nil {
+	if _, err := auth.Authorize(ctx, s.policy, actor, policies.PostView, found); err != nil {
 		return models.Post{}, err
 	}
 	return found, nil
 }
 
 // List returns a page of posts.
-func (s *PostService) List(ctx context.Context, actor security.Subject, q data.Query) ([]models.Post, error) {
-	g, err := security.Authorize(ctx, s.policy, actor, policies.PostList, models.Post{})
+func (s *PostService) List(ctx context.Context, actor auth.Subject, q database.Query) ([]models.Post, error) {
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.PostList, models.Post{})
 	if err != nil {
 		return nil, err
 	}
@@ -99,8 +99,8 @@ func (s *PostService) List(ctx context.Context, actor security.Subject, q data.Q
 // is allowed; somebody signed in is allowed too, and gets the same rows -- the
 // published listing is the published listing, and having it mean two things
 // depending on the reader is how a page starts disagreeing with its own sitemap.
-func (s *PostService) Published(ctx context.Context, actor security.Subject, limit int) ([]models.Post, error) {
-	g, err := security.Authorize(ctx, s.policy, actor, policies.PostPublicList, models.Post{})
+func (s *PostService) Published(ctx context.Context, actor auth.Subject, limit int) ([]models.Post, error) {
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.PostPublicList, models.Post{})
 	if err != nil {
 		return nil, err
 	}
@@ -112,8 +112,8 @@ func (s *PostService) Published(ctx context.Context, actor security.Subject, lim
 // The same PostPublicList as Published, because it is the same question asked
 // about fewer rows. A permission of its own would be one nobody could grant
 // without granting the wider one anyway.
-func (s *PostService) PublishedInCategory(ctx context.Context, actor security.Subject, categoryID string, limit int) ([]models.Post, error) {
-	g, err := security.Authorize(ctx, s.policy, actor, policies.PostPublicList, models.Post{})
+func (s *PostService) PublishedInCategory(ctx context.Context, actor auth.Subject, categoryID string, limit int) ([]models.Post, error) {
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.PostPublicList, models.Post{})
 	if err != nil {
 		return nil, err
 	}
@@ -121,8 +121,8 @@ func (s *PostService) PublishedInCategory(ctx context.Context, actor security.Su
 }
 
 // CountByCategory is how many published posts each section holds.
-func (s *PostService) CountByCategory(ctx context.Context, actor security.Subject) (map[string]int, error) {
-	g, err := security.Authorize(ctx, s.policy, actor, policies.PostPublicList, models.Post{})
+func (s *PostService) CountByCategory(ctx context.Context, actor auth.Subject) (map[string]int, error) {
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.PostPublicList, models.Post{})
 	if err != nil {
 		return nil, err
 	}
@@ -135,13 +135,13 @@ func (s *PostService) CountByCategory(ctx context.Context, actor security.Subjec
 // time this is called, so a failure here is logged and the article is served --
 // which is also why it is not part of Get: a caller that wanted the row and got
 // an error about a counter would have no way to tell the two apart.
-func (s *PostService) Read(ctx context.Context, actor security.Subject, p models.Post) {
-	g, err := security.Authorize(ctx, s.policy, actor, policies.PostView, p)
+func (s *PostService) Read(ctx context.Context, actor auth.Subject, p models.Post) {
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.PostView, p)
 	if err != nil {
 		return
 	}
 	if err := s.repo.IncrementViews(ctx, g, p.ID); err != nil {
-		observability.Log(ctx).Warn("the read counter was not incremented", "error", err, "post", p.ID)
+		log.For(ctx).Warn("the read counter was not incremented", "error", err, "post", p.ID)
 	}
 }
 
@@ -150,12 +150,12 @@ func (s *PostService) Read(ctx context.Context, actor security.Subject, p models
 // It reads before writing, so the policy decides against the stored row rather
 // than against what the client claims the row is. Skipping this is how a check
 // passes on attacker-supplied data.
-func (s *PostService) Update(ctx context.Context, actor security.Subject, in requests.UpdatePost) (models.Post, error) {
+func (s *PostService) Update(ctx context.Context, actor auth.Subject, in requests.UpdatePost) (models.Post, error) {
 	if errs := in.Validate(); errs.Any() {
 		return models.Post{}, errs
 	}
 
-	view, err := security.Authorize(ctx, s.policy, actor, policies.PostView, models.Post{})
+	view, err := auth.Authorize(ctx, s.policy, actor, policies.PostView, models.Post{})
 	if err != nil {
 		return models.Post{}, err
 	}
@@ -164,7 +164,7 @@ func (s *PostService) Update(ctx context.Context, actor security.Subject, in req
 		return models.Post{}, err
 	}
 
-	g, err := security.Authorize(ctx, s.policy, actor, policies.PostUpdate, stored)
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.PostUpdate, stored)
 	if err != nil {
 		return models.Post{}, err
 	}
@@ -176,8 +176,8 @@ func (s *PostService) Update(ctx context.Context, actor security.Subject, in req
 }
 
 // Delete removes a post.
-func (s *PostService) Delete(ctx context.Context, actor security.Subject, id string) error {
-	view, err := security.Authorize(ctx, s.policy, actor, policies.PostView, models.Post{})
+func (s *PostService) Delete(ctx context.Context, actor auth.Subject, id string) error {
+	view, err := auth.Authorize(ctx, s.policy, actor, policies.PostView, models.Post{})
 	if err != nil {
 		return err
 	}
@@ -186,14 +186,14 @@ func (s *PostService) Delete(ctx context.Context, actor security.Subject, id str
 		return err
 	}
 
-	g, err := security.Authorize(ctx, s.policy, actor, policies.PostDelete, stored)
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.PostDelete, stored)
 	if err != nil {
 		return err
 	}
 	if err := s.repo.Delete(ctx, g, id); err != nil {
 		return err
 	}
-	if col := observability.FromContext(ctx); col != nil {
+	if col := log.FromContext(ctx); col != nil {
 		col.RecordEvent("post.deleted", stored)
 	}
 	return nil

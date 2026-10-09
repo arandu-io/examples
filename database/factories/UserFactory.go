@@ -10,7 +10,7 @@
 //
 // Categories is the typed model factory, and it can store -- but only through
 // Create, which takes the Grant every write in this collection takes and files
-// the row under data.Tenant(g). Make, beside it, takes none and touches nothing.
+// the row under auth.Tenant(g). Make, beside it, takes none and touches nothing.
 // The two signatures are the guarantee: a factory is not a back door around the
 // policy that guards the table, and the way you can tell which half you are in
 // is whether you had to hold a Grant to get there.

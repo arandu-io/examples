@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
 
 	requests "github.com/arandu-io/examples/app/Http/Requests"
 	models "github.com/arandu-io/examples/app/Models"
@@ -49,7 +49,7 @@ func TestThePublicListingHidesADraft(t *testing.T) {
 
 	repo := repositories.NewPostRepository(db)
 	//arandu:system-grant a fixture needs a Grant for a tenant no session in this test carries
-	g := security.SystemGrant(policies.PostPublicList, ours)
+	g := auth.SystemGrant(policies.PostPublicList, ours)
 
 	t.Run("the listing", func(t *testing.T) {
 		found, err := repo.Published(ctx, g, 50)
@@ -104,7 +104,7 @@ func TestTheThreadHidesWhatIsWaitingForReview(t *testing.T) {
 	seedComment(t, db, "00000000-0000-4000-8000-0000000000f3", ours, post, "u9", false)
 
 	repo := repositories.NewCommentRepository(db)
-	g := security.SystemGrant(policies.CommentPublicList, ours)
+	g := auth.SystemGrant(policies.CommentPublicList, ours)
 
 	t.Run("a stranger sees only what was approved", func(t *testing.T) {
 		found, err := repo.PublicForPost(ctx, g, post, "u2")
@@ -153,7 +153,7 @@ func TestAPendingCommentCannotBeReadByItsID(t *testing.T) {
 	seedComment(t, db, pending, ours, post, "u9", false)
 
 	svc := services.NewCommentService(repositories.NewCommentRepository(db))
-	if _, err := svc.Get(ctx, security.Guest(ours), pending); !errors.Is(err, security.ErrForbidden) {
+	if _, err := svc.Get(ctx, auth.Guest(ours), pending); !errors.Is(err, auth.ErrForbidden) {
 		t.Fatalf("reading a pending comment by id returned %v, want ErrForbidden", err)
 	}
 }
@@ -176,7 +176,7 @@ func TestCommentCreationTakesAuthorshipAndModerationFromTheActor(t *testing.T) {
 	seedCategory(t, db, category, ours, "Reports", "reports")
 	seedPostInCategory(t, db, post, ours, category, "Visible post", "visible-post")
 
-	actor := security.Subject{ID: "u1", Tenant: ours, Verified: true}
+	actor := auth.Subject{ID: "u1", Tenant: ours, Verified: true}
 	svc := services.NewCommentService(repositories.NewCommentRepository(db))
 	created, err := svc.Create(ctx, actor, requests.StoreComment{
 		PostId: post, Author: "u9", Body: "A pending comment.", Approved: true,
@@ -202,7 +202,7 @@ func TestACommentCannotTargetAnotherTenantsPost(t *testing.T) {
 	ctx := context.Background()
 	scopedFixture(t, db)
 
-	actor := security.Subject{ID: "u1", Tenant: bootstrap.Tenant(), Verified: true}
+	actor := auth.Subject{ID: "u1", Tenant: bootstrap.Tenant(), Verified: true}
 	svc := services.NewCommentService(repositories.NewCommentRepository(db))
 	_, err := svc.Create(ctx, actor, requests.StoreComment{
 		PostId: theirPost,
@@ -224,7 +224,7 @@ func TestACommentCannotBeMovedToAnotherTenantsPost(t *testing.T) {
 	ctx := context.Background()
 	scopedFixture(t, db)
 
-	actor := security.Subject{
+	actor := auth.Subject{
 		ID: "admin", Tenant: bootstrap.Tenant(), Roles: []string{"admin"}, Verified: true,
 	}
 	svc := services.NewCommentService(repositories.NewCommentRepository(db))
@@ -248,7 +248,7 @@ func TestUpdatingAnUnknownCommentStillReportsTheComment(t *testing.T) {
 	scopedFixture(t, db)
 
 	//arandu:system-grant this repository contract test needs an update Grant with no request actor
-	g := security.SystemGrant(policies.CommentUpdate, bootstrap.Tenant())
+	g := auth.SystemGrant(policies.CommentUpdate, bootstrap.Tenant())
 	_, err := repositories.NewCommentRepository(db).Update(ctx, g, models.Comment{
 		ID: "00000000-0000-4000-8000-0000000001c0", PostId: ourPost,
 		Author: "u1", Body: "Missing.", Approved: false,

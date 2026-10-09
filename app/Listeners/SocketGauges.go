@@ -8,7 +8,7 @@ package listeners
 import (
 	"context"
 
-	"github.com/arandu-io/framework/observability"
+	"github.com/arandu-io/hesape/log"
 	"github.com/arandu-io/joaju"
 )
 
@@ -55,14 +55,14 @@ const (
 // every connection's goroutine. It holds a counter and a registry, and both are.
 type SocketGauges struct {
 	counts *joaju.Counter
-	gauges *observability.Gauges
+	gauges *log.Gauges
 }
 
 // NewSocketGauges returns the observer, publishing into gauges.
 //
 // It builds its own counter rather than accepting one, because a counter a
 // caller also holds is a second way to read these numbers.
-func NewSocketGauges(gauges *observability.Gauges) *SocketGauges {
+func NewSocketGauges(gauges *log.Gauges) *SocketGauges {
 	return &SocketGauges{counts: joaju.NewCounter(), gauges: gauges}
 }
 
@@ -106,8 +106,8 @@ func (s *SocketGauges) MessageSent(ctx context.Context, id joaju.SocketID, messa
 // publish writes one tenant's connection and channel counts as they stand now.
 func (s *SocketGauges) publish(tenant string) {
 	count := s.counts.Read(tenant)
-	s.gauges.Set(observability.GaugeName{Metric: SocketConnections, Tenant: tenant}, count.Connections)
-	s.gauges.Set(observability.GaugeName{Metric: SocketChannels, Tenant: tenant}, count.Channels)
+	s.gauges.Set(log.GaugeName{Metric: SocketConnections, Tenant: tenant}, count.Connections)
+	s.gauges.Set(log.GaugeName{Metric: SocketChannels, Tenant: tenant}, count.Channels)
 }
 
 // publishTotals writes the frame counts, which belong to the process rather than
@@ -121,8 +121,8 @@ func (s *SocketGauges) publish(tenant string) {
 // honestly be attributed to one reads as.
 func (s *SocketGauges) publishTotals() {
 	totals := s.counts.Read(counterAllTenants)
-	s.gauges.Set(observability.GaugeName{Metric: SocketMessagesReceived}, totals.Received)
-	s.gauges.Set(observability.GaugeName{Metric: SocketMessagesSent}, totals.Sent)
+	s.gauges.Set(log.GaugeName{Metric: SocketMessagesReceived}, totals.Received)
+	s.gauges.Set(log.GaugeName{Metric: SocketMessagesSent}, totals.Sent)
 }
 
 // counterAllTenants is where the counter files the two message events.

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
 )
 
 // SocketInspectAll is reading the socket counts of EVERY tenant at once.
@@ -15,7 +15,7 @@ import (
 // the Grant. This action is the question that has no tenant in it, and it exists
 // as a name of its own so that a handler cannot ask the tenant's question and be
 // handed the operator's answer.
-const SocketInspectAll security.Action = "socket.inspect.all"
+const SocketInspectAll auth.Action = "socket.inspect.all"
 
 // AllTenantSockets is what SocketInspectAll is asked about: the socket counts
 // this process is holding, across every tenant in it.
@@ -35,7 +35,7 @@ type AllTenantSockets struct{}
 // It is a policy of its own, in a file of its own, and that separation is the
 // point rather than tidiness. Every other policy in this package answers about a
 // record of one tenant, reached through a repository that filters by
-// data.Tenant(g). This one answers about the process: how many sockets it holds,
+// auth.Tenant(g). This one answers about the process: how many sockets it holds,
 // for whom, and how many frames have crossed it. Those numbers are the operator's
 // -- somebody looking at a deployment -- and they are not a screen a customer
 // sees. Filing it with CommentPolicy would put a cross-tenant read behind the
@@ -65,10 +65,10 @@ type SocketMetricsPolicy struct {
 
 // Compile-time proof that the policy answers about the process's counts and no
 // record of anybody's.
-var _ security.Policy[AllTenantSockets] = SocketMetricsPolicy{}
+var _ auth.Policy[AllTenantSockets] = SocketMetricsPolicy{}
 
 // Can decides one read of the counts.
-func (p SocketMetricsPolicy) Can(_ context.Context, s security.Subject, a security.Action, _ AllTenantSockets) error {
+func (p SocketMetricsPolicy) Can(_ context.Context, s auth.Subject, a auth.Action, _ AllTenantSockets) error {
 	if a != SocketInspectAll {
 		return fmt.Errorf("no rule allows %s on the socket counts", a)
 	}

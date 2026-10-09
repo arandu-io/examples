@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
 
 	models "github.com/arandu-io/examples/app/Models"
 )
@@ -17,15 +17,15 @@ import (
 // compile past the first module.
 const (
 	// CommentView is reading one record.
-	CommentView security.Action = "comment.view"
+	CommentView auth.Action = "comment.view"
 	// CommentList is paging through the records.
-	CommentList security.Action = "comment.list"
+	CommentList auth.Action = "comment.list"
 	// CommentCreate is adding one.
-	CommentCreate security.Action = "comment.create"
+	CommentCreate auth.Action = "comment.create"
 	// CommentUpdate is changing one.
-	CommentUpdate security.Action = "comment.update"
+	CommentUpdate auth.Action = "comment.update"
 	// CommentDelete is removing one.
-	CommentDelete security.Action = "comment.delete"
+	CommentDelete auth.Action = "comment.delete"
 
 	// CommentPublicList is the thread as a reader sees it: what is approved,
 	// plus their own while it waits.
@@ -37,7 +37,7 @@ const (
 	// meaning depends on who is asking. It has its own query, and the query is
 	// what keeps a comment awaiting review out of a stranger's page rather than
 	// a filter somebody removes while tidying.
-	CommentPublicList security.Action = "comment.list.public"
+	CommentPublicList auth.Action = "comment.list.public"
 )
 
 // CommentPolicy is the only authority over who does what with Comment.
@@ -48,10 +48,10 @@ const (
 type CommentPolicy struct{}
 
 // Compile-time proof that the policy answers about this entity and no other.
-var _ security.Policy[models.Comment] = CommentPolicy{}
+var _ auth.Policy[models.Comment] = CommentPolicy{}
 
 // Can decides whether the subject may perform the action.
-func (CommentPolicy) Can(ctx context.Context, s security.Subject, a security.Action, co models.Comment) error {
+func (CommentPolicy) Can(ctx context.Context, s auth.Subject, a auth.Action, co models.Comment) error {
 
 	// arandu:begin custom
 	//
@@ -62,7 +62,7 @@ func (CommentPolicy) Can(ctx context.Context, s security.Subject, a security.Act
 	// questions: what a stranger may see, what an account may add, and what a
 	// moderator may do about it.
 	//
-	// A reader with no session arrives here as security.Guest, which is a
+	// A reader with no session arrives here as auth.Guest, which is a
 	// subject somebody built on purpose. A Subject nobody filled in is not one,
 	// and Authorize refuses it before this method is called -- an empty subject
 	// is almost always a session that failed to load, and answering an

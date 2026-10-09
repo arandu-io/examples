@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
 	"github.com/arandu-io/hesape/broadcasting"
 	"github.com/arandu-io/joaju"
 
@@ -30,14 +30,14 @@ func TestASocketIsHeldByAnAccountAndNotByAVisitor(t *testing.T) {
 
 	for _, c := range []struct {
 		who     string
-		subject security.Subject
-		action  security.Action
+		subject auth.Subject
+		action  auth.Action
 		allowed bool
 	}{
 		{"a reader may hold a socket", reader, joaju.Connect, true},
 		{"a moderator may hold a socket", admin, joaju.Connect, true},
-		{"a visitor may not", security.Guest(socketTenant), joaju.Connect, false},
-		{"somebody else's tenant may not", security.Subject{ID: "u9", Tenant: "t2"}, joaju.Connect, false},
+		{"a visitor may not", auth.Guest(socketTenant), joaju.Connect, false},
+		{"somebody else's tenant may not", auth.Subject{ID: "u9", Tenant: "t2"}, joaju.Connect, false},
 		{"and no other action is answered here", reader, broadcasting.ChannelJoin, false},
 	} {
 		t.Run(c.who, func(t *testing.T) {
@@ -64,7 +64,7 @@ func TestOnlyTheChannelsThisBlogHasAreReachable(t *testing.T) {
 
 	for _, c := range []struct {
 		who     string
-		subject security.Subject
+		subject auth.Subject
 		channel string
 		allowed bool
 	}{
@@ -72,7 +72,7 @@ func TestOnlyTheChannelsThisBlogHasAreReachable(t *testing.T) {
 		{"a reader does not", reader, policies.ModerationChannel, false},
 		{"nobody hears a channel that was never declared", admin, "private-anything-else", false},
 		{"not even a public one", admin, "updates", false},
-		{"and a guest hears nothing", security.Guest(socketTenant), policies.ModerationChannel, false},
+		{"and a guest hears nothing", auth.Guest(socketTenant), policies.ModerationChannel, false},
 	} {
 		t.Run(c.who, func(t *testing.T) {
 			err := subscribe.Can(context.Background(), c.subject, broadcasting.ChannelJoin, joaju.Subscription{
@@ -102,14 +102,14 @@ func TestTheSocketCountsAreTheOperatorsAndNotAReaders(t *testing.T) {
 
 	for _, c := range []struct {
 		who     string
-		subject security.Subject
-		action  security.Action
+		subject auth.Subject
+		action  auth.Action
 		allowed bool
 	}{
 		{"the operator reads them", admin, policies.SocketInspectAll, true},
 		{"a reader does not", reader, policies.SocketInspectAll, false},
-		{"a visitor does not", security.Guest(socketTenant), policies.SocketInspectAll, false},
-		{"another tenant's administrator does not", security.Subject{ID: "u9", Tenant: "t2", Roles: []string{"admin"}}, policies.SocketInspectAll, false},
+		{"a visitor does not", auth.Guest(socketTenant), policies.SocketInspectAll, false},
+		{"another tenant's administrator does not", auth.Subject{ID: "u9", Tenant: "t2", Roles: []string{"admin"}}, policies.SocketInspectAll, false},
 		{"and the action is not one another policy issues", admin, joaju.Connect, false},
 	} {
 		t.Run(c.who, func(t *testing.T) {
@@ -127,10 +127,10 @@ func TestTheSocketCountsAreTheOperatorsAndNotAReaders(t *testing.T) {
 // channelNamed builds the name the way joaju does: off a Grant, never off a
 // string somebody wrote here. A test that assembled one by hand would be a test
 // of a value the server cannot produce.
-func channelNamed(t *testing.T, s security.Subject, requested string) joaju.ChannelName {
+func channelNamed(t *testing.T, s auth.Subject, requested string) joaju.ChannelName {
 	t.Helper()
 
-	g, err := security.Authorize(context.Background(), allowEverything{}, s, broadcasting.ChannelJoin, struct{}{})
+	g, err := auth.Authorize(context.Background(), allowEverything{}, s, broadcasting.ChannelJoin, struct{}{})
 	if err != nil {
 		t.Fatalf("the fixture grant was refused: %v", err)
 	}
@@ -147,6 +147,6 @@ func channelNamed(t *testing.T, s security.Subject, requested string) joaju.Chan
 // literal, which is the property that keeps a tenant off the wire.
 type allowEverything struct{}
 
-func (allowEverything) Can(context.Context, security.Subject, security.Action, struct{}) error {
+func (allowEverything) Can(context.Context, auth.Subject, auth.Action, struct{}) error {
 	return nil
 }

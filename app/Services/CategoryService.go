@@ -5,10 +5,9 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/arandu-io/framework/data"
-	"github.com/arandu-io/framework/observability"
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
 	"github.com/arandu-io/hesape/database"
+	"github.com/arandu-io/hesape/log"
 
 	requests "github.com/arandu-io/examples/app/Http/Requests"
 	models "github.com/arandu-io/examples/app/Models"
@@ -62,7 +61,7 @@ var categorySortable = map[string]string{
 // it compiles. A read that lost it does not return the wrong rows, it does not
 // run.
 type CategoryService struct {
-	db     *data.DB
+	db     *database.DB
 	policy policies.CategoryPolicy
 	// posts is the policy consulted before the section relation is read. See
 	// Delete: reading another entity is a read like any other, and it is
@@ -74,16 +73,16 @@ type CategoryService struct {
 // NewCategoryService wires the service.
 //
 // It takes the handle rather than a repository, and no adapter goes in between:
-// *data.DB is a model connection, so a statement built here runs on the same
+// *database.DB is a model connection, so a statement built here runs on the same
 // pool, joins the same open transaction, and is recorded on the same Collector
 // as one issued by the repositories next door.
-func NewCategoryService(db *data.DB) *CategoryService {
+func NewCategoryService(db *database.DB) *CategoryService {
 	return &CategoryService{db: db}
 }
 
 // Create walks the mandatory path: validate, Authorize, Grant, statement.
 // There is no other order that compiles.
-func (s *CategoryService) Create(ctx context.Context, actor security.Subject, in requests.StoreCategory) (models.Category, error) {
+func (s *CategoryService) Create(ctx context.Context, actor auth.Subject, in requests.StoreCategory) (models.Category, error) {
 	if errs := in.Validate(); errs.Any() {
 		return models.Category{}, errs
 	}
@@ -94,7 +93,7 @@ func (s *CategoryService) Create(ctx context.Context, actor security.Subject, in
 		Description: in.Description,
 	}
 
-	g, err := security.Authorize(ctx, s.policy, actor, policies.CategoryCreate, candidate)
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.CategoryCreate, candidate)
 	if err != nil {
 		return models.Category{}, err
 	}
@@ -102,7 +101,7 @@ func (s *CategoryService) Create(ctx context.Context, actor security.Subject, in
 	// The id comes from the application, not from a database default:
 	// gen_random_uuid, UUID() and randomblob are three spellings of one idea,
 	// and depending on any of them would tie the schema to one engine.
-	if candidate.ID, err = data.NewID(); err != nil {
+	if candidate.ID, err = database.NewID(); err != nil {
 		return models.Category{}, err
 	}
 
@@ -112,7 +111,7 @@ func (s *CategoryService) Create(ctx context.Context, actor security.Subject, in
 	// compiler reads. Each is assigned on its own, because assigning the whole
 	// candidate over the row would replace the model it is wired with, and Save
 	// would refuse it. The tenant is deliberately not set here -- whatever this
-	// field holds, the insert writes data.Tenant(g) over it.
+	// field holds, the insert writes auth.Tenant(g) over it.
 	row, err := models.Categories(s.db).New()
 	if err != nil {
 		return models.Category{}, err
@@ -132,7 +131,7 @@ func (s *CategoryService) Create(ctx context.Context, actor security.Subject, in
 
 	// Guarded: the entity is a struct value, and boxing it into `any` allocates
 	// at the call site even though RecordEvent is a no-op on a nil Collector.
-	if col := observability.FromContext(ctx); col != nil {
+	if col := log.FromContext(ctx); col != nil {
 		col.RecordEvent("category.created", created)
 	}
 	return created, nil
@@ -143,8 +142,8 @@ func (s *CategoryService) Create(ctx context.Context, actor security.Subject, in
 // The first Authorize answers whether the caller may look at sections at all.
 // The second, with the row that was read, is the object-level decision — a
 // policy that branches on the entity's fields is only consulted the second time.
-func (s *CategoryService) Get(ctx context.Context, actor security.Subject, id string) (models.Category, error) {
-	g, err := security.Authorize(ctx, s.policy, actor, policies.CategoryView, models.Category{})
+func (s *CategoryService) Get(ctx context.Context, actor auth.Subject, id string) (models.Category, error) {
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.CategoryView, models.Category{})
 	if err != nil {
 		return models.Category{}, err
 	}
@@ -160,7 +159,7 @@ func (s *CategoryService) Get(ctx context.Context, actor security.Subject, id st
 	if found == nil {
 		return models.Category{}, models.ErrCategoryNotFound
 	}
-	if _, err := security.Authorize(ctx, s.policy, actor, policies.CategoryView, *found); err != nil {
+	if _, err := auth.Authorize(ctx, s.policy, actor, policies.CategoryView, *found); err != nil {
 		return models.Category{}, err
 	}
 	return *found, nil
@@ -173,13 +172,13 @@ func (s *CategoryService) Get(ctx context.Context, actor security.Subject, id st
 // row read, so the value it sorts by has to be looked up before the page can be
 // built -- which used to be a correlated subquery that needed a tenant of its
 // own, and is now a terminal that cannot run without one.
-func (s *CategoryService) List(ctx context.Context, actor security.Subject, q data.Query) ([]models.Category, error) {
+func (s *CategoryService) List(ctx context.Context, actor auth.Subject, q database.Query) ([]models.Category, error) {
 	// CategoryList, not CategoryView. The specification can grant them to
 	// different roles -- "a support agent may open the record it was given, but
 	// may not page through every record there is" -- and checking view here made
 	// the list permission decorative: whoever could read one could read all of
 	// them.
-	g, err := security.Authorize(ctx, s.policy, actor, policies.CategoryList, models.Category{})
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.CategoryList, models.Category{})
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +202,7 @@ func (s *CategoryService) List(ctx context.Context, actor security.Subject, q da
 		// The anchor is read through a terminal of its own, and that is what
 		// replaced the subquery. A cursor arrives from the client, so an id of
 		// another tenant would once have decided where our page starts; here the
-		// lookup is a statement the model scopes by data.Tenant(g), so such an
+		// lookup is a statement the model scopes by auth.Tenant(g), so such an
 		// id resolves to nothing and the page is empty.
 		anchor, err := models.Categories(s.db).WhereKey(q.Cursor).Value(ctx, g, column)
 		if err != nil {
@@ -235,7 +234,7 @@ func (s *CategoryService) List(ctx context.Context, actor security.Subject, q da
 // It reads before writing, so the policy decides against the stored row rather
 // than against what the client claims the row is. Skipping this is how a check
 // passes on attacker-supplied data.
-func (s *CategoryService) Update(ctx context.Context, actor security.Subject, in requests.UpdateCategory) (models.Category, error) {
+func (s *CategoryService) Update(ctx context.Context, actor auth.Subject, in requests.UpdateCategory) (models.Category, error) {
 	if errs := in.Validate(); errs.Any() {
 		return models.Category{}, errs
 	}
@@ -245,7 +244,7 @@ func (s *CategoryService) Update(ctx context.Context, actor security.Subject, in
 		return models.Category{}, err
 	}
 
-	g, err := security.Authorize(ctx, s.policy, actor, policies.CategoryUpdate, stored)
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.CategoryUpdate, stored)
 	if err != nil {
 		return models.Category{}, err
 	}
@@ -299,13 +298,13 @@ func (s *CategoryService) Update(ctx context.Context, actor security.Subject, in
 // articles is emptied first. It cannot enforce that: the count is not on the
 // entity, and a policy that queried would be a policy with a data layer under
 // it. This is the layer that can, and the guard is the relation.
-func (s *CategoryService) Delete(ctx context.Context, actor security.Subject, id string) error {
+func (s *CategoryService) Delete(ctx context.Context, actor auth.Subject, id string) error {
 	stored, err := s.Get(ctx, actor, id)
 	if err != nil {
 		return err
 	}
 
-	g, err := security.Authorize(ctx, s.policy, actor, policies.CategoryDelete, stored)
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.CategoryDelete, stored)
 	if err != nil {
 		return err
 	}
@@ -315,7 +314,7 @@ func (s *CategoryService) Delete(ctx context.Context, actor security.Subject, id
 	// second Grant, for post.list, because a Grant carries ONE action: handing
 	// the delete Grant to a query over posts would be an authorization nobody
 	// asked for.
-	listing, err := security.Authorize(ctx, s.posts, actor, policies.PostList, models.Post{})
+	listing, err := auth.Authorize(ctx, s.posts, actor, policies.PostList, models.Post{})
 	if err != nil {
 		return err
 	}
@@ -334,7 +333,7 @@ func (s *CategoryService) Delete(ctx context.Context, actor security.Subject, id
 	if removed == 0 {
 		return models.ErrCategoryNotFound
 	}
-	if col := observability.FromContext(ctx); col != nil {
+	if col := log.FromContext(ctx); col != nil {
 		col.RecordEvent("category.deleted", stored)
 	}
 	return nil
@@ -355,8 +354,8 @@ func (s *CategoryService) Delete(ctx context.Context, actor security.Subject, id
 // Both take a value from the address bar and answer with one record, and a read
 // path that skips the object-level decision is one where a rule written against
 // the entity is never consulted.
-func (s *CategoryService) BySlug(ctx context.Context, actor security.Subject, slug string) (models.Category, error) {
-	g, err := security.Authorize(ctx, s.policy, actor, policies.CategoryView, models.Category{})
+func (s *CategoryService) BySlug(ctx context.Context, actor auth.Subject, slug string) (models.Category, error) {
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.CategoryView, models.Category{})
 	if err != nil {
 		return models.Category{}, err
 	}
@@ -374,7 +373,7 @@ func (s *CategoryService) BySlug(ctx context.Context, actor security.Subject, sl
 	if found == nil {
 		return models.Category{}, models.ErrCategoryNotFound
 	}
-	if _, err := security.Authorize(ctx, s.policy, actor, policies.CategoryView, *found); err != nil {
+	if _, err := auth.Authorize(ctx, s.policy, actor, policies.CategoryView, *found); err != nil {
 		return models.Category{}, err
 	}
 	return *found, nil
@@ -387,8 +386,8 @@ func (s *CategoryService) BySlug(ctx context.Context, actor security.Subject, sl
 // navigation that hides part of itself. The bound is the schema: if this ever
 // returns hundreds, the sections are being used as tags and the answer is a
 // different feature.
-func (s *CategoryService) All(ctx context.Context, actor security.Subject) ([]models.Category, error) {
-	g, err := security.Authorize(ctx, s.policy, actor, policies.CategoryList, models.Category{})
+func (s *CategoryService) All(ctx context.Context, actor auth.Subject) ([]models.Category, error) {
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.CategoryList, models.Category{})
 	if err != nil {
 		return nil, err
 	}

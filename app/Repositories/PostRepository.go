@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/arandu-io/framework/data"
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
 	"github.com/arandu-io/hesape/database"
 
 	models "github.com/arandu-io/examples/app/Models"
@@ -53,11 +53,11 @@ const (
 // report, a shape no row of posts carries, assembled for the section bar and
 // read nowhere else.
 type PostRepository struct {
-	db *data.DB
+	db *database.DB
 }
 
 // NewPostRepository returns a repository over an instrumented handle.
-func NewPostRepository(db *data.DB) *PostRepository { return &PostRepository{db: db} }
+func NewPostRepository(db *database.DB) *PostRepository { return &PostRepository{db: db} }
 
 // Compile-time proof of the contract.
 var _ data.Repository[models.Post, string] = (*PostRepository)(nil)
@@ -65,7 +65,7 @@ var _ data.Repository[models.Post, string] = (*PostRepository)(nil)
 const postColumns = `id, tenant_id, title, slug, body, category_id, views, published_at, created_at`
 
 // Find returns one post by id, scoped to the grant's tenant.
-func (r *PostRepository) Find(ctx context.Context, g security.Grant, id string) (models.Post, error) {
+func (r *PostRepository) Find(ctx context.Context, g auth.Grant, id string) (models.Post, error) {
 	if err := g.Check(policies.PostView); err != nil {
 		return models.Post{}, err
 	}
@@ -75,7 +75,7 @@ func (r *PostRepository) Find(ctx context.Context, g security.Grant, id string) 
 	// and telling the two apart is itself a leak.
 	row := r.db.QueryRowContext(ctx,
 		`SELECT `+postColumns+` FROM posts WHERE id = ? AND tenant_id = ?`,
-		id, data.Tenant(g))
+		id, auth.Tenant(g))
 	return r.scan(row)
 }
 
@@ -94,7 +94,7 @@ var postSortable = map[string]string{
 //
 // Pagination is keyset based: OFFSET grows more expensive with every page and
 // skips rows when data changes underneath it.
-func (r *PostRepository) List(ctx context.Context, g security.Grant, q data.Query) ([]models.Post, error) {
+func (r *PostRepository) List(ctx context.Context, g auth.Grant, q database.Query) ([]models.Post, error) {
 	// PostList, not PostView. The specification can grant them to
 	// different roles -- "a support agent may open the record it was given, but
 	// may not page through every record there is" -- and checking view here made
@@ -116,7 +116,7 @@ func (r *PostRepository) List(ctx context.Context, g security.Grant, q data.Quer
 	}
 
 	query := `SELECT ` + postColumns + ` FROM posts WHERE tenant_id = ?`
-	args := []any{data.Tenant(g)}
+	args := []any{auth.Tenant(g)}
 	if q.Cursor != "" {
 		// The predicate names the column the ORDER BY names, and it is scoped
 		// like the outer query: a cursor is the id of the last row read, it
@@ -158,7 +158,7 @@ func (r *PostRepository) List(ctx context.Context, g security.Grant, q data.Quer
 // It checks PostPublicList, so a Grant issued for PostList is refused here. That
 // is the point of the two actions being two: this method answers a narrower
 // question, and the narrower permission is what may ask it.
-func (r *PostRepository) Published(ctx context.Context, g security.Grant, limit int) ([]models.Post, error) {
+func (r *PostRepository) Published(ctx context.Context, g auth.Grant, limit int) ([]models.Post, error) {
 	if err := g.Check(policies.PostPublicList); err != nil {
 		return nil, err
 	}
@@ -176,7 +176,7 @@ func (r *PostRepository) Published(ctx context.Context, g security.Grant, limit 
 	// sitemap. PublishedAt is a time.Time, not a pointer, so "not published" is
 	// the zero value -- which the driver writes as 0001-01-01, a real timestamp
 	// that is very much not null. The predicate has to say what it means.
-	rows, err := r.db.QueryContext(ctx, query, data.Tenant(g), time.Time{}, limit)
+	rows, err := r.db.QueryContext(ctx, query, auth.Tenant(g), time.Time{}, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +194,7 @@ func (r *PostRepository) Published(ctx context.Context, g security.Grant, limit 
 }
 
 // Create inserts the post and returns it as stored.
-func (r *PostRepository) Create(ctx context.Context, g security.Grant, p models.Post) (models.Post, error) {
+func (r *PostRepository) Create(ctx context.Context, g auth.Grant, p models.Post) (models.Post, error) {
 	if err := g.Check(policies.PostCreate); err != nil {
 		return models.Post{}, err
 	}
@@ -204,7 +204,7 @@ func (r *PostRepository) Create(ctx context.Context, g security.Grant, p models.
 		// The id comes from the application, not from a database default:
 		// gen_random_uuid, UUID() and randomblob are three spellings of one idea,
 		// and depending on any of them would tie the schema to one engine.
-		if p.ID, err = data.NewID(); err != nil {
+		if p.ID, err = database.NewID(); err != nil {
 			return models.Post{}, err
 		}
 	}
@@ -212,7 +212,7 @@ func (r *PostRepository) Create(ctx context.Context, g security.Grant, p models.
 	// row is filed under the tenant that was authorized -- a candidate arrives
 	// from a request body, and a request that could choose its tenant could
 	// write into somebody else's.
-	p.TenantID = data.Tenant(g)
+	p.TenantID = auth.Tenant(g)
 	p.CreatedAt = time.Now().UTC()
 
 	_, err = r.db.ExecContext(ctx,
@@ -229,7 +229,7 @@ func (r *PostRepository) Create(ctx context.Context, g security.Grant, p models.
 
 // Update writes the mutable fields. The tenant is not one of them: moving a row
 // between tenants is not an update, it is a migration.
-func (r *PostRepository) Update(ctx context.Context, g security.Grant, p models.Post) (models.Post, error) {
+func (r *PostRepository) Update(ctx context.Context, g auth.Grant, p models.Post) (models.Post, error) {
 	if err := g.Check(policies.PostUpdate); err != nil {
 		return models.Post{}, err
 	}
@@ -237,7 +237,7 @@ func (r *PostRepository) Update(ctx context.Context, g security.Grant, p models.
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE posts SET title = ?, slug = ?, body = ?, category_id = ?, published_at = ?
 		 WHERE id = ? AND tenant_id = ?`,
-		p.Title, p.Slug, p.Body, nullID(p.CategoryID), p.PublishedAt, p.ID, data.Tenant(g))
+		p.Title, p.Slug, p.Body, nullID(p.CategoryID), p.PublishedAt, p.ID, auth.Tenant(g))
 	if err != nil {
 		if r.conflict(err) {
 			return models.Post{}, models.ErrPostConflict
@@ -251,12 +251,12 @@ func (r *PostRepository) Update(ctx context.Context, g security.Grant, p models.
 }
 
 // Delete removes one post within the grant's tenant.
-func (r *PostRepository) Delete(ctx context.Context, g security.Grant, id string) error {
+func (r *PostRepository) Delete(ctx context.Context, g auth.Grant, id string) error {
 	if err := g.Check(policies.PostDelete); err != nil {
 		return err
 	}
 	res, err := r.db.ExecContext(ctx,
-		`DELETE FROM posts WHERE id = ? AND tenant_id = ?`, id, data.Tenant(g))
+		`DELETE FROM posts WHERE id = ? AND tenant_id = ?`, id, auth.Tenant(g))
 	if err != nil {
 		return err
 	}
@@ -269,7 +269,7 @@ func (r *PostRepository) Delete(ctx context.Context, g security.Grant, id string
 // Health reports whether the repository can reach its storage.
 //
 // Nothing calls it out of the box. It is here so AppServiceProvider can
-// implement kernel.Health over the repositories it owns, which is what puts this
+// implement foundation.Health over the repositories it owns, which is what puts this
 // table on /_arandu/health and on the error page's diagnosis.
 func (r *PostRepository) Health(ctx context.Context) error { return r.db.PingContext(ctx) }
 
@@ -351,7 +351,7 @@ func (r *PostRepository) conflict(err error) bool {
 // makes a draft unreachable and an optional filter is one somebody makes
 // optional in the other direction. It checks the same PostPublicList: the
 // question is narrower, not different.
-func (r *PostRepository) PublishedInCategory(ctx context.Context, g security.Grant, categoryID string, limit int) ([]models.Post, error) {
+func (r *PostRepository) PublishedInCategory(ctx context.Context, g auth.Grant, categoryID string, limit int) ([]models.Post, error) {
 	if err := g.Check(policies.PostPublicList); err != nil {
 		return nil, err
 	}
@@ -368,7 +368,7 @@ func (r *PostRepository) PublishedInCategory(ctx context.Context, g security.Gra
 	// The tenant is scoped as well as the section, and not instead of it. The
 	// section id reaches here from a slug in the address bar, so without the
 	// tenant a section id guessed from another tenant would list its posts.
-	rows, err := r.db.QueryContext(ctx, query, data.Tenant(g), categoryID, time.Time{}, limit)
+	rows, err := r.db.QueryContext(ctx, query, auth.Tenant(g), categoryID, time.Time{}, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -394,7 +394,7 @@ func (r *PostRepository) PublishedInCategory(ctx context.Context, g security.Gra
 // just as easily.
 //
 // The empty key is not returned: posts filed nowhere are not a section.
-func (r *PostRepository) CountByCategory(ctx context.Context, g security.Grant) (map[string]int, error) {
+func (r *PostRepository) CountByCategory(ctx context.Context, g auth.Grant) (map[string]int, error) {
 	if err := g.Check(policies.PostPublicList); err != nil {
 		return nil, err
 	}
@@ -407,7 +407,7 @@ func (r *PostRepository) CountByCategory(ctx context.Context, g security.Grant) 
 	// An aggregate is a read like any other. A COUNT that crossed tenants would
 	// not return a single row of anybody's data and would still report how much
 	// of it there is, which is the kind of leak a report is made of.
-	rows, err := r.db.QueryContext(ctx, query, data.Tenant(g), time.Time{})
+	rows, err := r.db.QueryContext(ctx, query, auth.Tenant(g), time.Time{})
 	if err != nil {
 		return nil, err
 	}
@@ -438,13 +438,13 @@ func (r *PostRepository) CountByCategory(ctx context.Context, g security.Grant) 
 // It checks PostView -- the same permission as reading the article, because that
 // is what it is a side effect of. A separate action would be a permission
 // nobody could grant without also granting the read it always follows.
-func (r *PostRepository) IncrementViews(ctx context.Context, g security.Grant, id string) error {
+func (r *PostRepository) IncrementViews(ctx context.Context, g auth.Grant, id string) error {
 	if err := g.Check(policies.PostView); err != nil {
 		return err
 	}
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE posts SET views = views + 1 WHERE id = ? AND tenant_id = ?`,
-		id, data.Tenant(g))
+		id, auth.Tenant(g))
 	return err
 }
 

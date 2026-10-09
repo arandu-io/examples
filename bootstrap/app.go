@@ -18,23 +18,24 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/arandu-io/framework/data"
 	"github.com/arandu-io/framework/events"
-	fhttp "github.com/arandu-io/framework/http"
+	"github.com/arandu-io/framework/foundation"
 	"github.com/arandu-io/framework/http/middleware"
 	"github.com/arandu-io/framework/jobs"
-	"github.com/arandu-io/framework/kernel"
 	"github.com/arandu-io/framework/mail"
-	"github.com/arandu-io/framework/observability"
 	"github.com/arandu-io/framework/observability/errorpage"
 	"github.com/arandu-io/framework/scheduler"
 	"github.com/arandu-io/framework/security"
 	fwview "github.com/arandu-io/framework/view"
 	"github.com/arandu-io/hesape/cache"
+	"github.com/arandu-io/hesape/database"
+	hhttp "github.com/arandu-io/hesape/http"
 	httpmiddleware "github.com/arandu-io/hesape/http/middleware"
+	"github.com/arandu-io/hesape/log"
 	"github.com/arandu-io/hesape/onetime"
 	"github.com/arandu-io/hesape/queue"
 	hmiddleware "github.com/arandu-io/hesape/routing/middleware"
+	"github.com/arandu-io/hesape/session"
 	"github.com/arandu-io/hesape/view"
 	"github.com/arandu-io/joaju"
 	"github.com/arandu-io/joaju/protocols/pusher"
@@ -93,7 +94,7 @@ const AppModule = "github.com/arandu-io/examples"
 type App struct {
 	// Kernel is the composed application: configuration, modules, the global
 	// middleware pipeline and the router.
-	Kernel *kernel.Kernel
+	Kernel *foundation.Application
 	// Users is the application-owned account service. Seeders and controllers
 	// receive this same value instead of reaching through a framework module.
 	Users *services.UserService
@@ -129,7 +130,7 @@ type App struct {
 // binary cannot be: a cache store nothing here defines is one of them. Refusing
 // at the boot, naming the setting, is the alternative to starting and behaving
 // as though something else had been asked for.
-func Build(cfg appconfig.Config, db *data.DB) (App, error) {
+func Build(cfg appconfig.Config, db *database.DB) (App, error) {
 	fw := cfg.Framework
 
 	// The CSRF token is bound to the session, and a visitor without one is bound
@@ -137,7 +138,7 @@ func Build(cfg appconfig.Config, db *data.DB) (App, error) {
 	// exactly when the session cookie does: over plain HTTP in development the
 	// browser would never send a Secure one back, and every form a guest
 	// submits would answer 419.
-	csrf := security.NewCSRF(fw.App.Key, cfg.Session.CSRFTTL).Secure(cfg.Session.Secure)
+	csrf := session.NewCSRF(fw.App.Key, cfg.Session.CSRFTTL).Secure(cfg.Session.Secure)
 
 	// Every cache store this application has, by name. CACHE_STORE names the
 	// one the rate limit below counts in, and a name nothing defines is refused
@@ -187,7 +188,7 @@ func Build(cfg appconfig.Config, db *data.DB) (App, error) {
 	//
 	// # It runs in `aru serve`, and in no other command
 	//
-	// That is not decided here. The module's loop is a kernel.Background one, and
+	// That is not decided here. The module's loop is a foundation.Background one, and
 	// Start is called by Kernel.Run and never by Kernel.Boot -- so `aru work`,
 	// `aru routes` and every migration command build this same application and
 	// start no relay.
@@ -205,9 +206,9 @@ func Build(cfg appconfig.Config, db *data.DB) (App, error) {
 	// One pass reads every unpublished row and marks what it delivered, so N
 	// replicas of the server are N publishers of the same row unless something
 	// stops them. RelayOptions.Locker is that something, and it is the same
-	// kernel.Locker the scheduler below takes -- one value wires into both:
+	// foundation.Locker the scheduler below takes -- one value wires into both:
 	//
-	//	kernel.NewLocker(cache.NewLocks(redis.NewRedisStore(conn)))
+	//	foundation.NewLocker(cache.NewLocks(redis.NewRedisStore(conn)))
 	//
 	// Nil says one replica, which is what the in-process cache store and the
 	// in-process session backend above already say about this deployment. What
@@ -217,10 +218,10 @@ func Build(cfg appconfig.Config, db *data.DB) (App, error) {
 	// again.
 	relay := events.NewRelay(events.NewOutbox(db), listeners.NewEventLog(), events.RelayOptions{})
 
-	// A module that calls another service takes observability.Client, not one of
+	// A module that calls another service takes log.Client, not one of
 	// its own:
 	//
-	//	billing.New(svc, observability.Client(10*time.Second))
+	//	billing.New(svc, log.Client(10*time.Second))
 	//
 	// Going through it is what puts the call on the request timeline and on the
 	// console. A handler that builds its own http.Client is a handler whose
@@ -255,13 +256,13 @@ func Build(cfg appconfig.Config, db *data.DB) (App, error) {
 	commentService := services.NewCommentService(repositories.NewCommentRepository(db))
 	// The sections take the handle rather than a repository: their statements
 	// are CRUD over one table, so they are written through the model, and
-	// *data.DB is a model connection with nothing in between.
+	// *database.DB is a model connection with nothing in between.
 	categoryService := services.NewCategoryService(db)
 
 	// The Application is built here rather than below the controllers because
 	// two of them read its gauge registry, and it opens nothing: no connection,
 	// no port, no migration. Boot and Run are what do that.
-	k := kernel.New(fw)
+	k := foundation.New(fw)
 
 	// The numbers this process owns, in one place. It is the whole process's and
 	// not the socket server's: a second registry would be a second place to look
@@ -340,7 +341,7 @@ func Build(cfg appconfig.Config, db *data.DB) (App, error) {
 			// outside development, and passing nil records nothing -- which is
 			// what production does.
 			middleware.Observe(cfg.App.IsDev(), fw.Observability.TracingSecret, k.Recorder()),
-			middleware.SecurityHeaders(cfg.App.IsDev()),
+			httpmiddleware.SecurityHeaders(cfg.App.IsDev()),
 			// The budget and the window are one value, which is what a named
 			// limiter resolves to. The refusal is passed rather than assumed:
 			// how a 4xx is written belongs to the request layer, and this one
@@ -353,7 +354,7 @@ func Build(cfg appconfig.Config, db *data.DB) (App, error) {
 			// fresh budget. A live session is counted under the same string as
 			// before, so a counter in a shared store survives a deploy.
 			hmiddleware.Throttle(limiter, cache.PerMinute(300),
-				middleware.KeyBySession(sessions), fhttp.Refuse),
+				middleware.KeyBySession(sessions), hhttp.Refuse),
 			// CSRFProtect checks every write and issues the token every page
 			// carries: view.New and csrfToken in app/Http/Controllers read it
 			// off the request, so no controller issues one by hand.
@@ -361,7 +362,7 @@ func Build(cfg appconfig.Config, db *data.DB) (App, error) {
 		).
 		Register(
 			// The view layer. It brings the renderer ctx.View needs, through the
-			// optional kernel.RendererProvider interface, and serves the
+			// optional foundation.RendererProvider interface, and serves the
 			// embedded assets. Without it every page answers with an error that
 			// names this missing line, and every stylesheet 404s.
 			fwview.NewModule(),
@@ -402,7 +403,7 @@ func Build(cfg appconfig.Config, db *data.DB) (App, error) {
 	// Locker is nil here: one replica. Behind more than one, build one over a
 	// store every replica shares, or every replica runs every task:
 	//
-	//	kernel.NewLocker(cache.NewLocks(redis.NewRedisStore(conn)))
+	//	foundation.NewLocker(cache.NewLocks(redis.NewRedisStore(conn)))
 	//
 	// Tenants is nil too: a PerTenant task needs to know which tenants exist,
 	// and only the application knows where that list lives. Wire it and the
@@ -581,7 +582,7 @@ const (
 // connected where, and this is one process -- with one, every number on the
 // operator's screen would be an answer for the fleet instead of for this binary,
 // and there is no fleet. It is the field to fill in the day there is one.
-func buildSocket(tenant string, gauges *observability.Gauges) *joaju.Server {
+func buildSocket(tenant string, gauges *log.Gauges) *joaju.Server {
 	counts := listeners.NewSocketGauges(gauges)
 	broker := pusher.NewMemoryBroker()
 

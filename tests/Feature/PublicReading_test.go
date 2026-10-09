@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arandu-io/framework/data"
+	"github.com/arandu-io/hesape/database"
 
 	"github.com/arandu-io/examples/bootstrap"
 	"github.com/arandu-io/examples/tests"
@@ -144,7 +144,7 @@ func TestAPostOfAnotherTenantIsNeitherListedNorReadable(t *testing.T) {
 //
 // A zero published_at is a draft -- the column is a timestamp rather than a
 // nullable one, so "not published" is the zero value and not NULL.
-func seedPostForReading(t *testing.T, db *data.DB, id, title, slug string, published time.Time) string {
+func seedPostForReading(t *testing.T, db *database.DB, id, title, slug string, published time.Time) string {
 	t.Helper()
 	return seedPostForTenant(t, db, id, bootstrap.Tenant(), title, slug, published)
 }
@@ -161,7 +161,7 @@ func seedPostForReading(t *testing.T, db *data.DB, id, title, slug string, publi
 // not an application code path, and going through the repository would mean
 // building a Grant -- and a Grant only ever carries one tenant, so the row this
 // test needs could not be written through one at all.
-func seedPostForTenant(t *testing.T, db *data.DB, id, tenant, title, slug string, published time.Time) string {
+func seedPostForTenant(t *testing.T, db *database.DB, id, tenant, title, slug string, published time.Time) string {
 	t.Helper()
 
 	_, err := db.ExecContext(context.Background(),

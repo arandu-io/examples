@@ -3,9 +3,9 @@ package services
 import (
 	"context"
 
-	"github.com/arandu-io/framework/data"
-	"github.com/arandu-io/framework/observability"
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
+	"github.com/arandu-io/hesape/database"
+	"github.com/arandu-io/hesape/log"
 
 	requests "github.com/arandu-io/examples/app/Http/Requests"
 	models "github.com/arandu-io/examples/app/Models"
@@ -27,7 +27,7 @@ func NewCommentService(repo *repositories.CommentRepository) *CommentService {
 
 // Create normalizes protected fields, then walks the mandatory path: validate,
 // Authorize, Grant, Repository. There is no other order that compiles.
-func (s *CommentService) Create(ctx context.Context, actor security.Subject, in requests.StoreComment) (models.Comment, error) {
+func (s *CommentService) Create(ctx context.Context, actor auth.Subject, in requests.StoreComment) (models.Comment, error) {
 	// Protected fields are normalized before validation. A browser form should
 	// not have to submit an author merely because UpdateComment shares this
 	// validation shape, and a submitted value must never choose the answer.
@@ -49,7 +49,7 @@ func (s *CommentService) Create(ctx context.Context, actor security.Subject, in 
 		Approved: in.Approved,
 	}
 
-	g, err := security.Authorize(ctx, s.policy, actor, policies.CommentCreate, candidate)
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.CommentCreate, candidate)
 	if err != nil {
 		return models.Comment{}, err
 	}
@@ -60,7 +60,7 @@ func (s *CommentService) Create(ctx context.Context, actor security.Subject, in 
 	}
 	// Guarded: the entity is a struct value, and boxing it into `any` allocates
 	// at the call site even though RecordEvent is a no-op on a nil Collector.
-	if col := observability.FromContext(ctx); col != nil {
+	if col := log.FromContext(ctx); col != nil {
 		col.RecordEvent("comment.created", created)
 	}
 	return created, nil
@@ -71,8 +71,8 @@ func (s *CommentService) Create(ctx context.Context, actor security.Subject, in 
 // The first Authorize answers whether the caller may look at comments at all.
 // The second, with the row that was read, is the object-level decision — a
 // policy that branches on the entity's fields is only consulted the second time.
-func (s *CommentService) Get(ctx context.Context, actor security.Subject, id string) (models.Comment, error) {
-	g, err := security.Authorize(ctx, s.policy, actor, policies.CommentView, models.Comment{})
+func (s *CommentService) Get(ctx context.Context, actor auth.Subject, id string) (models.Comment, error) {
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.CommentView, models.Comment{})
 	if err != nil {
 		return models.Comment{}, err
 	}
@@ -81,15 +81,15 @@ func (s *CommentService) Get(ctx context.Context, actor security.Subject, id str
 	if err != nil {
 		return models.Comment{}, err
 	}
-	if _, err := security.Authorize(ctx, s.policy, actor, policies.CommentView, found); err != nil {
+	if _, err := auth.Authorize(ctx, s.policy, actor, policies.CommentView, found); err != nil {
 		return models.Comment{}, err
 	}
 	return found, nil
 }
 
 // List returns a page of comments.
-func (s *CommentService) List(ctx context.Context, actor security.Subject, q data.Query) ([]models.Comment, error) {
-	g, err := security.Authorize(ctx, s.policy, actor, policies.CommentList, models.Comment{})
+func (s *CommentService) List(ctx context.Context, actor auth.Subject, q database.Query) ([]models.Comment, error) {
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.CommentList, models.Comment{})
 	if err != nil {
 		return nil, err
 	}
@@ -102,8 +102,8 @@ func (s *CommentService) List(ctx context.Context, actor security.Subject, q dat
 // It goes through Authorize like every other read. A comment thread is exactly
 // the query where "it is only a listing" gets said, and it is refused all the
 // same: a read path without a policy is a tenant leak with a technical name.
-func (s *CommentService) ForPost(ctx context.Context, actor security.Subject, postID string) ([]models.Comment, error) {
-	g, err := security.Authorize(ctx, s.policy, actor, policies.CommentList, models.Comment{})
+func (s *CommentService) ForPost(ctx context.Context, actor auth.Subject, postID string) ([]models.Comment, error) {
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.CommentList, models.Comment{})
 	if err != nil {
 		return nil, err
 	}
@@ -119,8 +119,8 @@ func (s *CommentService) ForPost(ctx context.Context, actor security.Subject, po
 //
 // The reader is taken from the actor and never from an argument, so "show me my
 // pending comments" cannot be asked on somebody else's behalf.
-func (s *CommentService) PublicForPost(ctx context.Context, actor security.Subject, postID string) ([]models.Comment, error) {
-	g, err := security.Authorize(ctx, s.policy, actor, policies.CommentPublicList, models.Comment{})
+func (s *CommentService) PublicForPost(ctx context.Context, actor auth.Subject, postID string) ([]models.Comment, error) {
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.CommentPublicList, models.Comment{})
 	if err != nil {
 		return nil, err
 	}
@@ -132,13 +132,13 @@ func (s *CommentService) PublicForPost(ctx context.Context, actor security.Subje
 // It is a separate action from Update because it is a separate permission: the
 // author may correct their own words and only an administrator may publish
 // them, and one method taking a boolean would put both behind one policy check.
-func (s *CommentService) Approve(ctx context.Context, actor security.Subject, id string) (models.Comment, error) {
+func (s *CommentService) Approve(ctx context.Context, actor auth.Subject, id string) (models.Comment, error) {
 	found, err := s.Get(ctx, actor, id)
 	if err != nil {
 		return models.Comment{}, err
 	}
 
-	g, err := security.Authorize(ctx, s.policy, actor, policies.CommentUpdate, found)
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.CommentUpdate, found)
 	if err != nil {
 		return models.Comment{}, err
 	}
@@ -152,12 +152,12 @@ func (s *CommentService) Approve(ctx context.Context, actor security.Subject, id
 // It reads before writing, so the policy decides against the stored row rather
 // than against what the client claims the row is. Skipping this is how a check
 // passes on attacker-supplied data.
-func (s *CommentService) Update(ctx context.Context, actor security.Subject, in requests.UpdateComment) (models.Comment, error) {
+func (s *CommentService) Update(ctx context.Context, actor auth.Subject, in requests.UpdateComment) (models.Comment, error) {
 	if errs := in.Validate(); errs.Any() {
 		return models.Comment{}, errs
 	}
 
-	view, err := security.Authorize(ctx, s.policy, actor, policies.CommentView, models.Comment{})
+	view, err := auth.Authorize(ctx, s.policy, actor, policies.CommentView, models.Comment{})
 	if err != nil {
 		return models.Comment{}, err
 	}
@@ -166,7 +166,7 @@ func (s *CommentService) Update(ctx context.Context, actor security.Subject, in 
 		return models.Comment{}, err
 	}
 
-	g, err := security.Authorize(ctx, s.policy, actor, policies.CommentUpdate, stored)
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.CommentUpdate, stored)
 	if err != nil {
 		return models.Comment{}, err
 	}
@@ -178,8 +178,8 @@ func (s *CommentService) Update(ctx context.Context, actor security.Subject, in 
 }
 
 // Delete removes a comment.
-func (s *CommentService) Delete(ctx context.Context, actor security.Subject, id string) error {
-	view, err := security.Authorize(ctx, s.policy, actor, policies.CommentView, models.Comment{})
+func (s *CommentService) Delete(ctx context.Context, actor auth.Subject, id string) error {
+	view, err := auth.Authorize(ctx, s.policy, actor, policies.CommentView, models.Comment{})
 	if err != nil {
 		return err
 	}
@@ -188,14 +188,14 @@ func (s *CommentService) Delete(ctx context.Context, actor security.Subject, id 
 		return err
 	}
 
-	g, err := security.Authorize(ctx, s.policy, actor, policies.CommentDelete, stored)
+	g, err := auth.Authorize(ctx, s.policy, actor, policies.CommentDelete, stored)
 	if err != nil {
 		return err
 	}
 	if err := s.repo.Delete(ctx, g, id); err != nil {
 		return err
 	}
-	if col := observability.FromContext(ctx); col != nil {
+	if col := log.FromContext(ctx); col != nil {
 		col.RecordEvent("comment.deleted", stored)
 	}
 	return nil

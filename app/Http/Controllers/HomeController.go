@@ -57,7 +57,7 @@ var _ http.Indexer = (*HomeController)(nil)
 // request: here it is RequireAuth on /dashboard, in routes/web.go, and on a
 // public route it would be middleware.LoadSubject. Without one nothing puts a
 // subject on the request, and every visitor is drawn the guest half.
-func (c *HomeController) Index(ctx *http.Context) error {
+func (c *HomeController) Index(ctx *hhttp.Context) error {
 	// Who is signed in, put on the request by the route's guard from the
 	// session cookie and never from the request body. No subject is the
 	// anonymous case -- no cookie, a forged one, or a session that expired --

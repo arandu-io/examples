@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
 
 	models "github.com/arandu-io/examples/app/Models"
 	policies "github.com/arandu-io/examples/app/Policies"
@@ -13,11 +13,11 @@ import (
 
 // The three subjects this blog answers to, and the whole point of the file is
 // that they are three and not two.
-func subjects() (guest, reader, unverified, admin security.Subject) {
-	guest = security.Guest("t1")
-	reader = security.Subject{ID: "u1", Tenant: "t1", Verified: true}
-	unverified = security.Subject{ID: "u2", Tenant: "t1"}
-	admin = security.Subject{ID: "u3", Tenant: "t1", Roles: []string{"admin"}, Verified: true}
+func subjects() (guest, reader, unverified, admin auth.Subject) {
+	guest = auth.Guest("t1")
+	reader = auth.Subject{ID: "u1", Tenant: "t1", Verified: true}
+	unverified = auth.Subject{ID: "u2", Tenant: "t1"}
+	admin = auth.Subject{ID: "u3", Tenant: "t1", Roles: []string{"admin"}, Verified: true}
 	return
 }
 
@@ -36,8 +36,8 @@ func TestReadingTheThreadIsPublicAndTheQueueIsNot(t *testing.T) {
 
 	for _, c := range []struct {
 		who     string
-		subject security.Subject
-		action  security.Action
+		subject auth.Subject
+		action  auth.Action
 		allowed bool
 	}{
 		{"a guest reads the thread", guest, policies.CommentPublicList, true},
@@ -97,7 +97,7 @@ func TestWritingNeedsAConfirmedAddress(t *testing.T) {
 func TestModerationIsNamedAndNotInherited(t *testing.T) {
 	_, _, _, admin := subjects()
 
-	for _, a := range []security.Action{
+	for _, a := range []auth.Action{
 		policies.CommentUpdate, policies.CommentDelete,
 	} {
 		if err := (policies.CommentPolicy{}).Can(context.Background(), admin, a, models.Comment{}); err != nil {
@@ -144,15 +144,15 @@ func TestAnAuthorMayWithdrawWhatIsStillWaiting(t *testing.T) {
 func TestCategoriesAreReadByEverybodyAndWrittenByNobodyOrdinary(t *testing.T) {
 	guest, reader, _, admin := subjects()
 
-	for _, s := range []security.Subject{guest, reader, admin} {
-		for _, a := range []security.Action{policies.CategoryView, policies.CategoryList} {
+	for _, s := range []auth.Subject{guest, reader, admin} {
+		for _, a := range []auth.Action{policies.CategoryView, policies.CategoryList} {
 			if err := (policies.CategoryPolicy{}).Can(context.Background(), s, a, models.Category{}); err != nil {
 				t.Errorf("%s was refused for %q: %v", a, s.ID, err)
 			}
 		}
 	}
 
-	for _, a := range []security.Action{
+	for _, a := range []auth.Action{
 		policies.CategoryCreate, policies.CategoryUpdate, policies.CategoryDelete,
 	} {
 		if err := (policies.CategoryPolicy{}).Can(context.Background(), reader, a, models.Category{}); err == nil {

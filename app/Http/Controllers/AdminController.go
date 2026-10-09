@@ -4,10 +4,11 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/arandu-io/framework/data"
-	fhttp "github.com/arandu-io/framework/http"
-	"github.com/arandu-io/framework/observability"
 	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
+	"github.com/arandu-io/hesape/database"
+	hhttp "github.com/arandu-io/hesape/http"
+	"github.com/arandu-io/hesape/log"
 	"github.com/arandu-io/hesape/view"
 
 	models "github.com/arandu-io/examples/app/Models"
@@ -40,12 +41,12 @@ func NewAdminController(posts *services.PostService, comments *services.CommentS
 }
 
 // actor is who is asking, from the session cookie and never from the request.
-func (c *AdminController) actor(ctx *fhttp.Context) (security.Subject, error) {
+func (c *AdminController) actor(ctx *hhttp.Context) (auth.Subject, error) {
 	return c.sessions.Load(ctx.Ctx(), ctx.Request)
 }
 
 // signIn sends an unauthenticated visitor to the sign-in screen.
-func (c *AdminController) signIn(ctx *fhttp.Context) error {
+func (c *AdminController) signIn(ctx *hhttp.Context) error {
 	return ctx.Redirect("/auth/login")
 }
 
@@ -54,9 +55,9 @@ func (c *AdminController) signIn(ctx *fhttp.Context) error {
 // Forbidden is 403 and not 404: somebody signed in who is not an administrator
 // asked for a page that exists, and pretending otherwise would send them
 // looking for a typo.
-func (c *AdminController) fail(ctx *fhttp.Context, err error) error {
-	if errors.Is(err, security.ErrForbidden) {
-		observability.Log(ctx.Ctx()).Warn("authorization denied", "error", err)
+func (c *AdminController) fail(ctx *hhttp.Context, err error) error {
+	if errors.Is(err, auth.ErrForbidden) {
+		log.For(ctx.Ctx()).Warn("authorization denied", "error", err)
 		return ctx.Status(http.StatusForbidden)
 	}
 	if errors.Is(err, models.ErrCommentNotFound) {
@@ -66,18 +67,18 @@ func (c *AdminController) fail(ctx *fhttp.Context, err error) error {
 }
 
 // Index is the dashboard: what is waiting, and what there is.
-func (c *AdminController) Index(ctx *fhttp.Context) error {
+func (c *AdminController) Index(ctx *hhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
 	}
 	token := csrfToken(ctx)
 
-	posts, err := c.posts.List(ctx.Ctx(), actor, data.Query{Limit: 200})
+	posts, err := c.posts.List(ctx.Ctx(), actor, database.Query{Limit: 200})
 	if err != nil {
 		return c.fail(ctx, err)
 	}
-	comments, err := c.comments.List(ctx.Ctx(), actor, data.Query{Limit: 200})
+	comments, err := c.comments.List(ctx.Ctx(), actor, database.Query{Limit: 200})
 	if err != nil {
 		return c.fail(ctx, err)
 	}
@@ -108,14 +109,14 @@ func (c *AdminController) Index(ctx *fhttp.Context) error {
 }
 
 // Comments is the moderation queue.
-func (c *AdminController) Comments(ctx *fhttp.Context) error {
+func (c *AdminController) Comments(ctx *hhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
 	}
 	token := csrfToken(ctx)
 
-	found, err := c.comments.List(ctx.Ctx(), actor, data.Query{Limit: 200})
+	found, err := c.comments.List(ctx.Ctx(), actor, database.Query{Limit: 200})
 	if err != nil {
 		return c.fail(ctx, err)
 	}
@@ -140,7 +141,7 @@ func (c *AdminController) Comments(ctx *fhttp.Context) error {
 }
 
 // Approve publishes one comment and returns to the queue.
-func (c *AdminController) Approve(ctx *fhttp.Context) error {
+func (c *AdminController) Approve(ctx *hhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -152,7 +153,7 @@ func (c *AdminController) Approve(ctx *fhttp.Context) error {
 }
 
 // Destroy removes one comment and returns to the queue.
-func (c *AdminController) Destroy(ctx *fhttp.Context) error {
+func (c *AdminController) Destroy(ctx *hhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -174,7 +175,7 @@ func (c *AdminController) Destroy(ctx *fhttp.Context) error {
 // sidebar has to be the same on every screen of it. A second copy of these
 // twelve fields is a sidebar that loses an item on one page and nobody notices
 // until somebody cannot find it.
-func adminChrome(ctx *fhttp.Context, actor security.Subject, token, current string) admin.Chrome {
+func adminChrome(ctx *hhttp.Context, actor auth.Subject, token, current string) admin.Chrome {
 	return admin.Chrome{
 		Page: view.Page{
 			Title: current + " · Admin",

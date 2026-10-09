@@ -25,7 +25,7 @@ export GOWORK=off && aru view:build && go build ./...
 | how is a route declared, named and guarded | `routes/web.go`; `routes/admin.go` for a whole area behind a group |
 | how does a policy decide | `app/Policies/PostPolicy.go` — the longest of the six, and the one with a guest in it |
 | how does a repository take a Grant | `app/Repositories/PostRepository.go:47` (`Find`) and `:76` (`List`) |
-| how does a service sit between them | `app/Services/PostService.go:60` — takes a `security.Subject`, asks the policy, passes the Grant down |
+| how does a service sit between them | `app/Services/PostService.go:60` — takes an `auth.Subject`, asks the policy, passes the Grant down |
 | how does a controller assemble a page | `app/Http/Controllers/PostController.go:254` (`Show`), `:332` (`Store`) |
 | how is a form validated | `app/Http/Requests/PostRequest.go` — `StorePost.Validate` returns `validation.Errors` |
 | how is a view written and typed | `resources/views/posts/show.kyse.go`, and `resources/views/layouts/app.kyse.go` for the layout |
@@ -62,8 +62,8 @@ query of its own rather than the same query with a filter.
 `TestAGuestIsRefusedTheDraftBehindAKnownAddress` hold both halves.
 
 **A public page does not need a system grant.**
-`SitemapController.Index` calls `c.posts.Published(ctx.Ctx(), security.Guest(c.tenant), 1000)`.
-The shortcut would be `security.SystemGrant`, which skips the policy — and would
+`SitemapController.Index` calls `c.posts.Published(ctx.Ctx(), auth.Guest(c.tenant), 1000)`.
+The shortcut would be `auth.SystemGrant`, which skips the policy — and would
 list every draft, so the crawler finds a redirect behind each one. One rule
 answers both "may this be served" and "may this be listed".
 
@@ -106,7 +106,7 @@ subject, which is the half a project has to get right.
 in `bootstrap/app.go` is the whole of it. `k.Recorder()` is nil outside
 development and recording nothing is what production does.
 `TestTheConsoleRecordsARealRequest` makes a request, reads `X-Request-ID` off
-the response, and finds it at `observability.ConsolePath` — `/_arandu/debug`.
+the response, and finds it at `log.ConsolePath` — `/_arandu/debug`.
 `TestTheConsoleSeesTheQueriesOfTheRequest` goes further and requires the query
 to name its origin file, because a console showing a request with no queries
 reads exactly like an application that never touched the database.

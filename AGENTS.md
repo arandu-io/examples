@@ -59,10 +59,10 @@ with PostgreSQL at the closed address `127.0.0.1:1`, without connecting.
 | path | what it holds |
 | --- | --- |
 | `app/Policies/` | seven files defining eight Policy structs. Application authorization decisions live here |
-| `app/Repositories/` | three repositories. Twenty-four of twenty-six exported methods take a `security.Grant`; the two `Health` methods only ping the connection |
+| `app/Repositories/` | three repositories. Twenty-four of twenty-six exported methods take an `auth.Grant`; the two `Health` methods only ping the connection |
 | `app/Services/` | five services plus `TenantResolver`. Row access normally follows Subject → Policy → Grant; pre-authentication user and factor flows use annotated system grants |
 | `app/Http/Controllers/` | seven application controllers over a shared `Controller` base. HTML, XML and process-wide gauges deliberately have different collaborators |
-| `app/Http/Controllers/Auth/` | not one of the seven application controllers: a `kernel.Module` with its own `Routes()`, published by `arandu-io/ui` |
+| `app/Http/Controllers/Auth/` | not one of the seven application controllers: a `foundation.Module` with its own `Routes()`, published by `arandu-io/ui` |
 | `resources/views/` | 34 `.kyse.go` templates. Source; `storage/framework/views/` is the build output |
 | `routes/web.go`, `routes/admin.go` | 61 registered routes across four modules, 32 of them this application's |
 | `bootstrap/app.go` | the whole wiring, top to bottom, in one function |
@@ -91,25 +91,25 @@ exists to argue against. None of them is missing by accident.
 | --- | --- |
 | a service container, dependency injection | `bootstrap/app.go`. Reading it tells you what every route was given |
 | middleware that authorizes a record | a Policy, normally called in the Service. `adminOnly` in `routes/admin.go` sets two headers and decides nothing |
-| a system grant to make a public page work | `security.Guest(tenant)` through the same policy a browser goes through — `SitemapController.Index` |
+| a system grant to make a public page work | `auth.Guest(tenant)` through the same policy a browser goes through — `SitemapController.Index` |
 | a repository row read or write without a Grant | nothing. `tests/Unit/testdata/missing_grant/main.go` is the fixture that must not compile; the two `Health` methods only ping |
 | a second query filtered "for guests" | a named action with a query of its own — `PostPublicList` beside `PostList` in `app/Policies/PostPolicy.go` |
-| a tenant read off a path, a body, a query or a header | `data.Tenant(g)`. `withSubject` in `routes/web.go` takes the subject off the session cookie and nothing else |
+| a tenant read off a path, a body, a query or a header | `auth.Tenant(g)`. `withSubject` in `routes/web.go` takes the subject off the session cookie and nothing else |
 | a hand-written repository for routine CRUD | an entity that embeds `model.Model`, its table declared once beside it, and the typed query `aru model:build` generates there (`models.Categories(db)`); parameterised SQL repositories remain for complex queries and operations |
 | a template engine with runtime lookup | `.kyse.go`, compiled to Go. A missing field is a build error |
 | npm, a bundler, `node_modules`, a CDN script | nothing. `TestResourcesHoldNoJavaScript` and `TestTheOnlyScriptsServedAreTheEmbeddedOnes` walk the tree and the response |
-| production or seed data that writes behind a Policy without saying so | `security.SystemGrant` with a `//arandu:system-grant <reason>` line directly above it. Nineteen production and seeder calls carry that reason; tests use additional grants to arrange cases |
+| production or seed data that writes behind a Policy without saying so | `auth.SystemGrant` with a `//arandu:system-grant <reason>` line directly above it. Nineteen production and seeder calls carry that reason; tests use additional grants to arrange cases |
 
 ## The two rules everything else follows from
 
-**Authorization is a value.** Normal row paths carry a `security.Grant` issued
-by a Policy. `security.SystemGrant` is the explicit administrative and fixture
+**Authorization is a value.** Normal row paths carry an `auth.Grant` issued
+by a Policy. `auth.SystemGrant` is the explicit administrative and fixture
 escape hatch, and `aru doctor` requires its reason and constrains its use.
 `tests/Unit/GrantRequired_test.go` compiles a fixture that must fail without a
 Grant, then hands `Find`, `List`, `Create` and `Update` a Grant issued for the
 wrong action and requires each to refuse. Carrying *a* Grant is not enough.
 
-**The tenant comes from the Grant.** `data.Tenant(g)`, never from the request.
+**The tenant comes from the Grant.** `auth.Tenant(g)`, never from the request.
 `tests/Feature/TenantScoping_test.go` is 987 lines of one tenant failing to see
 another's rows, and it is the largest test file here for that reason. Its
 fixture writes two rows of the second tenant that name the first's — a post

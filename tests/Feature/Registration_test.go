@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/arandu-io/framework/arandutest"
-	"github.com/arandu-io/framework/data"
 	"github.com/arandu-io/framework/mail"
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
+	"github.com/arandu-io/hesape/database"
 
 	requests "github.com/arandu-io/examples/app/Http/Requests"
 	models "github.com/arandu-io/examples/app/Models"
@@ -123,7 +123,7 @@ func TestConfirmingTheAddressOpensTheCommentForm(t *testing.T) {
 	}).OK().See("confirmed")
 	// Signing in AFTER confirming is what puts the verified flag in the session.
 	// Doing it the other way round leaves a session that is stale in the safe
-	// direction, and that is deliberate -- see security.Subject.Verified.
+	// direction, and that is deliberate -- see auth.Subject.Verified.
 	signIn(t, client)
 
 	post := seedOnePost(t, db)
@@ -261,7 +261,7 @@ func verificationCode(t *testing.T, box *mail.Array) string {
 // The tenant is still written, and it is the one the application serves. Straight
 // SQL skips the Grant, not the schema: a row inserted without a tenant is a row
 // every query filters out, so the page under test answers 404.
-func seedOnePost(t *testing.T, db *data.DB) string {
+func seedOnePost(t *testing.T, db *database.DB) string {
 	t.Helper()
 
 	const id = "00000000-0000-4000-8000-0000000000aa"
@@ -312,7 +312,7 @@ func TestASecondRowUnderAUniqueKeyIsAConflict(t *testing.T) {
 
 	t.Run("a post slug already taken", func(t *testing.T) {
 		posts := services.NewPostService(repositories.NewPostRepository(db))
-		admin := security.Subject{ID: "u1", Tenant: tenant, Roles: []string{"admin"}}
+		admin := auth.Subject{ID: "u1", Tenant: tenant, Roles: []string{"admin"}}
 		in := requests.StorePost{Title: "First", Slug: "the-same-slug", Body: "A body."}
 		if _, err := posts.Create(ctx, admin, in); err != nil {
 			t.Fatalf("first post: %v", err)

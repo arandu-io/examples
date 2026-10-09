@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/arandu-io/framework/data"
+	"github.com/arandu-io/hesape/database"
 	"github.com/arandu-io/hesape/hashing"
 
 	"github.com/arandu-io/examples/bootstrap"
@@ -157,7 +157,7 @@ func TestEveryPathThatWritesAPasswordWritesTheSameKind(t *testing.T) {
 // LogValue precisely so it cannot reach a response, a log or a dump. Reading the
 // column is how a test sees what a repository wrote without that guarantee being
 // weakened for everybody.
-func storedPassword(t *testing.T, db *data.DB, email string) string {
+func storedPassword(t *testing.T, db *database.DB, email string) string {
 	t.Helper()
 
 	var hash string

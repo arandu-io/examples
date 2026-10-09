@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	fhttp "github.com/arandu-io/framework/http"
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
+	hhttp "github.com/arandu-io/hesape/http"
 
 	models "github.com/arandu-io/examples/app/Models"
 	services "github.com/arandu-io/examples/app/Services"
@@ -22,7 +22,7 @@ import (
 // # It holds no system grant, and that is the point
 //
 // A crawler has no session, and Authorize refuses an empty subject before it
-// consults a policy -- so the shortcut is security.SystemGrant, which skips the
+// consults a policy -- so the shortcut is auth.SystemGrant, which skips the
 // policy altogether and serves a public page with the instrument a scheduled job
 // uses.
 //
@@ -59,10 +59,10 @@ type sitemap struct {
 }
 
 // Index writes the sitemap.
-func (c *SitemapController) Index(ctx *fhttp.Context) error {
+func (c *SitemapController) Index(ctx *hhttp.Context) error {
 	// The same guest a reader is. PostPolicy allows the published listing and
 	// refuses PostList, so what comes back is what a visitor is allowed to see.
-	found, err := c.posts.Published(ctx.Ctx(), security.Guest(c.tenant), 1000)
+	found, err := c.posts.Published(ctx.Ctx(), auth.Guest(c.tenant), 1000)
 	if err != nil {
 		return err
 	}

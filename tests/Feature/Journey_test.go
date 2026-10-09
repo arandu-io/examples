@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/arandu-io/framework/arandutest"
-	"github.com/arandu-io/framework/data"
+	"github.com/arandu-io/hesape/database"
 
 	"github.com/arandu-io/examples/bootstrap"
 	"github.com/arandu-io/examples/tests"
@@ -285,7 +285,7 @@ func header(body string) string {
 // row inserted without it is a row every query filters out, so the journey would
 // fail at the first page with "not found" rather than at the assertion that
 // means something.
-func seedJourneyPost(t *testing.T, db *data.DB) string {
+func seedJourneyPost(t *testing.T, db *database.DB) string {
 	t.Helper()
 
 	const id = "00000000-0000-4000-8000-0000000000bb"
@@ -458,7 +458,7 @@ func TestTheModerationAreaOpensForAnAdministrator(t *testing.T) {
 // not become one: RegisterRequest has no field for it and the policy refuses a
 // candidate carrying any, which is what stops registration from being a way to
 // make yourself an administrator.
-func signInAs(t *testing.T, client *arandutest.Client, db *data.DB, name, role string) {
+func signInAs(t *testing.T, client *arandutest.Client, db *database.DB, name, role string) {
 	t.Helper()
 
 	const password = "a-password-that-passes"

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/arandu-io/framework/data"
-	"github.com/arandu-io/framework/observability"
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
+	"github.com/arandu-io/hesape/database"
+	"github.com/arandu-io/hesape/log"
 
 	"github.com/arandu-io/examples/bootstrap"
 )
@@ -19,7 +19,7 @@ import (
 // that drove the console directly would prove the console and not the wiring,
 // and the wiring is where a Collector goes missing.
 
-func bootedApp(t *testing.T) (http.Handler, *data.DB) {
+func bootedApp(t *testing.T) (http.Handler, *database.DB) {
 	t.Helper()
 	sqliteEnv(t)
 
@@ -52,7 +52,7 @@ func TestTheConsoleRecordsARealRequest(t *testing.T) {
 	}
 
 	list := httptest.NewRecorder()
-	handler.ServeHTTP(list, httptest.NewRequest(http.MethodGet, observability.ConsolePath, nil))
+	handler.ServeHTTP(list, httptest.NewRequest(http.MethodGet, log.ConsolePath, nil))
 	if list.Code != http.StatusOK {
 		t.Fatalf("the console answered %d", list.Code)
 	}
@@ -61,7 +61,7 @@ func TestTheConsoleRecordsARealRequest(t *testing.T) {
 	}
 
 	detail := httptest.NewRecorder()
-	handler.ServeHTTP(detail, httptest.NewRequest(http.MethodGet, observability.ConsolePath+"/"+id, nil))
+	handler.ServeHTTP(detail, httptest.NewRequest(http.MethodGet, log.ConsolePath+"/"+id, nil))
 	if detail.Code != http.StatusOK {
 		t.Fatalf("the detail page answered %d", detail.Code)
 	}
@@ -94,7 +94,7 @@ func TestTheConsoleSeesTheQueriesOfTheRequest(t *testing.T) {
 	id := rec.Header().Get("X-Request-ID")
 
 	detail := httptest.NewRecorder()
-	handler.ServeHTTP(detail, httptest.NewRequest(http.MethodGet, observability.ConsolePath+"/"+id+"?format=json", nil))
+	handler.ServeHTTP(detail, httptest.NewRequest(http.MethodGet, log.ConsolePath+"/"+id+"?format=json", nil))
 
 	body := detail.Body.String()
 	if !strings.Contains(body, `from \"users\"`) {
@@ -108,8 +108,8 @@ func TestTheConsoleSeesTheQueriesOfTheRequest(t *testing.T) {
 }
 
 func TestTheGrantStillComesFromTheSession(t *testing.T) {
-	g := security.SystemGrant("user.view", bootstrap.Tenant())
-	if data.Tenant(g) != bootstrap.Tenant() {
+	g := auth.SystemGrant("user.view", bootstrap.Tenant())
+	if auth.Tenant(g) != bootstrap.Tenant() {
 		t.Fatal("the tenant no longer comes from the Grant")
 	}
 }

@@ -8,9 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/arandu-io/framework/data"
-	"github.com/arandu-io/framework/security"
 	twofactor "github.com/arandu-io/hesape/2fa"
+	"github.com/arandu-io/hesape/auth"
 	"github.com/arandu-io/hesape/database"
 	"github.com/arandu-io/hesape/hashing"
 
@@ -44,33 +43,33 @@ func recoveryCodeMaterial(code string) string {
 
 // TwoFactorRepository owns only the atomic persistence operations that a Model
 // cannot express: replay protection and one-time recovery consumption.
-type TwoFactorRepository struct{ db *data.DB }
+type TwoFactorRepository struct{ db *database.DB }
 
 // NewTwoFactorRepository returns the specialized second-factor store.
-func NewTwoFactorRepository(db *data.DB) *TwoFactorRepository {
+func NewTwoFactorRepository(db *database.DB) *TwoFactorRepository {
 	return &TwoFactorRepository{db: db}
 }
 
 // Find reads one enrolment under the supplied read grant.
-func (r *TwoFactorRepository) Find(ctx context.Context, grant security.Grant, userID string) (models.TwoFactor, error) {
+func (r *TwoFactorRepository) Find(ctx context.Context, grant auth.Grant, userID string) (models.TwoFactor, error) {
 	if err := grant.Check(policies.ActionTwoFactorRead); err != nil {
 		return models.TwoFactor{}, err
 	}
 	row := r.db.QueryRowContext(ctx,
 		`SELECT user_id, tenant_id, secret, confirmed_at, last_used_step, created_at
-		 FROM user_two_factor WHERE user_id = ? AND tenant_id = ?`, userID, data.Tenant(grant))
+		 FROM user_two_factor WHERE user_id = ? AND tenant_id = ?`, userID, auth.Tenant(grant))
 	return scanTwoFactor(row)
 }
 
 // Enrol atomically replaces only an unfinished enrolment.
-func (r *TwoFactorRepository) Enrol(ctx context.Context, grant security.Grant, factor models.TwoFactor) (models.TwoFactor, error) {
+func (r *TwoFactorRepository) Enrol(ctx context.Context, grant auth.Grant, factor models.TwoFactor) (models.TwoFactor, error) {
 	if err := grant.Check(policies.ActionTwoFactorManage); err != nil {
 		return models.TwoFactor{}, err
 	}
 	if factor.Secret == "" {
 		return models.TwoFactor{}, fmt.Errorf("two-factor: refusing to store an empty secret")
 	}
-	tenant := data.Tenant(grant)
+	tenant := auth.Tenant(grant)
 	if _, err := r.db.ExecContext(ctx,
 		`DELETE FROM user_two_factor WHERE user_id = ? AND tenant_id = ? AND confirmed_at IS NULL`,
 		factor.UserID, tenant); err != nil {
@@ -91,18 +90,18 @@ func (r *TwoFactorRepository) Enrol(ctx context.Context, grant security.Grant, f
 }
 
 // Confirm stamps an unfinished enrolment and reports whether this call won.
-func (r *TwoFactorRepository) Confirm(ctx context.Context, grant security.Grant, userID string, at time.Time) (bool, error) {
+func (r *TwoFactorRepository) Confirm(ctx context.Context, grant auth.Grant, userID string, at time.Time) (bool, error) {
 	if err := grant.Check(policies.ActionTwoFactorManage); err != nil {
 		return false, err
 	}
 	result, err := r.db.ExecContext(ctx,
 		`UPDATE user_two_factor SET confirmed_at = ?
-		 WHERE user_id = ? AND tenant_id = ? AND confirmed_at IS NULL`, at.UTC(), userID, data.Tenant(grant))
+		 WHERE user_id = ? AND tenant_id = ? AND confirmed_at IS NULL`, at.UTC(), userID, auth.Tenant(grant))
 	return changed(result, err, "confirm an enrolment")
 }
 
 // Required reports whether the account has a confirmed enrolment.
-func (r *TwoFactorRepository) Required(ctx context.Context, grant security.Grant, userID string) (bool, error) {
+func (r *TwoFactorRepository) Required(ctx context.Context, grant auth.Grant, userID string) (bool, error) {
 	if err := grant.Check(policies.ActionTwoFactorRead); err != nil {
 		return false, err
 	}
@@ -114,11 +113,11 @@ func (r *TwoFactorRepository) Required(ctx context.Context, grant security.Grant
 }
 
 // Disable removes the enrolment and all of its recovery codes.
-func (r *TwoFactorRepository) Disable(ctx context.Context, grant security.Grant, userID string) error {
+func (r *TwoFactorRepository) Disable(ctx context.Context, grant auth.Grant, userID string) error {
 	if err := grant.Check(policies.ActionTwoFactorManage); err != nil {
 		return err
 	}
-	tenant := data.Tenant(grant)
+	tenant := auth.Tenant(grant)
 	if _, err := r.db.ExecContext(ctx,
 		`DELETE FROM user_recovery_codes WHERE user_id = ? AND tenant_id = ?`, userID, tenant); err != nil {
 		return err
@@ -136,23 +135,23 @@ func (r *TwoFactorRepository) Disable(ctx context.Context, grant security.Grant,
 }
 
 // SpendStep atomically records a higher authenticator time step.
-func (r *TwoFactorRepository) SpendStep(ctx context.Context, grant security.Grant, userID string, step uint64) (bool, error) {
+func (r *TwoFactorRepository) SpendStep(ctx context.Context, grant auth.Grant, userID string, step uint64) (bool, error) {
 	if err := grant.Check(policies.ActionTwoFactorManage); err != nil {
 		return false, err
 	}
 	result, err := r.db.ExecContext(ctx,
 		`UPDATE user_two_factor SET last_used_step = ?
 		 WHERE user_id = ? AND tenant_id = ? AND last_used_step < ?`,
-		int64(step), userID, data.Tenant(grant), int64(step))
+		int64(step), userID, auth.Tenant(grant), int64(step))
 	return changed(result, err, "spend an authenticator time step")
 }
 
 // ReplaceRecoveryCodes replaces the entire recovery set with password hashes.
-func (r *TwoFactorRepository) ReplaceRecoveryCodes(ctx context.Context, grant security.Grant, userID string, hashes []string) error {
+func (r *TwoFactorRepository) ReplaceRecoveryCodes(ctx context.Context, grant auth.Grant, userID string, hashes []string) error {
 	if err := grant.Check(policies.ActionTwoFactorManage); err != nil {
 		return err
 	}
-	tenant := data.Tenant(grant)
+	tenant := auth.Tenant(grant)
 	if _, err := r.db.ExecContext(ctx,
 		`DELETE FROM user_recovery_codes WHERE user_id = ? AND tenant_id = ?`, userID, tenant); err != nil {
 		return err
@@ -162,7 +161,7 @@ func (r *TwoFactorRepository) ReplaceRecoveryCodes(ctx context.Context, grant se
 		if hash == "" {
 			return fmt.Errorf("two-factor: refusing to store an empty recovery hash")
 		}
-		id, err := data.NewID()
+		id, err := database.NewID()
 		if err != nil {
 			return err
 		}
@@ -176,14 +175,14 @@ func (r *TwoFactorRepository) ReplaceRecoveryCodes(ctx context.Context, grant se
 }
 
 // ConsumeRecoveryCode atomically spends a matching unspent recovery hash.
-func (r *TwoFactorRepository) ConsumeRecoveryCode(ctx context.Context, grant security.Grant, userID, code string) (bool, error) {
+func (r *TwoFactorRepository) ConsumeRecoveryCode(ctx context.Context, grant auth.Grant, userID, code string) (bool, error) {
 	if err := grant.Check(policies.ActionTwoFactorManage); err != nil {
 		return false, err
 	}
 	if twofactor.NormalizeCode(code) == "" {
 		return false, nil
 	}
-	tenant := data.Tenant(grant)
+	tenant := auth.Tenant(grant)
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT id, code_hash FROM user_recovery_codes
 		 WHERE user_id = ? AND tenant_id = ? AND used_at IS NULL`, userID, tenant)

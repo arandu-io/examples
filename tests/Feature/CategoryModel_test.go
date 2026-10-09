@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/arandu-io/framework/data"
-	"github.com/arandu-io/framework/observability"
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
+	"github.com/arandu-io/hesape/database"
 	"github.com/arandu-io/hesape/database/model"
+	"github.com/arandu-io/hesape/log"
 
 	requests "github.com/arandu-io/examples/app/Http/Requests"
 	models "github.com/arandu-io/examples/app/Models"
@@ -53,10 +53,10 @@ func TestNoSectionStatementRunsWithoutAGrant(t *testing.T) {
 	ctx := context.Background()
 	scopedFixture(t, db)
 
-	col := observability.NewCollector("no-grant")
-	ctx = observability.WithCollector(ctx, col)
+	col := log.NewCollector("no-grant")
+	ctx = log.WithCollector(ctx, col)
 
-	var zero security.Grant
+	var zero auth.Grant
 
 	terminals := map[string]func() error{
 		"Get":   func() error { _, err := models.Categories(db).Get(ctx, zero); return err },
@@ -99,18 +99,18 @@ func TestNoSectionStatementRunsWithoutAGrant(t *testing.T) {
 //
 // It reads what the Collector recorded, which is the same handle the
 // repositories next door write through: the model layer runs every statement
-// through QueryContext and ExecContext on *data.DB, so the recording, the
+// through QueryContext and ExecContext on *database.DB, so the recording, the
 // placeholder numbering and any open transaction are the handle's.
 func TestTheTenantReachesTheSQLOfEverySectionStatement(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 
-	col := observability.NewCollector("tenant-in-sql")
-	ctx = observability.WithCollector(ctx, col)
+	col := log.NewCollector("tenant-in-sql")
+	ctx = log.WithCollector(ctx, col)
 
 	svc := services.NewCategoryService(db)
 	ours := bootstrap.Tenant()
-	actor := security.Subject{ID: "u1", Tenant: ours, Roles: []string{"admin"}}
+	actor := auth.Subject{ID: "u1", Tenant: ours, Roles: []string{"admin"}}
 
 	// One of each shape the service issues: an insert, a lookup by key, a
 	// lookup by a unique column, an ordered listing, a keyset page with the
@@ -130,10 +130,10 @@ func TestTheTenantReachesTheSQLOfEverySectionStatement(t *testing.T) {
 	if _, err := svc.All(ctx, actor); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.List(ctx, actor, data.Query{Limit: 10}); err != nil {
+	if _, err := svc.List(ctx, actor, database.Query{Limit: 10}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.List(ctx, actor, data.Query{Limit: 10, Cursor: created.ID}); err != nil {
+	if _, err := svc.List(ctx, actor, database.Query{Limit: 10, Cursor: created.ID}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := svc.Update(ctx, actor, requests.UpdateCategory{
@@ -172,7 +172,7 @@ func TestTheTenantReachesTheSQLOfEverySectionStatement(t *testing.T) {
 // The two signatures are the guarantee, and this is what stands behind them.
 // Make takes no context and no Grant, so it cannot write and does not: the row
 // it answers is not in the table. Create takes one, and the row it stores is
-// filed under data.Tenant(g).
+// filed under auth.Tenant(g).
 //
 // The definition sets another tenant on purpose. A factory that trusted the
 // field would be exactly the back door the Grant exists to close -- seeding is
@@ -197,7 +197,7 @@ func TestTheFactoryMakesWithoutAGrantAndCreatesWithOne(t *testing.T) {
 	}
 
 	//arandu:system-grant a factory is written against the same Grant a seeder holds, and a test has no session
-	g := security.SystemGrant(policies.CategoryCreate, ours)
+	g := auth.SystemGrant(policies.CategoryCreate, ours)
 	stored, err := factories.Categories(db).
 		State(func(ca *models.Category) { ca.TenantID = theirTenant }).
 		CreateOne(ctx, g)
@@ -232,7 +232,7 @@ func TestChangingASectionNeedsMoreThanAnAccount(t *testing.T) {
 
 	svc := services.NewCategoryService(db)
 	ours := bootstrap.Tenant()
-	reader := security.Subject{ID: "u1", Tenant: ours, Roles: []string{models.RoleMember}}
+	reader := auth.Subject{ID: "u1", Tenant: ours, Roles: []string{models.RoleMember}}
 
 	// The reader can see it. The refusals below are therefore about the action
 	// and not about the row being out of reach.
@@ -243,14 +243,14 @@ func TestChangingASectionNeedsMoreThanAnAccount(t *testing.T) {
 	_, err := svc.Update(ctx, reader, requests.UpdateCategory{
 		ID: ourCategory, Name: "Rewritten", Slug: "rewritten", Description: "A section.",
 	})
-	if !errors.Is(err, security.ErrForbidden) {
+	if !errors.Is(err, auth.ErrForbidden) {
 		t.Fatalf("Update = %v, want ErrForbidden", err)
 	}
 	if name := categoryName(t, db, ourCategory); name != "Reports" {
 		t.Fatalf("the section now reads %q", name)
 	}
 
-	if err := svc.Delete(ctx, reader, ourCategory); !errors.Is(err, security.ErrForbidden) {
+	if err := svc.Delete(ctx, reader, ourCategory); !errors.Is(err, auth.ErrForbidden) {
 		t.Fatalf("Delete = %v, want ErrForbidden", err)
 	}
 	if categoryName(t, db, ourCategory) == "" {
@@ -275,7 +275,7 @@ func TestSavingASectionWithoutChangingItIsNotAMissingRow(t *testing.T) {
 
 	svc := services.NewCategoryService(db)
 	ours := bootstrap.Tenant()
-	actor := security.Subject{ID: "u1", Tenant: ours, Roles: []string{"admin"}}
+	actor := auth.Subject{ID: "u1", Tenant: ours, Roles: []string{"admin"}}
 
 	stored, err := svc.Get(ctx, actor, ourCategory)
 	if err != nil {
@@ -308,7 +308,7 @@ func bound(args []any, want string) bool {
 
 // statements renders what the Collector saw, for a failure message that says
 // which statement rather than how many.
-func statements(col *observability.Collector) string {
+func statements(col *log.Collector) string {
 	var out strings.Builder
 	for _, q := range col.Queries() {
 		out.WriteString("  ")

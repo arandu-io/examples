@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/arandu-io/framework/data"
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
+	"github.com/arandu-io/hesape/database"
 
 	models "github.com/arandu-io/examples/app/Models"
 	policies "github.com/arandu-io/examples/app/Policies"
@@ -60,15 +60,15 @@ func (PostSeeder) Run(ctx context.Context, d Deps) error {
 	// run time is the point of it being a type rather than a boolean.
 	//
 	//arandu:system-grant seeding has no request behind it, so there is no subject to ask a policy about
-	listing := security.SystemGrant(policies.PostList, d.Tenant)
+	listing := auth.SystemGrant(policies.PostList, d.Tenant)
 	//arandu:system-grant same reason: this seeder writes the posts the example ships with
-	writing := security.SystemGrant(policies.PostCreate, d.Tenant)
+	writing := auth.SystemGrant(policies.PostCreate, d.Tenant)
 	//arandu:system-grant reading the sections, to file each post under one
-	sectionList := security.SystemGrant(policies.CategoryList, d.Tenant)
+	sectionList := auth.SystemGrant(policies.CategoryList, d.Tenant)
 
 	// Read once, not once per post: neither set changes while this loop runs,
 	// and a query inside a loop is the shape of an N+1.
-	existing, err := repo.List(ctx, listing, data.Query{Limit: 200})
+	existing, err := repo.List(ctx, listing, database.Query{Limit: 200})
 	if err != nil {
 		return fmt.Errorf("reading the posts: %w", err)
 	}
@@ -91,7 +91,7 @@ func (PostSeeder) Run(ctx context.Context, d Deps) error {
 		if slugTaken(existing, p.Slug) {
 			continue
 		}
-		id, err := data.NewID()
+		id, err := database.NewID()
 		if err != nil {
 			return err
 		}
@@ -151,7 +151,7 @@ func seededPosts() []seededPost {
 				PublishedAt: published,
 				Body: "Every query is scoped by a tenant read off the Grant. A header, a query string or a path segment cannot decide whose rows come back.\n\n" +
 					"aru doctor follows the value rather than reading the name: an identifier called org that arrived from the request and reached a Grant is reported, however innocent the name looks. Names are how this bug hides -- nobody writes tenantFromAttacker, they write orgID, and it reads fine in review.\n\n" +
-					"The rule is one line long and it is worth memorising: data.Tenant(g), always, and nothing else.",
+					"The rule is one line long and it is worth memorising: auth.Tenant(g), always, and nothing else.",
 			},
 		},
 		{

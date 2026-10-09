@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
 	"github.com/arandu-io/hesape/broadcasting"
 	"github.com/arandu-io/joaju"
 )
@@ -56,7 +56,7 @@ type SocketConnectPolicy struct {
 
 // Compile-time proof that the policy answers about the handshake and no other
 // resource.
-var _ security.Policy[joaju.Handshake] = SocketConnectPolicy{}
+var _ auth.Policy[joaju.Handshake] = SocketConnectPolicy{}
 
 // Can decides one handshake.
 //
@@ -67,12 +67,12 @@ var _ security.Policy[joaju.Handshake] = SocketConnectPolicy{}
 // this server, they simply have no channel yet. The counter on /admin/sockets is
 // where an operator sees those sockets, and a socket held by nobody who can hear
 // anything is worth seeing rather than worth hiding.
-func (p SocketConnectPolicy) Can(_ context.Context, s security.Subject, a security.Action, _ joaju.Handshake) error {
+func (p SocketConnectPolicy) Can(_ context.Context, s auth.Subject, a auth.Action, _ joaju.Handshake) error {
 	if a != joaju.Connect {
 		return fmt.Errorf("no rule allows %s on a socket", a)
 	}
 
-	// A reader with no session arrives as security.Guest, which is a subject
+	// A reader with no session arrives as auth.Guest, which is a subject
 	// somebody built on purpose, and a guest is refused here. Reading this blog
 	// is public and listening to it is not: a socket is a connection held open
 	// against this process, and holding one is something an account does.
@@ -116,7 +116,7 @@ type SocketSubscribePolicy struct {
 
 // Compile-time proof that the policy answers about the subscription and no other
 // resource.
-var _ security.Policy[joaju.Subscription] = SocketSubscribePolicy{}
+var _ auth.Policy[joaju.Subscription] = SocketSubscribePolicy{}
 
 // Can decides one subscription.
 //
@@ -125,7 +125,7 @@ var _ security.Policy[joaju.Subscription] = SocketSubscribePolicy{}
 // other way round, with a default that allows what it does not recognise, the
 // next channel added to this blog would be readable before anybody decided it
 // should be.
-func (p SocketSubscribePolicy) Can(_ context.Context, s security.Subject, a security.Action, sub joaju.Subscription) error {
+func (p SocketSubscribePolicy) Can(_ context.Context, s auth.Subject, a auth.Action, sub joaju.Subscription) error {
 	if a != broadcasting.ChannelJoin {
 		return fmt.Errorf("no rule allows %s on a channel", a)
 	}

@@ -9,10 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arandu-io/framework/data"
 	"github.com/arandu-io/framework/events"
-	"github.com/arandu-io/framework/observability"
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
+	"github.com/arandu-io/hesape/database"
+	hevents "github.com/arandu-io/hesape/events"
+	"github.com/arandu-io/hesape/log"
 
 	"github.com/arandu-io/examples/app/Policies"
 	"github.com/arandu-io/examples/bootstrap"
@@ -31,7 +32,7 @@ import (
 // has everywhere else and the reason it survives so long.
 //
 // Nothing below starts the loop, and nothing has to. Start belongs to
-// kernel.Background and is called by Kernel.Run, never by Kernel.Boot, so a
+// foundation.Background and is called by Kernel.Run, never by Kernel.Boot, so a
 // booted-but-not-served application publishes exactly when a test says so. That
 // is what makes "published once" a countable claim instead of a race with a
 // ticker.
@@ -64,7 +65,7 @@ func TestARegistrationReachesTheListenerThroughTheWiredRelay(t *testing.T) {
 	}
 
 	seen := &publishedEvents{}
-	logged := observability.WithLogger(ctx, slog.New(seen))
+	logged := log.Into(ctx, slog.New(seen))
 
 	if err := booted.App.Relay.Drain(logged); err != nil {
 		t.Fatalf("Drain: %v", err)
@@ -146,9 +147,9 @@ func TestTheProbeFailsWhileNothingIsDrainingTheOutbox(t *testing.T) {
 	// field of the event, so the age is the fixture and the write is still the
 	// one production makes.
 	//arandu:system-grant a fixture needs a Grant with no request behind it, to store an event nobody submitted
-	g := security.SystemGrant("invoice.pay", bootstrap.Tenant())
-	err := data.Transaction(context.Background(), booted.DB, func(ctx context.Context) error {
-		return events.NewOutbox(booted.DB).Store(ctx, g, []events.Event{{
+	g := auth.SystemGrant("invoice.pay", bootstrap.Tenant())
+	err := database.Transaction(context.Background(), booted.DB, func(ctx context.Context) error {
+		return events.NewOutbox(booted.DB).Store(ctx, g, []hevents.Event{{
 			Name:        "invoice.paid",
 			Aggregate:   "invoice",
 			AggregateID: "i-1",
@@ -165,7 +166,7 @@ func TestTheProbeFailsWhileNothingIsDrainingTheOutbox(t *testing.T) {
 	}
 
 	seen := &publishedEvents{}
-	if err := booted.App.Relay.Drain(observability.WithLogger(context.Background(), slog.New(seen))); err != nil {
+	if err := booted.App.Relay.Drain(log.Into(context.Background(), slog.New(seen))); err != nil {
 		t.Fatalf("Drain: %v", err)
 	}
 	if len(seen.all()) != 1 {
@@ -177,7 +178,7 @@ func TestTheProbeFailsWhileNothingIsDrainingTheOutbox(t *testing.T) {
 
 // storedNames is the event names of a batch, which is what a failure message
 // about the wrong batch is actually asking for.
-func storedNames(list []events.Stored) []string {
+func storedNames(list []hevents.Stored) []string {
 	out := make([]string, 0, len(list))
 	for _, e := range list {
 		out = append(out, e.Name)

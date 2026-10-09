@@ -25,7 +25,7 @@ for this application to finish.
 
 - **A repository call that cannot skip authorization** — every method that reads
   or writes a row on `PostRepository` and `CommentRepository` takes a
-  `security.Grant`, and `tests/Unit/GrantRequired_test.go` proves the absence
+  `auth.Grant`, and `tests/Unit/GrantRequired_test.go` proves the absence
   does not compile — on the generated code itself, not on the framework's own.
 - **A public read path decided entirely by policy** — a guest gets the
   published listing and any published post; a draft answers 403; none of it

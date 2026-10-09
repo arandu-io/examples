@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
 
 	models "github.com/arandu-io/examples/app/Models"
 )
@@ -17,15 +17,15 @@ import (
 // compile past the first module.
 const (
 	// CategoryView is reading one record.
-	CategoryView security.Action = "category.view"
+	CategoryView auth.Action = "category.view"
 	// CategoryList is paging through the records.
-	CategoryList security.Action = "category.list"
+	CategoryList auth.Action = "category.list"
 	// CategoryCreate is adding one.
-	CategoryCreate security.Action = "category.create"
+	CategoryCreate auth.Action = "category.create"
 	// CategoryUpdate is changing one.
-	CategoryUpdate security.Action = "category.update"
+	CategoryUpdate auth.Action = "category.update"
 	// CategoryDelete is removing one.
-	CategoryDelete security.Action = "category.delete"
+	CategoryDelete auth.Action = "category.delete"
 )
 
 // CategoryPolicy is the only authority over who does what with Category.
@@ -36,10 +36,10 @@ const (
 type CategoryPolicy struct{}
 
 // Compile-time proof that the policy answers about this entity and no other.
-var _ security.Policy[models.Category] = CategoryPolicy{}
+var _ auth.Policy[models.Category] = CategoryPolicy{}
 
 // Can decides whether the subject may perform the action.
-func (CategoryPolicy) Can(ctx context.Context, s security.Subject, a security.Action, ca models.Category) error {
+func (CategoryPolicy) Can(ctx context.Context, s auth.Subject, a auth.Action, ca models.Category) error {
 
 	// arandu:begin custom
 	//

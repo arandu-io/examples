@@ -28,9 +28,8 @@ import (
 	"time"
 
 	"github.com/arandu-io/framework/arandutest"
-	"github.com/arandu-io/framework/data"
+	"github.com/arandu-io/framework/foundation"
 	fwbootstrap "github.com/arandu-io/framework/foundation/bootstrap"
-	"github.com/arandu-io/framework/kernel"
 	"github.com/arandu-io/framework/mail"
 	"github.com/arandu-io/hesape/config"
 	"github.com/arandu-io/hesape/database"
@@ -46,7 +45,7 @@ import (
 //
 // Exported because both suites use it, which is the whole reason this package
 // exists.
-func Kernel(t *testing.T, env config.Env) *kernel.Kernel {
+func Kernel(t *testing.T, env config.Env) *foundation.Application {
 	t.Helper()
 
 	cfg := fwbootstrap.Configuration{
@@ -63,7 +62,7 @@ func Kernel(t *testing.T, env config.Env) *kernel.Kernel {
 			Key:      []byte("0123456789abcdef0123456789abcdef"),
 		},
 		Database: database.Config{
-			Connection: data.DialectPostgres,
+			Connection: database.DialectPostgres,
 			Host:       "127.0.0.1",
 			Port:       "1",
 			Database:   "does-not-exist",
@@ -95,7 +94,7 @@ func Kernel(t *testing.T, env config.Env) *kernel.Kernel {
 	if err != nil {
 		t.Fatalf("loading the application configuration: %v", err)
 	}
-	app, err := bootstrap.Build(appCfg, data.Wrap(sqldb, cfg.Database.Connection))
+	app, err := bootstrap.Build(appCfg, database.Wrap(sqldb, cfg.Database.Connection))
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -144,7 +143,7 @@ func File(t *testing.T, name string) string {
 //
 // SQLite in a temporary directory, so the tests need nothing installed and two
 // of them cannot see each other's rows. The file goes with t.TempDir.
-func App(t *testing.T) (*arandutest.Client, *data.DB) {
+func App(t *testing.T) (*arandutest.Client, *database.DB) {
 	t.Helper()
 	booted := Boot(t)
 	return booted.Client, booted.DB
@@ -157,7 +156,7 @@ func App(t *testing.T) (*arandutest.Client, *data.DB) {
 // verification code works and proving a function was called: the code this
 // returns is the one a person would type, produced by the same code path
 // production takes.
-func AppWithMailbox(t *testing.T) (*arandutest.Client, *data.DB, *mail.Array) {
+func AppWithMailbox(t *testing.T) (*arandutest.Client, *database.DB, *mail.Array) {
 	t.Helper()
 	booted := Boot(t)
 	return booted.Client, booted.DB, booted.Mail
@@ -180,7 +179,7 @@ type Booted struct {
 	Client *arandutest.Client
 	// DB is the migrated throwaway database, for a fixture or an assertion about
 	// a row.
-	DB *data.DB
+	DB *database.DB
 	// Mail is what the application sent.
 	Mail *mail.Array
 }

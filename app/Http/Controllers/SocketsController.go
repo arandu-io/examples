@@ -6,9 +6,10 @@ import (
 	"strings"
 	"time"
 
-	fhttp "github.com/arandu-io/framework/http"
-	"github.com/arandu-io/framework/observability"
 	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
+	hhttp "github.com/arandu-io/hesape/http"
+	"github.com/arandu-io/hesape/log"
 	"github.com/arandu-io/kyse/components"
 
 	listeners "github.com/arandu-io/examples/app/Listeners"
@@ -42,7 +43,7 @@ type SocketsController struct {
 	// reads it and never reaches the server: a screen holding the live counter
 	// would be a screen reading the process directly, and every number on it
 	// would arrive by a path with no policy on it.
-	gauges *observability.Gauges
+	gauges *log.Gauges
 	// metrics is the only authority over this screen. It is a field rather than
 	// a package-level value so that the tenant it compares against is the one
 	// bootstrap configured, and not a constant this file decided on.
@@ -53,12 +54,12 @@ type SocketsController struct {
 
 // NewSocketsController returns the controller. bootstrap builds it, with the
 // registry the socket server publishes into.
-func NewSocketsController(gauges *observability.Gauges, metrics policies.SocketMetricsPolicy, sessions *security.SessionStore) *SocketsController {
+func NewSocketsController(gauges *log.Gauges, metrics policies.SocketMetricsPolicy, sessions *security.SessionStore) *SocketsController {
 	return &SocketsController{gauges: gauges, metrics: metrics, sessions: sessions}
 }
 
 // Index draws the two cards: connections per tenant, and the message totals.
-func (c *SocketsController) Index(ctx *fhttp.Context) error {
+func (c *SocketsController) Index(ctx *hhttp.Context) error {
 	actor, err := c.sessions.Load(ctx.Ctx(), ctx.Request)
 	if err != nil {
 		return ctx.Redirect("/auth/login")
@@ -74,15 +75,15 @@ func (c *SocketsController) Index(ctx *fhttp.Context) error {
 	// their row in a table that crosses tenants. The registry itself takes no
 	// Grant -- it is a map in memory, not a repository -- so there is no second
 	// check downstream to fall back on.
-	grant, err := security.Authorize(ctx.Ctx(), c.metrics, actor, policies.SocketInspectAll, policies.AllTenantSockets{})
+	grant, err := auth.Authorize(ctx.Ctx(), c.metrics, actor, policies.SocketInspectAll, policies.AllTenantSockets{})
 	if err != nil {
-		observability.Log(ctx.Ctx()).Warn("authorization denied", "error", err)
+		log.For(ctx.Ctx()).Warn("authorization denied", "error", err)
 		return ctx.Status(http.StatusForbidden)
 	}
 
 	return ctx.View("admin.sockets", admin.SocketsData{
 		Chrome:   adminChrome(ctx, actor, token, "Sockets"),
-		Tenants:  c.connections(security.Tenant(grant)),
+		Tenants:  c.connections(auth.Tenant(grant)),
 		Messages: c.messages(),
 		ReadAt:   time.Now().Format("2 January 2006, 15:04:05"),
 	})
@@ -161,7 +162,7 @@ func (c *SocketsController) messages() []components.StatRow {
 // are the same fact here -- nothing has happened -- and the row reads zero for
 // both.
 func (c *SocketsController) value(metric, tenant string) string {
-	n, _ := c.gauges.Read(observability.GaugeName{Metric: metric, Tenant: tenant})
+	n, _ := c.gauges.Read(log.GaugeName{Metric: metric, Tenant: tenant})
 	return number(n)
 }
 

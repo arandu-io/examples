@@ -1,7 +1,7 @@
 package requests
 
 import (
-	"github.com/arandu-io/framework/validation"
+	"github.com/arandu-io/hesape/validation"
 )
 
 // StoreCategory is the input contract of creation. ctx.Bind fills it through

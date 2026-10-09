@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
 
 	models "github.com/arandu-io/examples/app/Models"
 	policies "github.com/arandu-io/examples/app/Policies"
@@ -59,9 +59,9 @@ func (CategorySeeder) Run(ctx context.Context, d Deps) error {
 	// permission to page through the table.
 	//
 	//arandu:system-grant seeding has no request behind it, so there is no subject to ask a policy about
-	listing := security.SystemGrant(policies.CategoryList, d.Tenant)
+	listing := auth.SystemGrant(policies.CategoryList, d.Tenant)
 	//arandu:system-grant same reason: this seeder writes the sections the example ships with
-	writing := security.SystemGrant(policies.CategoryCreate, d.Tenant)
+	writing := auth.SystemGrant(policies.CategoryCreate, d.Tenant)
 
 	// Read once, not once per section: the set does not change while this runs,
 	// and a query inside a loop is the shape of an N+1. Pluck is the terminal
@@ -95,7 +95,7 @@ func (CategorySeeder) Run(ctx context.Context, d Deps) error {
 
 	// The Grant is on Create and on nothing before it: Count, Sequence and the
 	// definition build a sentence, and a sentence authorizes nothing. The rows
-	// come back filed under data.Tenant(writing), whatever the definition put in
+	// come back filed under auth.Tenant(writing), whatever the definition put in
 	// the tenant field.
 	written, err := factories.Categories(d.DB).
 		Count(len(wanted)).

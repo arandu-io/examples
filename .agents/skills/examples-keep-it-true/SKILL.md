@@ -127,7 +127,7 @@ External `_test` package, capitalised directory, lowercase package clause. The
 `_internal_test.go` exception exists and nothing here takes it.
 `bash tests/test-layout-guard.sh` checks all four rules.
 
-**5. A fixture that writes behind the policy says why.** `security.SystemGrant`
+**5. A fixture that writes behind the policy says why.** `auth.SystemGrant`
 carries a `//arandu:system-grant <reason>` line directly above it — eleven of
 them in this repository, in the three seeders and in three test files, each with
 its own sentence. A twelfth without a reason is the beginning of the habit this

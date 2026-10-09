@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/arandu-io/framework/data"
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
+	"github.com/arandu-io/hesape/database"
 
 	models "github.com/arandu-io/examples/app/Models"
 	policies "github.com/arandu-io/examples/app/Policies"
@@ -25,38 +25,38 @@ func commentRepoWithoutDB() *repositories.CommentRepository {
 func TestEveryCommentMethodRequiresItsGrant(t *testing.T) {
 	repo := commentRepoWithoutDB()
 	ctx := context.Background()
-	var zero security.Grant
+	var zero auth.Grant
 
-	calls := map[string]func(security.Grant) error{
-		"Find": func(g security.Grant) error {
+	calls := map[string]func(auth.Grant) error{
+		"Find": func(g auth.Grant) error {
 			_, err := repo.Find(ctx, g, "id")
 			return err
 		},
-		"List": func(g security.Grant) error {
-			_, err := repo.List(ctx, g, data.Query{})
+		"List": func(g auth.Grant) error {
+			_, err := repo.List(ctx, g, database.Query{})
 			return err
 		},
-		"Create": func(g security.Grant) error {
+		"Create": func(g auth.Grant) error {
 			_, err := repo.Create(ctx, g, models.Comment{})
 			return err
 		},
-		"Update": func(g security.Grant) error {
+		"Update": func(g auth.Grant) error {
 			_, err := repo.Update(ctx, g, models.Comment{})
 			return err
 		},
-		"Delete": func(g security.Grant) error {
+		"Delete": func(g auth.Grant) error {
 			return repo.Delete(ctx, g, "id")
 		},
 	}
 
 	for name, call := range calls {
 		t.Run(name+" with no grant", func(t *testing.T) {
-			if err := call(zero); !errors.Is(err, security.ErrForbidden) {
+			if err := call(zero); !errors.Is(err, auth.ErrForbidden) {
 				t.Fatalf("error = %v, want ErrForbidden", err)
 			}
 		})
 		t.Run(name+" with a grant for another action", func(t *testing.T) {
-			if err := call(security.SystemGrant("some.other.action", "t1")); !errors.Is(err, security.ErrForbidden) {
+			if err := call(auth.SystemGrant("some.other.action", "t1")); !errors.Is(err, auth.ErrForbidden) {
 				t.Fatalf("error = %v, want ErrForbidden", err)
 			}
 		})
@@ -71,7 +71,7 @@ func TestEveryCommentMethodRequiresItsGrant(t *testing.T) {
 // the real ones -- a test that breaks when you do what the generator told you to
 // do is a test people delete.
 func TestTheCommentPolicyDeniesWhatItDoesNotKnow(t *testing.T) {
-	admin := security.Subject{ID: "a1", Tenant: "t1", Roles: []string{"admin", "staff"}}
+	admin := auth.Subject{ID: "a1", Tenant: "t1", Roles: []string{"admin", "staff"}}
 
 	err := (policies.CommentPolicy{}).Can(context.Background(), admin,
 		"comment.action_that_does_not_exist", models.Comment{})
@@ -87,9 +87,9 @@ func TestCommentListRejectsSortOutsideTheAllowlist(t *testing.T) {
 	repo := commentRepoWithoutDB()
 	// CommentList, because listing is its own permission: a role may be
 	// allowed to open the record it was given and not to page through every one.
-	g := security.SystemGrant(policies.CommentList, "t1")
+	g := auth.SystemGrant(policies.CommentList, "t1")
 
-	_, err := repo.List(context.Background(), g, data.Query{Sort: "1; DROP TABLE comments"})
+	_, err := repo.List(context.Background(), g, database.Query{Sort: "1; DROP TABLE comments"})
 
 	if !errors.Is(err, models.ErrCommentSort) {
 		t.Fatalf("error = %v, want ErrCommentSort", err)
@@ -109,14 +109,14 @@ func TestCommentListRejectsSortOutsideTheAllowlist(t *testing.T) {
 func TestEveryCommentQueryBeyondTheFiveRequiresItsGrant(t *testing.T) {
 	repo := commentRepoWithoutDB()
 	ctx := context.Background()
-	var zero security.Grant
+	var zero auth.Grant
 
-	calls := map[string]func(security.Grant) error{
-		"ForPost": func(g security.Grant) error {
+	calls := map[string]func(auth.Grant) error{
+		"ForPost": func(g auth.Grant) error {
 			_, err := repo.ForPost(ctx, g, "p1")
 			return err
 		},
-		"PublicForPost": func(g security.Grant) error {
+		"PublicForPost": func(g auth.Grant) error {
 			_, err := repo.PublicForPost(ctx, g, "p1", "u1")
 			return err
 		},
@@ -124,12 +124,12 @@ func TestEveryCommentQueryBeyondTheFiveRequiresItsGrant(t *testing.T) {
 
 	for name, call := range calls {
 		t.Run(name+" with no grant", func(t *testing.T) {
-			if err := call(zero); !errors.Is(err, security.ErrForbidden) {
+			if err := call(zero); !errors.Is(err, auth.ErrForbidden) {
 				t.Fatalf("error = %v, want ErrForbidden", err)
 			}
 		})
 		t.Run(name+" with a grant for another action", func(t *testing.T) {
-			if err := call(security.SystemGrant("some.other.action", "t1")); !errors.Is(err, security.ErrForbidden) {
+			if err := call(auth.SystemGrant("some.other.action", "t1")); !errors.Is(err, auth.ErrForbidden) {
 				t.Fatalf("error = %v, want ErrForbidden", err)
 			}
 		})

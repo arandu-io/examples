@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/arandu-io/framework/data"
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
+	"github.com/arandu-io/hesape/database"
 
 	models "github.com/arandu-io/examples/app/Models"
 	policies "github.com/arandu-io/examples/app/Policies"
@@ -77,11 +77,11 @@ func (CommentSeeder) Run(ctx context.Context, d Deps) error {
 	comments := repositories.NewCommentRepository(d.DB)
 
 	//arandu:system-grant seeding has no request behind it, so there is no subject to ask a policy about
-	postList := security.SystemGrant(policies.PostList, d.Tenant)
+	postList := auth.SystemGrant(policies.PostList, d.Tenant)
 	//arandu:system-grant same reason: reading what is already there keeps this seeder repeatable
-	commentList := security.SystemGrant(policies.CommentList, d.Tenant)
+	commentList := auth.SystemGrant(policies.CommentList, d.Tenant)
 	//arandu:system-grant and writing the thread the example ships with
-	writing := security.SystemGrant(policies.CommentCreate, d.Tenant)
+	writing := auth.SystemGrant(policies.CommentCreate, d.Tenant)
 
 	// The author is the seeded reader, by id. A comment signed with a name typed
 	// into a seeder would be a comment attached to nobody, and the thread on the
@@ -92,7 +92,7 @@ func (CommentSeeder) Run(ctx context.Context, d Deps) error {
 	}
 
 	// Read once, not once per comment.
-	articles, err := posts.List(ctx, postList, data.Query{Limit: 200})
+	articles, err := posts.List(ctx, postList, database.Query{Limit: 200})
 	if err != nil {
 		return fmt.Errorf("reading the posts: %w", err)
 	}
@@ -101,7 +101,7 @@ func (CommentSeeder) Run(ctx context.Context, d Deps) error {
 		postID[p.Slug] = p.ID
 	}
 
-	existing, err := comments.List(ctx, commentList, data.Query{Limit: 200})
+	existing, err := comments.List(ctx, commentList, database.Query{Limit: 200})
 	if err != nil {
 		return fmt.Errorf("reading the comments: %w", err)
 	}
@@ -119,7 +119,7 @@ func (CommentSeeder) Run(ctx context.Context, d Deps) error {
 			continue
 		}
 
-		id, err := data.NewID()
+		id, err := database.NewID()
 		if err != nil {
 			return err
 		}

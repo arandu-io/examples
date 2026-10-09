@@ -146,7 +146,7 @@ func Slug(name string) string {
 // Make touches nothing, so a Grant on it would authorize nothing, and a
 // parameter that looks like enforcement and enforces nothing teaches the
 // opposite of what the Grant means everywhere else. Create writes, so it takes
-// one, and the tenant of every row it stores is data.Tenant(g) -- written over
+// one, and the tenant of every row it stores is auth.Tenant(g) -- written over
 // whatever the definition put in the field. A factory is not a way around the
 // policy that guards the table, which is the whole reason the two signatures
 // differ.
@@ -166,7 +166,7 @@ func Slug(name string) string {
 // answers the same rows, which is what makes a factory failure something a
 // second run can reproduce. That also makes it guessable, which is why it is
 // fake data for seeds and tests and never the route a request takes to create a
-// section. data.NewID is that route, and it is in CategoryService.
+// section. database.NewID is that route, and it is in CategoryService.
 func defineCategory(f faker.Faker) models.Category {
 	name := strings.ToUpper(f.Word()[:1]) + f.Word()[1:]
 	return models.Category{

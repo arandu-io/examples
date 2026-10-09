@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/arandu-io/framework/data"
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/database"
+	"github.com/arandu-io/hesape/session"
 
 	"github.com/arandu-io/examples/bootstrap"
 	appconfig "github.com/arandu-io/examples/config"
@@ -205,16 +205,16 @@ func TestLoginOnSQLite(t *testing.T) {
 		}
 
 		cookies := rec.Result().Cookies()
-		var session *http.Cookie
+		var active *http.Cookie
 		for _, cookie := range cookies {
-			if cookie.Name == security.SessionCookieName && cookie.MaxAge > 0 {
-				session = cookie
+			if cookie.Name == session.CookieName && cookie.MaxAge > 0 {
+				active = cookie
 			}
 		}
-		if session == nil {
+		if active == nil {
 			t.Fatalf("cookies = %+v, want an active session cookie", cookies)
 		}
-		if !session.HttpOnly {
+		if !active.HttpOnly {
 			t.Error("the session cookie must be HttpOnly")
 		}
 		if strings.Contains(rec.Body.String(), "argon2") {
@@ -318,7 +318,7 @@ func csrfToken(t *testing.T, html string) string {
 
 // openForTest builds the same configuration and handle the commands use, so the
 // test exercises the real wiring rather than a parallel one.
-func openForTest(t *testing.T) (appconfig.Config, *data.DB, func()) {
+func openForTest(t *testing.T) (appconfig.Config, *database.DB, func()) {
 	t.Helper()
 
 	cfg, err := appconfig.Load()

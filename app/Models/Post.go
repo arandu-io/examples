@@ -13,7 +13,7 @@ import (
 // Active Record.
 //
 // The table is reached by PostRepository, and every method of a repository --
-// Find and List included -- takes a security.Grant that only a Policy can
+// Find and List included -- takes an auth.Grant that only a Policy can
 // issue. The model is data; the Policy is the door.
 //
 // # The embedded model and the db tags, and what they do not turn this into

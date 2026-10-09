@@ -12,7 +12,7 @@ import (
 //
 // There is no Find, no Save and no query builder on this type. The table is
 // reached by CommentRepository, and every method of a repository -- Find and
-// List included -- takes a security.Grant that only a Policy can issue. The
+// List included -- takes an auth.Grant that only a Policy can issue. The
 // model is data; the Policy is the door.
 type Comment struct {
 	ID string

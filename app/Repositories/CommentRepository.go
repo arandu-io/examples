@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/arandu-io/framework/data"
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
 	"github.com/arandu-io/hesape/database"
 
 	models "github.com/arandu-io/examples/app/Models"
@@ -55,11 +55,11 @@ const (
 // its own, so it is a narrowed query rather than a read model -- there is no
 // read model in this file.
 type CommentRepository struct {
-	db *data.DB
+	db *database.DB
 }
 
 // NewCommentRepository returns a repository over an instrumented handle.
-func NewCommentRepository(db *data.DB) *CommentRepository { return &CommentRepository{db: db} }
+func NewCommentRepository(db *database.DB) *CommentRepository { return &CommentRepository{db: db} }
 
 // Compile-time proof of the contract.
 var _ data.Repository[models.Comment, string] = (*CommentRepository)(nil)
@@ -67,7 +67,7 @@ var _ data.Repository[models.Comment, string] = (*CommentRepository)(nil)
 const commentColumns = `id, tenant_id, post_id, author, body, approved, created_at`
 
 // Find returns one comment by id, scoped to the grant's tenant.
-func (r *CommentRepository) Find(ctx context.Context, g security.Grant, id string) (models.Comment, error) {
+func (r *CommentRepository) Find(ctx context.Context, g auth.Grant, id string) (models.Comment, error) {
 	if err := g.Check(policies.CommentView); err != nil {
 		return models.Comment{}, err
 	}
@@ -77,7 +77,7 @@ func (r *CommentRepository) Find(ctx context.Context, g security.Grant, id strin
 	// and telling the two apart is itself a leak.
 	row := r.db.QueryRowContext(ctx,
 		`SELECT `+commentColumns+` FROM comments WHERE id = ? AND tenant_id = ?`,
-		id, data.Tenant(g))
+		id, auth.Tenant(g))
 	return r.scan(row)
 }
 
@@ -95,7 +95,7 @@ var commentSortable = map[string]string{
 //
 // Pagination is keyset based: OFFSET grows more expensive with every page and
 // skips rows when data changes underneath it.
-func (r *CommentRepository) List(ctx context.Context, g security.Grant, q data.Query) ([]models.Comment, error) {
+func (r *CommentRepository) List(ctx context.Context, g auth.Grant, q database.Query) ([]models.Comment, error) {
 	// CommentList, not CommentView. The specification can grant them to
 	// different roles -- "a support agent may open the record it was given, but
 	// may not page through every record there is" -- and checking view here made
@@ -117,7 +117,7 @@ func (r *CommentRepository) List(ctx context.Context, g security.Grant, q data.Q
 	}
 
 	query := `SELECT ` + commentColumns + ` FROM comments WHERE tenant_id = ?`
-	args := []any{data.Tenant(g)}
+	args := []any{auth.Tenant(g)}
 	if q.Cursor != "" {
 		// The predicate names the column the ORDER BY names, and it is scoped
 		// like the outer query: a cursor is the id of the last row read, it
@@ -150,11 +150,11 @@ func (r *CommentRepository) List(ctx context.Context, g security.Grant, q data.Q
 
 // ForPost is the thread of one post, oldest first.
 //
-// A method of its own rather than a Filter on data.Query. data.Query has no
+// A method of its own rather than a Filter on database.Query. database.Query has no
 // filter, and adding one back would be a query builder -- which is the one thing
 // a repository exists to avoid. A predicate the application needs is a method
 // here, with its SQL visible and its parameters bound.
-func (r *CommentRepository) ForPost(ctx context.Context, g security.Grant, postID string) ([]models.Comment, error) {
+func (r *CommentRepository) ForPost(ctx context.Context, g auth.Grant, postID string) ([]models.Comment, error) {
 	if err := g.Check(policies.CommentList); err != nil {
 		return nil, err
 	}
@@ -168,7 +168,7 @@ func (r *CommentRepository) ForPost(ctx context.Context, g security.Grant, postI
 	// The post id arrives from the address bar, so the tenant is scoped as well
 	// as the thread: without it, a post id from another tenant would return its
 	// conversation.
-	rows, err := r.db.QueryContext(ctx, query, data.Tenant(g), postID, commentMaxLimit)
+	rows, err := r.db.QueryContext(ctx, query, auth.Tenant(g), postID, commentMaxLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +186,7 @@ func (r *CommentRepository) ForPost(ctx context.Context, g security.Grant, postI
 }
 
 // Create inserts the comment and returns it as stored.
-func (r *CommentRepository) Create(ctx context.Context, g security.Grant, co models.Comment) (models.Comment, error) {
+func (r *CommentRepository) Create(ctx context.Context, g auth.Grant, co models.Comment) (models.Comment, error) {
 	if err := g.Check(policies.CommentCreate); err != nil {
 		return models.Comment{}, err
 	}
@@ -196,7 +196,7 @@ func (r *CommentRepository) Create(ctx context.Context, g security.Grant, co mod
 		// The id comes from the application, not from a database default:
 		// gen_random_uuid, UUID() and randomblob are three spellings of one idea,
 		// and depending on any of them would tie the schema to one engine.
-		if co.ID, err = data.NewID(); err != nil {
+		if co.ID, err = database.NewID(); err != nil {
 			return models.Comment{}, err
 		}
 	}
@@ -204,7 +204,7 @@ func (r *CommentRepository) Create(ctx context.Context, g security.Grant, co mod
 	// row is filed under the tenant that was authorized -- a candidate arrives
 	// from a request body, and a request that could choose its tenant could
 	// write into somebody else's.
-	co.TenantID = data.Tenant(g)
+	co.TenantID = auth.Tenant(g)
 	co.CreatedAt = time.Now().UTC()
 
 	// The relationship is scoped in the same statement as the insert. A plain
@@ -217,7 +217,7 @@ func (r *CommentRepository) Create(ctx context.Context, g security.Grant, co mod
 		 SELECT ?, ?, ?, ?, ?, ?, ?
 		 WHERE EXISTS (SELECT 1 FROM posts WHERE id = ? AND tenant_id = ?)`,
 		co.ID, co.TenantID, co.PostId, co.Author, co.Body, co.Approved, co.CreatedAt,
-		co.PostId, data.Tenant(g))
+		co.PostId, auth.Tenant(g))
 	if err != nil {
 		if r.conflict(err) {
 			return models.Comment{}, models.ErrCommentConflict
@@ -238,7 +238,7 @@ func (r *CommentRepository) Create(ctx context.Context, g security.Grant, co mod
 
 // Update writes the mutable fields. The tenant is not one of them: moving a row
 // between tenants is not an update, it is a migration.
-func (r *CommentRepository) Update(ctx context.Context, g security.Grant, co models.Comment) (models.Comment, error) {
+func (r *CommentRepository) Update(ctx context.Context, g auth.Grant, co models.Comment) (models.Comment, error) {
 	if err := g.Check(policies.CommentUpdate); err != nil {
 		return models.Comment{}, err
 	}
@@ -247,8 +247,8 @@ func (r *CommentRepository) Update(ctx context.Context, g security.Grant, co mod
 		`UPDATE comments SET post_id = ?, author = ?, body = ?, approved = ?
 		 WHERE id = ? AND tenant_id = ?
 		   AND EXISTS (SELECT 1 FROM posts WHERE id = ? AND tenant_id = ?)`,
-		co.PostId, co.Author, co.Body, co.Approved, co.ID, data.Tenant(g),
-		co.PostId, data.Tenant(g))
+		co.PostId, co.Author, co.Body, co.Approved, co.ID, auth.Tenant(g),
+		co.PostId, auth.Tenant(g))
 	if err != nil {
 		if r.conflict(err) {
 			return models.Comment{}, models.ErrCommentConflict
@@ -274,9 +274,9 @@ func (r *CommentRepository) Update(ctx context.Context, g security.Grant, co mod
 // classifyUpdateMiss distinguishes the two tenant-scoped reasons the guarded
 // update can affect no row. A row in another tenant is deliberately identical
 // to a missing row, so neither existence check can disclose it.
-func (r *CommentRepository) classifyUpdateMiss(ctx context.Context, g security.Grant, commentID, postID string) error {
+func (r *CommentRepository) classifyUpdateMiss(ctx context.Context, g auth.Grant, commentID, postID string) error {
 	var commentExists, postExists int
-	tenant := data.Tenant(g)
+	tenant := auth.Tenant(g)
 	err := r.db.QueryRowContext(ctx,
 		`SELECT
 			CASE WHEN EXISTS (SELECT 1 FROM comments WHERE id = ? AND tenant_id = ?) THEN 1 ELSE 0 END,
@@ -296,12 +296,12 @@ func (r *CommentRepository) classifyUpdateMiss(ctx context.Context, g security.G
 }
 
 // Delete removes one comment within the grant's tenant.
-func (r *CommentRepository) Delete(ctx context.Context, g security.Grant, id string) error {
+func (r *CommentRepository) Delete(ctx context.Context, g auth.Grant, id string) error {
 	if err := g.Check(policies.CommentDelete); err != nil {
 		return err
 	}
 	res, err := r.db.ExecContext(ctx,
-		`DELETE FROM comments WHERE id = ? AND tenant_id = ?`, id, data.Tenant(g))
+		`DELETE FROM comments WHERE id = ? AND tenant_id = ?`, id, auth.Tenant(g))
 	if err != nil {
 		return err
 	}
@@ -314,7 +314,7 @@ func (r *CommentRepository) Delete(ctx context.Context, g security.Grant, id str
 // Health reports whether the repository can reach its storage.
 //
 // Nothing calls it out of the box. It is here so AppServiceProvider can
-// implement kernel.Health over the repositories it owns, which is what puts this
+// implement foundation.Health over the repositories it owns, which is what puts this
 // table on /_arandu/health and on the error page's diagnosis.
 func (r *CommentRepository) Health(ctx context.Context) error { return r.db.PingContext(ctx) }
 
@@ -375,7 +375,7 @@ func (r *CommentRepository) conflict(err error) bool {
 // The predicate is in the SQL and not in Go. A filter applied after the rows are
 // read is a filter somebody removes while tidying, and by then the pending
 // comments are already in memory next to the ones being rendered.
-func (r *CommentRepository) PublicForPost(ctx context.Context, g security.Grant, postID, reader string) ([]models.Comment, error) {
+func (r *CommentRepository) PublicForPost(ctx context.Context, g auth.Grant, postID, reader string) ([]models.Comment, error) {
 	if err := g.Check(policies.CommentPublicList); err != nil {
 		return nil, err
 	}
@@ -390,7 +390,7 @@ func (r *CommentRepository) PublicForPost(ctx context.Context, g security.Grant,
 	// parenthesised OR it would apply to one branch and not the other, and the
 	// branch that lost it -- `author = ?` -- is the one that returns rows
 	// nobody has approved.
-	rows, err := r.db.QueryContext(ctx, query, data.Tenant(g), postID, true, reader, commentMaxLimit)
+	rows, err := r.db.QueryContext(ctx, query, auth.Tenant(g), postID, true, reader, commentMaxLimit)
 	if err != nil {
 		return nil, err
 	}

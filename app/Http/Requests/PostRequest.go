@@ -3,7 +3,7 @@ package requests
 import (
 	"time"
 
-	"github.com/arandu-io/framework/validation"
+	"github.com/arandu-io/hesape/validation"
 )
 
 // StorePost is the input contract of creation. ctx.Bind fills it through

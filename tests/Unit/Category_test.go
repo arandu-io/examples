@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/arandu-io/framework/data"
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
+	"github.com/arandu-io/hesape/database"
 
 	requests "github.com/arandu-io/examples/app/Http/Requests"
 	models "github.com/arandu-io/examples/app/Models"
@@ -47,32 +47,32 @@ func categoryServiceWithoutDB() *services.CategoryService {
 func TestEveryCategoryMethodRefusesASubjectNobodyFilledIn(t *testing.T) {
 	svc := categoryServiceWithoutDB()
 	ctx := context.Background()
-	var nobody security.Subject
+	var nobody auth.Subject
 
 	// Valid input, so that Create fails the authorization rather than the
 	// validation: a refusal for the wrong reason proves nothing about the door.
 	valid := requests.StoreCategory{Name: "Reports", Slug: "reports", Description: "A section."}
 
-	calls := map[string]func(security.Subject) error{
-		"Create": func(s security.Subject) error { _, err := svc.Create(ctx, s, valid); return err },
-		"Get":    func(s security.Subject) error { _, err := svc.Get(ctx, s, "id"); return err },
-		"List":   func(s security.Subject) error { _, err := svc.List(ctx, s, data.Query{}); return err },
-		"Update": func(s security.Subject) error {
+	calls := map[string]func(auth.Subject) error{
+		"Create": func(s auth.Subject) error { _, err := svc.Create(ctx, s, valid); return err },
+		"Get":    func(s auth.Subject) error { _, err := svc.Get(ctx, s, "id"); return err },
+		"List":   func(s auth.Subject) error { _, err := svc.List(ctx, s, database.Query{}); return err },
+		"Update": func(s auth.Subject) error {
 			_, err := svc.Update(ctx, s, requests.UpdateCategory{
 				ID: "id", Name: "Reports", Slug: "reports", Description: "A section.",
 			})
 			return err
 		},
-		"Delete": func(s security.Subject) error { return svc.Delete(ctx, s, "id") },
-		"BySlug": func(s security.Subject) error { _, err := svc.BySlug(ctx, s, "reports"); return err },
-		"All":    func(s security.Subject) error { _, err := svc.All(ctx, s); return err },
+		"Delete": func(s auth.Subject) error { return svc.Delete(ctx, s, "id") },
+		"BySlug": func(s auth.Subject) error { _, err := svc.BySlug(ctx, s, "reports"); return err },
+		"All":    func(s auth.Subject) error { _, err := svc.All(ctx, s); return err },
 	}
 
 	for name, call := range calls {
 		t.Run(name, func(t *testing.T) {
 			// nil is passed as the database on purpose: refusing has to happen
 			// before anything is asked of it.
-			if err := call(nobody); !errors.Is(err, security.ErrForbidden) {
+			if err := call(nobody); !errors.Is(err, auth.ErrForbidden) {
 				t.Fatalf("error = %v, want ErrForbidden", err)
 			}
 		})
@@ -93,13 +93,13 @@ func TestEveryCategoryMethodRefusesASubjectNobodyFilledIn(t *testing.T) {
 // row, and that test is in the Feature suite where rows exist.
 func TestCreatingASectionNeedsMoreThanAnAccount(t *testing.T) {
 	svc := categoryServiceWithoutDB()
-	reader := security.Subject{ID: "u1", Tenant: "t1", Roles: []string{models.RoleMember}}
+	reader := auth.Subject{ID: "u1", Tenant: "t1", Roles: []string{models.RoleMember}}
 
 	_, err := svc.Create(context.Background(), reader, requests.StoreCategory{
 		Name: "Reports", Slug: "reports", Description: "A section.",
 	})
 
-	if !errors.Is(err, security.ErrForbidden) {
+	if !errors.Is(err, auth.ErrForbidden) {
 		t.Fatalf("error = %v, want ErrForbidden: an account is not an administrator", err)
 	}
 }
@@ -112,7 +112,7 @@ func TestCreatingASectionNeedsMoreThanAnAccount(t *testing.T) {
 // the real ones -- a test that breaks when you do what the generator told you to
 // do is a test people delete.
 func TestTheCategoryPolicyDeniesWhatItDoesNotKnow(t *testing.T) {
-	admin := security.Subject{ID: "a1", Tenant: "t1", Roles: []string{"admin", "staff"}}
+	admin := auth.Subject{ID: "a1", Tenant: "t1", Roles: []string{"admin", "staff"}}
 
 	err := (policies.CategoryPolicy{}).Can(context.Background(), admin,
 		"category.action_that_does_not_exist", models.Category{})
@@ -133,9 +133,9 @@ func TestCategoryListRejectsSortOutsideTheAllowlist(t *testing.T) {
 	svc := categoryServiceWithoutDB()
 	// A reader, because listing is open to everybody: the refusal below has to
 	// be the allowlist and not the policy.
-	reader := security.Subject{ID: "u1", Tenant: "t1", Roles: []string{models.RoleMember}}
+	reader := auth.Subject{ID: "u1", Tenant: "t1", Roles: []string{models.RoleMember}}
 
-	_, err := svc.List(context.Background(), reader, data.Query{Sort: "1; DROP TABLE categories"})
+	_, err := svc.List(context.Background(), reader, database.Query{Sort: "1; DROP TABLE categories"})
 
 	if !errors.Is(err, models.ErrCategorySort) {
 		t.Fatalf("error = %v, want ErrCategorySort", err)

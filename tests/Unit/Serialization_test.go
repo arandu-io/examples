@@ -93,7 +93,7 @@ func TestEveryModelNamesTheFieldsThatMayLeave(t *testing.T) {
 // TestEveryModelLogsItsIdentifiersAndNothingElse.
 //
 // LogValue is the other half of the same claim, and it is the half that runs
-// without anybody asking: passing an entity to a log call, to observability.Dump
+// without anybody asking: passing an entity to a log call, to log.Dump
 // or to the debug page reaches this method rather than the struct. A whole
 // entity written into a log line is a body, an author and an email address in a
 // file that outlives the request and is read by more people than the page was.

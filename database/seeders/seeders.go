@@ -9,7 +9,6 @@ package seeders
 
 import (
 	"context"
-	"github.com/arandu-io/framework/data"
 	"github.com/arandu-io/hesape/database"
 
 	services "github.com/arandu-io/examples/app/Services"
@@ -24,7 +23,7 @@ type Deps struct {
 	// with Users and Tenant only, because the first user is the one thing every
 	// project seeds; anything else is this application's, and adding it here is
 	// the one line it costs.
-	DB *data.DB
+	DB *database.DB
 	// Tenant is the tenant seeded rows belong to. It comes from the application,
 	// never from the seeder: a seeder that picks its own tenant seeds data nobody
 	// can reach.

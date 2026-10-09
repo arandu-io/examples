@@ -3,8 +3,8 @@ package controllers
 import (
 	"context"
 
-	"github.com/arandu-io/framework/http"
 	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
 	hhttp "github.com/arandu-io/hesape/http"
 	"github.com/arandu-io/hesape/view"
 
@@ -13,7 +13,7 @@ import (
 
 // UserNames is the tenant-scoped account projection these pages render.
 type UserNames interface {
-	PublicNames(context.Context, security.Subject, []string) (map[string]string, error)
+	PublicNames(context.Context, auth.Subject, []string) (map[string]string, error)
 }
 
 // navigation is what the header is drawn from, in one place.
@@ -55,7 +55,7 @@ type navigation struct {
 // republishes HomeController without a flag -- so the two would drift on the one
 // screen where drift is most visible. What is added below is what the kit cannot
 // know about: this application's own areas.
-func (n navigation) page(ctx *http.Context, actor security.Subject, signedIn bool, token, title string) view.Page {
+func (n navigation) page(ctx *hhttp.Context, actor auth.Subject, signedIn bool, token, title string) view.Page {
 	page := authui.Chrome(authui.ChromeProps{
 		AppName:       n.appName,
 		Title:         title,
@@ -85,7 +85,7 @@ func (n navigation) page(ctx *http.Context, actor security.Subject, signedIn boo
 // through authui.Chrome: a copy here would be a second answer to "what does the
 // header say when the lookup fails". Only one answer keeps the page rendering,
 // and it is not the one somebody writes in a hurry.
-func (n navigation) displayName(ctx *http.Context, id string) string {
+func (n navigation) displayName(ctx *hhttp.Context, id string) string {
 	return authui.SignedInName(ctx.Ctx(), n.people, n.tenant, id)
 }
 
@@ -94,11 +94,11 @@ func (n navigation) displayName(ctx *http.Context, id string) string {
 // The tenant of a guest is the application's, from configuration. A visitor
 // cannot choose whose rows they read, and it is not suspended because nobody
 // signed in.
-func (n navigation) reader(ctx *http.Context, sessions *security.SessionStore) (security.Subject, bool) {
+func (n navigation) reader(ctx *hhttp.Context, sessions *security.SessionStore) (auth.Subject, bool) {
 	if actor, err := sessions.Load(ctx.Ctx(), ctx.Request); err == nil {
 		return actor, true
 	}
-	return security.Guest(n.tenant), false
+	return auth.Guest(n.tenant), false
 }
 
 // ifSignedIn is the address, or nothing.
@@ -120,7 +120,7 @@ func ifSignedIn(show bool, url string) string {
 // session, or for a visitor with none to a signed guest cookie -- and put it on
 // the request context. On a write it accepted, the token there is the one that
 // was submitted, so a form drawn again after a rejection still validates.
-func csrfToken(ctx *http.Context) string {
+func csrfToken(ctx *hhttp.Context) string {
 	token, _ := hhttp.CSRFTokenFrom(ctx.Ctx())
 	return token
 }

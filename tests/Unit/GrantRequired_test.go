@@ -6,9 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/arandu-io/framework/security"
-
-	"github.com/arandu-io/framework/data"
+	"github.com/arandu-io/hesape/auth"
+	"github.com/arandu-io/hesape/database"
 
 	models "github.com/arandu-io/examples/app/Models"
 	policies "github.com/arandu-io/examples/app/Policies"
@@ -51,11 +50,11 @@ func TestEveryMethodRequiresItsGrant(t *testing.T) {
 
 	// A grant for delete, handed to every other method.
 	//arandu:system-grant a test needs a Grant nothing issued, to prove the wrong one is refused
-	wrong := security.SystemGrant(policies.PostDelete, "acme")
+	wrong := auth.SystemGrant(policies.PostDelete, "acme")
 
 	calls := map[string]func() error{
 		"Find":   func() error { _, err := repo.Find(ctx, wrong, "id"); return err },
-		"List":   func() error { _, err := repo.List(ctx, wrong, data.Query{Limit: 10}); return err },
+		"List":   func() error { _, err := repo.List(ctx, wrong, database.Query{Limit: 10}); return err },
 		"Create": func() error { _, err := repo.Create(ctx, wrong, models.Post{}); return err },
 		"Update": func() error { _, err := repo.Update(ctx, wrong, models.Post{}); return err },
 	}

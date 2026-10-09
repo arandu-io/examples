@@ -25,7 +25,7 @@ import (
 // Config is the whole configuration of this application: one field per file in
 // this directory, plus what the framework parsed for the kernel.
 type Config struct {
-	// Framework is what kernel.New takes: one struct per component, filled from
+	// Framework is what foundation.New takes: one struct per component, filled from
 	// the environment once. It is not a copy of the fields below -- the kernel
 	// validates the key, the environment and the connection at boot, and this
 	// package never re-reads them.

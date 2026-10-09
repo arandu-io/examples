@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arandu-io/framework/data"
-	"github.com/arandu-io/framework/security"
+	"github.com/arandu-io/hesape/auth"
+	"github.com/arandu-io/hesape/database"
 
 	requests "github.com/arandu-io/examples/app/Http/Requests"
 	models "github.com/arandu-io/examples/app/Models"
@@ -68,7 +68,7 @@ const (
 // tenant can name a row of another, and every query that groups by a section or
 // reads a thread by its post then has a row whose key matches and whose tenant
 // does not.
-func scopedFixture(t *testing.T, db *data.DB) {
+func scopedFixture(t *testing.T, db *database.DB) {
 	t.Helper()
 
 	// Theirs first, and the section carries the same slug as ours: a slug is
@@ -115,7 +115,7 @@ func TestNoPostQueryReadsAnotherTenantsRows(t *testing.T) {
 
 	t.Run("Find", func(t *testing.T) {
 		//arandu:system-grant a fixture needs a Grant for a tenant no session in this test carries
-		g := security.SystemGrant(policies.PostView, ours)
+		g := auth.SystemGrant(policies.PostView, ours)
 
 		if _, err := repo.Find(ctx, g, ourPost); err != nil {
 			t.Fatalf("our own post was not readable, so a refusal below would prove nothing: %v", err)
@@ -126,8 +126,8 @@ func TestNoPostQueryReadsAnotherTenantsRows(t *testing.T) {
 	})
 
 	t.Run("List", func(t *testing.T) {
-		g := security.SystemGrant(policies.PostList, ours)
-		found, err := repo.List(ctx, g, data.Query{Limit: 50})
+		g := auth.SystemGrant(policies.PostList, ours)
+		found, err := repo.List(ctx, g, database.Query{Limit: 50})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -140,8 +140,8 @@ func TestNoPostQueryReadsAnotherTenantsRows(t *testing.T) {
 	// subquery resolves nothing and the page is empty; an unscoped one lets that
 	// id decide where our page starts.
 	t.Run("List from another tenant's cursor", func(t *testing.T) {
-		g := security.SystemGrant(policies.PostList, ours)
-		found, err := repo.List(ctx, g, data.Query{Limit: 50, Cursor: theirPost})
+		g := auth.SystemGrant(policies.PostList, ours)
+		found, err := repo.List(ctx, g, database.Query{Limit: 50, Cursor: theirPost})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -151,7 +151,7 @@ func TestNoPostQueryReadsAnotherTenantsRows(t *testing.T) {
 	})
 
 	t.Run("Published", func(t *testing.T) {
-		g := security.SystemGrant(policies.PostPublicList, ours)
+		g := auth.SystemGrant(policies.PostPublicList, ours)
 		found, err := repo.Published(ctx, g, 50)
 		if err != nil {
 			t.Fatal(err)
@@ -164,7 +164,7 @@ func TestNoPostQueryReadsAnotherTenantsRows(t *testing.T) {
 	// the section still returns our rows when our section is the one asked for.
 	// The id a reader's slug resolves to is the one that has to be refused.
 	t.Run("PublishedInCategory", func(t *testing.T) {
-		g := security.SystemGrant(policies.PostPublicList, ours)
+		g := auth.SystemGrant(policies.PostPublicList, ours)
 
 		found, err := repo.PublishedInCategory(ctx, g, ourCategory, 50)
 		if err != nil {
@@ -182,7 +182,7 @@ func TestNoPostQueryReadsAnotherTenantsRows(t *testing.T) {
 	})
 
 	t.Run("CountByCategory", func(t *testing.T) {
-		g := security.SystemGrant(policies.PostPublicList, ours)
+		g := auth.SystemGrant(policies.PostPublicList, ours)
 		counts, err := repo.CountByCategory(ctx, g)
 		if err != nil {
 			t.Fatal(err)
@@ -199,7 +199,7 @@ func TestNoPostQueryReadsAnotherTenantsRows(t *testing.T) {
 	// somebody a row; a write that crosses tenants changes one, and there is no
 	// version of that which is recoverable by refreshing the page.
 	t.Run("IncrementViews", func(t *testing.T) {
-		g := security.SystemGrant(policies.PostView, ours)
+		g := auth.SystemGrant(policies.PostView, ours)
 		if err := repo.IncrementViews(ctx, g, theirPost); err != nil {
 			// The statement matches nothing and reports no error, which is
 			// right: it is a counter, not an answer. What is asserted is the
@@ -212,7 +212,7 @@ func TestNoPostQueryReadsAnotherTenantsRows(t *testing.T) {
 	})
 
 	t.Run("Update", func(t *testing.T) {
-		g := security.SystemGrant(policies.PostUpdate, ours)
+		g := auth.SystemGrant(policies.PostUpdate, ours)
 		_, err := repo.Update(ctx, g, models.Post{ID: theirPost, Title: "Rewritten", Slug: "rewritten"})
 		if err == nil {
 			t.Fatal("another tenant's post was rewritten")
@@ -223,7 +223,7 @@ func TestNoPostQueryReadsAnotherTenantsRows(t *testing.T) {
 	})
 
 	t.Run("Delete", func(t *testing.T) {
-		g := security.SystemGrant(policies.PostDelete, ours)
+		g := auth.SystemGrant(policies.PostDelete, ours)
 		if err := repo.Delete(ctx, g, theirPost); err == nil {
 			t.Fatal("another tenant's post was deleted")
 		}
@@ -247,7 +247,7 @@ func TestNoCommentQueryReadsAnotherTenantsRows(t *testing.T) {
 	ours := bootstrap.Tenant()
 
 	t.Run("Find", func(t *testing.T) {
-		g := security.SystemGrant(policies.CommentView, ours)
+		g := auth.SystemGrant(policies.CommentView, ours)
 		if _, err := repo.Find(ctx, g, ourComment); err != nil {
 			t.Fatalf("our own comment was not readable: %v", err)
 		}
@@ -257,8 +257,8 @@ func TestNoCommentQueryReadsAnotherTenantsRows(t *testing.T) {
 	})
 
 	t.Run("List", func(t *testing.T) {
-		g := security.SystemGrant(policies.CommentList, ours)
-		found, err := repo.List(ctx, g, data.Query{Limit: 50})
+		g := auth.SystemGrant(policies.CommentList, ours)
+		found, err := repo.List(ctx, g, database.Query{Limit: 50})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -266,8 +266,8 @@ func TestNoCommentQueryReadsAnotherTenantsRows(t *testing.T) {
 	})
 
 	t.Run("List from another tenant's cursor", func(t *testing.T) {
-		g := security.SystemGrant(policies.CommentList, ours)
-		found, err := repo.List(ctx, g, data.Query{Limit: 50, Cursor: theirComment})
+		g := auth.SystemGrant(policies.CommentList, ours)
+		found, err := repo.List(ctx, g, database.Query{Limit: 50, Cursor: theirComment})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -277,7 +277,7 @@ func TestNoCommentQueryReadsAnotherTenantsRows(t *testing.T) {
 	})
 
 	t.Run("ForPost", func(t *testing.T) {
-		g := security.SystemGrant(policies.CommentList, ours)
+		g := auth.SystemGrant(policies.CommentList, ours)
 		found, err := repo.ForPost(ctx, g, theirPost)
 		if err != nil {
 			t.Fatal(err)
@@ -288,7 +288,7 @@ func TestNoCommentQueryReadsAnotherTenantsRows(t *testing.T) {
 	})
 
 	t.Run("PublicForPost", func(t *testing.T) {
-		g := security.SystemGrant(policies.CommentPublicList, ours)
+		g := auth.SystemGrant(policies.CommentPublicList, ours)
 		found, err := repo.PublicForPost(ctx, g, theirPost, "u9")
 		if err != nil {
 			t.Fatal(err)
@@ -316,7 +316,7 @@ func TestNoCommentQueryReadsAnotherTenantsRows(t *testing.T) {
 //
 // So the five predicates are one predicate. The model adds
 // `categories.tenant_id = ?` to every statement it compiles, from
-// data.Tenant(g), and a Grant with no tenant is refused before any SQL is
+// auth.Tenant(g), and a Grant with no tenant is refused before any SQL is
 // built. That is worth saying plainly rather than leaving these cases to look
 // like five independent proofs of five independent filters: they now watch one
 // filter reach five different statements -- a lookup by key, a keyset page, an
@@ -338,7 +338,7 @@ func TestNoCategoryQueryReadsAnotherTenantsRows(t *testing.T) {
 	// The tenant of the Grant comes off the subject, which is what a session
 	// carries. It is the same value SystemGrant was handed before, arriving the
 	// way a request would bring it.
-	actor := security.Subject{ID: "u1", Tenant: ours, Roles: []string{"admin"}}
+	actor := auth.Subject{ID: "u1", Tenant: ours, Roles: []string{"admin"}}
 
 	t.Run("Get", func(t *testing.T) {
 		if _, err := svc.Get(ctx, actor, ourCategory); err != nil {
@@ -350,7 +350,7 @@ func TestNoCategoryQueryReadsAnotherTenantsRows(t *testing.T) {
 	})
 
 	t.Run("List", func(t *testing.T) {
-		found, err := svc.List(ctx, actor, data.Query{Limit: 50})
+		found, err := svc.List(ctx, actor, database.Query{Limit: 50})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -363,7 +363,7 @@ func TestNoCategoryQueryReadsAnotherTenantsRows(t *testing.T) {
 	// it is now a terminal, which cannot run without one. Handed an id from
 	// another tenant it resolves to nothing and the page is empty.
 	t.Run("List from another tenant's cursor", func(t *testing.T) {
-		found, err := svc.List(ctx, actor, data.Query{Limit: 50, Cursor: theirCategory})
+		found, err := svc.List(ctx, actor, database.Query{Limit: 50, Cursor: theirCategory})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -447,7 +447,7 @@ func TestTheSectionRelationHoldsNoArticleOfAnotherTenant(t *testing.T) {
 
 	ours := bootstrap.Tenant()
 	//arandu:system-grant a fixture needs a Grant for a tenant no session in this test carries
-	g := security.SystemGrant(policies.PostList, ours)
+	g := auth.SystemGrant(policies.PostList, ours)
 
 	filed, err := models.PostsIn(ctx, g, db, models.Category{ID: ourCategory, TenantID: ours})
 	if err != nil {
@@ -491,7 +491,7 @@ func TestASectionThatStillHoldsArticlesIsNotDeleted(t *testing.T) {
 
 	svc := services.NewCategoryService(db)
 	ours := bootstrap.Tenant()
-	actor := security.Subject{ID: "u1", Tenant: ours, Roles: []string{"admin"}}
+	actor := auth.Subject{ID: "u1", Tenant: ours, Roles: []string{"admin"}}
 
 	if err := svc.Delete(ctx, actor, ourCategory); !errors.Is(err, models.ErrCategoryNotEmpty) {
 		t.Fatalf("Delete = %v, and our section holds two articles", err)
@@ -526,7 +526,7 @@ func TestTheTenantOnAWriteComesFromTheGrant(t *testing.T) {
 	var postID string
 
 	t.Run("post", func(t *testing.T) {
-		g := security.SystemGrant(policies.PostCreate, ours)
+		g := auth.SystemGrant(policies.PostCreate, ours)
 		created, err := repositories.NewPostRepository(db).Create(ctx, g,
 			models.Post{TenantID: theirTenant, Title: "Ours", Slug: "ours"})
 		if err != nil {
@@ -539,7 +539,7 @@ func TestTheTenantOnAWriteComesFromTheGrant(t *testing.T) {
 	})
 
 	t.Run("comment", func(t *testing.T) {
-		g := security.SystemGrant(policies.CommentCreate, ours)
+		g := auth.SystemGrant(policies.CommentCreate, ours)
 		created, err := repositories.NewCommentRepository(db).Create(ctx, g,
 			models.Comment{TenantID: theirTenant, PostId: postID, Author: "u1", Body: "A remark."})
 		if err != nil {
@@ -552,17 +552,17 @@ func TestTheTenantOnAWriteComesFromTheGrant(t *testing.T) {
 
 	// The section is written through the model, because that is where the
 	// guarantee moved: the repository overwrote the field in Go, and the model
-	// writes data.Tenant(g) into the tenant column of every row it inserts,
+	// writes auth.Tenant(g) into the tenant column of every row it inserts,
 	// over whatever the caller put there. The candidate below carries another
 	// tenant on purpose, and it is the same candidate the repository was handed.
 	t.Run("category", func(t *testing.T) {
-		g := security.SystemGrant(policies.CategoryCreate, ours)
+		g := auth.SystemGrant(policies.CategoryCreate, ours)
 
 		row, err := models.Categories(db).New()
 		if err != nil {
 			t.Fatal(err)
 		}
-		id, err := data.NewID()
+		id, err := database.NewID()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -633,7 +633,7 @@ func TestANestedQueryCarriesATenantOfItsOwn(t *testing.T) {
 	// the subquery most likely to be handed another tenant's value.
 	t.Run("Create against another tenant's post", func(t *testing.T) {
 		//arandu:system-grant a fixture needs a Grant for a tenant no session in this test carries
-		g := security.SystemGrant(policies.CommentCreate, ours)
+		g := auth.SystemGrant(policies.CommentCreate, ours)
 
 		_, err := repo.Create(ctx, g,
 			models.Comment{PostId: theirPost, Author: "u1", Body: "A remark."})
@@ -649,7 +649,7 @@ func TestANestedQueryCarriesATenantOfItsOwn(t *testing.T) {
 	// comment that cannot be created against their article must not be moved
 	// onto it either.
 	t.Run("Update onto another tenant's post", func(t *testing.T) {
-		g := security.SystemGrant(policies.CommentUpdate, ours)
+		g := auth.SystemGrant(policies.CommentUpdate, ours)
 
 		_, err := repo.Update(ctx, g, models.Comment{
 			ID: ourComment, PostId: theirPost, Author: "u1", Body: "Moved.", Approved: true,
@@ -669,7 +669,7 @@ func TestANestedQueryCarriesATenantOfItsOwn(t *testing.T) {
 	// it, conclude that nothing was wrong, and return success on a write that
 	// never happened.
 	t.Run("Update of another tenant's comment", func(t *testing.T) {
-		g := security.SystemGrant(policies.CommentUpdate, ours)
+		g := auth.SystemGrant(policies.CommentUpdate, ours)
 
 		_, err := repo.Update(ctx, g, models.Comment{
 			ID: theirComment, PostId: ourPost, Author: "u1", Body: "Rewritten.", Approved: true,
@@ -704,9 +704,9 @@ func TestAnEagerLoadedThreadHoldsNoRowOfAnotherTenant(t *testing.T) {
 	ours := bootstrap.Tenant()
 
 	//arandu:system-grant a fixture needs a Grant for a tenant no session in this test carries
-	listing := security.SystemGrant(policies.PostPublicList, ours)
-	reading := security.SystemGrant(policies.CommentPublicList, ours)
-	moderating := security.SystemGrant(policies.CommentList, ours)
+	listing := auth.SystemGrant(policies.PostPublicList, ours)
+	reading := auth.SystemGrant(policies.CommentPublicList, ours)
+	moderating := auth.SystemGrant(policies.CommentList, ours)
 
 	parents, err := posts.Published(ctx, listing, 50)
 	if err != nil {
@@ -765,7 +765,7 @@ func TestAnAggregateCountsNoRowOfAnotherTenantUnderOurKey(t *testing.T) {
 
 	repo := repositories.NewPostRepository(db)
 	ours := bootstrap.Tenant()
-	g := security.SystemGrant(policies.PostPublicList, ours)
+	g := auth.SystemGrant(policies.PostPublicList, ours)
 
 	counts, err := repo.CountByCategory(ctx, g)
 	if err != nil {
@@ -838,7 +838,7 @@ func tenantsOfCategories(found []models.Category) []string {
 // viewsOf and titleOf read straight from the table, because the repository
 // cannot be asked about a row it is meant to refuse -- and a row that is meant
 // to be untouched has to be looked at to prove it.
-func viewsOf(t *testing.T, db *data.DB, id string) int {
+func viewsOf(t *testing.T, db *database.DB, id string) int {
 	t.Helper()
 
 	var views int
@@ -857,7 +857,7 @@ func viewsOf(t *testing.T, db *data.DB, id string) int {
 // nothing on their own: the number is only a filter that ran if the row it left
 // out is really there, and a repository cannot be asked about a row it is meant
 // to refuse.
-func commentsOn(t *testing.T, db *data.DB, postID string) int {
+func commentsOn(t *testing.T, db *database.DB, postID string) int {
 	t.Helper()
 
 	var n int
@@ -868,7 +868,7 @@ func commentsOn(t *testing.T, db *data.DB, postID string) int {
 	return n
 }
 
-func postsInCategory(t *testing.T, db *data.DB, categoryID string) int {
+func postsInCategory(t *testing.T, db *database.DB, categoryID string) int {
 	t.Helper()
 
 	var n int
@@ -881,7 +881,7 @@ func postsInCategory(t *testing.T, db *data.DB, categoryID string) int {
 
 // commentRow reads the two columns the nested-query cases assert about: the
 // article a comment hangs off, and what it says.
-func commentRow(t *testing.T, db *data.DB, id string) (postID, body string) {
+func commentRow(t *testing.T, db *database.DB, id string) (postID, body string) {
 	t.Helper()
 
 	if err := db.QueryRowContext(context.Background(),
@@ -896,7 +896,7 @@ func commentRow(t *testing.T, db *data.DB, id string) (postID, body string) {
 // the table straight, because a service cannot be asked about a row it is meant
 // to refuse -- and a row that is meant to be untouched has to be looked at to
 // prove it.
-func categoryName(t *testing.T, db *data.DB, id string) string {
+func categoryName(t *testing.T, db *database.DB, id string) string {
 	t.Helper()
 
 	var name string
@@ -911,7 +911,7 @@ func categoryName(t *testing.T, db *data.DB, id string) string {
 	return name
 }
 
-func categoryTenant(t *testing.T, db *data.DB, id string) string {
+func categoryTenant(t *testing.T, db *database.DB, id string) string {
 	t.Helper()
 
 	var tenant sql.NullString
@@ -924,7 +924,7 @@ func categoryTenant(t *testing.T, db *data.DB, id string) string {
 
 // titleOf answers with the empty string when the row is gone, which is what the
 // deletion case asks about.
-func titleOf(t *testing.T, db *data.DB, id string) string {
+func titleOf(t *testing.T, db *database.DB, id string) string {
 	t.Helper()
 
 	var title string
@@ -943,7 +943,7 @@ func titleOf(t *testing.T, db *data.DB, id string) string {
 // a Grant only ever carries one tenant, so the rows these tests need could not
 // be written through a repository at all.
 
-func seedCategory(t *testing.T, db *data.DB, id, tenant, name, slug string) {
+func seedCategory(t *testing.T, db *database.DB, id, tenant, name, slug string) {
 	t.Helper()
 
 	_, err := db.ExecContext(context.Background(),
@@ -955,7 +955,7 @@ func seedCategory(t *testing.T, db *data.DB, id, tenant, name, slug string) {
 	}
 }
 
-func seedPostInCategory(t *testing.T, db *data.DB, id, tenant, category, title, slug string) {
+func seedPostInCategory(t *testing.T, db *database.DB, id, tenant, category, title, slug string) {
 	t.Helper()
 	seedPostInCategoryAt(t, db, id, tenant, category, title, slug, time.Now().Add(-time.Hour))
 }
@@ -963,7 +963,7 @@ func seedPostInCategory(t *testing.T, db *data.DB, id, tenant, category, title, 
 // seedPostInCategoryAt is the same, with the publication moment named. The zero
 // time is a draft: published_at is a timestamp rather than a nullable column, so
 // "not published" is the zero value and not NULL.
-func seedPostInCategoryAt(t *testing.T, db *data.DB, id, tenant, category, title, slug string, published time.Time) {
+func seedPostInCategoryAt(t *testing.T, db *database.DB, id, tenant, category, title, slug string, published time.Time) {
 	t.Helper()
 
 	_, err := db.ExecContext(context.Background(),
@@ -975,7 +975,7 @@ func seedPostInCategoryAt(t *testing.T, db *data.DB, id, tenant, category, title
 	}
 }
 
-func seedComment(t *testing.T, db *data.DB, id, tenant, post, author string, approved bool) {
+func seedComment(t *testing.T, db *database.DB, id, tenant, post, author string, approved bool) {
 	t.Helper()
 
 	_, err := db.ExecContext(context.Background(),

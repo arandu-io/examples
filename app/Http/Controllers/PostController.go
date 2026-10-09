@@ -7,11 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arandu-io/framework/data"
 	fhttp "github.com/arandu-io/framework/http"
-	"github.com/arandu-io/framework/observability"
 	"github.com/arandu-io/framework/security"
-	"github.com/arandu-io/framework/validation"
+	"github.com/arandu-io/hesape/auth"
+	"github.com/arandu-io/hesape/database"
+	hhttp "github.com/arandu-io/hesape/http"
+	"github.com/arandu-io/hesape/log"
+	"github.com/arandu-io/hesape/validation"
 	"github.com/arandu-io/hesape/view"
 
 	requests "github.com/arandu-io/examples/app/Http/Requests"
@@ -23,7 +25,7 @@ import (
 // PostController answers the seven routes of the posts resource.
 //
 // It is thin on purpose: read the request, call the service, render. There is no
-// repository here and there cannot be one -- fhttp.Context carries no database
+// repository here and there cannot be one -- hhttp.Context carries no database
 // handle, so a controller that reached the data layer would be a controller that
 // skipped the service, and therefore skipped the policy.
 type PostController struct {
@@ -91,7 +93,7 @@ var (
 const postPerPage = 25
 
 // Index renders the listing.
-func (c *PostController) Index(ctx *fhttp.Context) error {
+func (c *PostController) Index(ctx *hhttp.Context) error {
 	// A reader with no session sees the published listing; somebody signed in
 	// sees everything, drafts included. Two queries, because they are two
 	// questions -- and the guest one cannot reach a draft at all rather than
@@ -109,7 +111,7 @@ func (c *PostController) Index(ctx *fhttp.Context) error {
 	var found []models.Post
 	var err error
 	if signedIn {
-		found, err = c.svc.List(ctx.Ctx(), actor, data.Query{
+		found, err = c.svc.List(ctx.Ctx(), actor, database.Query{
 			Limit:  limit,
 			Cursor: ctx.Query("cursor"),
 			Sort:   ctx.Query("sort"),
@@ -162,7 +164,7 @@ func (c *PostController) Index(ctx *fhttp.Context) error {
 // It reuses posts.index rather than having a view of its own. The two pages
 // differ by a heading and a filter, and a second template would be a second
 // place to fix the card the next time a card changes.
-func (c *PostController) Section(ctx *fhttp.Context) error {
+func (c *PostController) Section(ctx *hhttp.Context) error {
 	actor, signedIn := c.nav.reader(ctx, c.sessions)
 
 	category, err := c.categories.BySlug(ctx.Ctx(), actor, ctx.Param("slug"))
@@ -209,16 +211,16 @@ func (c *PostController) Section(ctx *fhttp.Context) error {
 // A failure is not fatal and does not propagate: the section bar is navigation,
 // and a page that refuses to render because the navigation could not be built is
 // a page that disappears over a nicety. It is logged, and the article is served.
-func (c *PostController) sections(ctx *fhttp.Context, actor security.Subject, current string) ([]views.SectionLink, map[string]models.Category) {
+func (c *PostController) sections(ctx *hhttp.Context, actor auth.Subject, current string) ([]views.SectionLink, map[string]models.Category) {
 	all, err := c.categories.All(ctx.Ctx(), actor)
 	if err != nil {
-		observability.Log(ctx.Ctx()).Warn("the section bar could not be built", "error", err)
+		log.For(ctx.Ctx()).Warn("the section bar could not be built", "error", err)
 		return nil, nil
 	}
 
 	counts, err := c.svc.CountByCategory(ctx.Ctx(), actor)
 	if err != nil {
-		observability.Log(ctx.Ctx()).Warn("the section counts could not be read", "error", err)
+		log.For(ctx.Ctx()).Warn("the section counts could not be read", "error", err)
 	}
 
 	byID := make(map[string]models.Category, len(all))
@@ -242,7 +244,7 @@ func (c *PostController) sections(ctx *fhttp.Context, actor security.Subject, cu
 }
 
 // Show renders one record.
-func (c *PostController) Show(ctx *fhttp.Context) error {
+func (c *PostController) Show(ctx *hhttp.Context) error {
 	// A reader with no session is a guest rather than a redirect. Whether they
 	// may read this post is PostPolicy's answer, not this handler's -- the
 	// article is public when it is published and refused when it is a draft,
@@ -296,7 +298,7 @@ func (c *PostController) Show(ctx *fhttp.Context) error {
 }
 
 // Create renders the empty form.
-func (c *PostController) Create(ctx *fhttp.Context) error {
+func (c *PostController) Create(ctx *hhttp.Context) error {
 	// The subject, not just the fact that there is one. The header greets by
 	// name and decides whether to offer the moderation queue, and both were
 	// drawn from an empty id here -- so the author writing a post got the header
@@ -314,7 +316,7 @@ func (c *PostController) Create(ctx *fhttp.Context) error {
 }
 
 // Store takes the submitted form.
-func (c *PostController) Store(ctx *fhttp.Context) error {
+func (c *PostController) Store(ctx *hhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -340,7 +342,7 @@ func (c *PostController) Store(ctx *fhttp.Context) error {
 }
 
 // Edit renders the form filled in.
-func (c *PostController) Edit(ctx *fhttp.Context) error {
+func (c *PostController) Edit(ctx *hhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -360,7 +362,7 @@ func (c *PostController) Edit(ctx *fhttp.Context) error {
 }
 
 // Update writes the submitted form onto the stored record.
-func (c *PostController) Update(ctx *fhttp.Context) error {
+func (c *PostController) Update(ctx *hhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -393,7 +395,7 @@ func (c *PostController) Update(ctx *fhttp.Context) error {
 }
 
 // Destroy removes the record.
-func (c *PostController) Destroy(ctx *fhttp.Context) error {
+func (c *PostController) Destroy(ctx *hhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
 		return c.signIn(ctx)
@@ -405,14 +407,14 @@ func (c *PostController) Destroy(ctx *fhttp.Context) error {
 }
 
 // actor is who is acting, from the session and never from the request body.
-func (c *PostController) actor(ctx *fhttp.Context) (security.Subject, error) {
+func (c *PostController) actor(ctx *hhttp.Context) (auth.Subject, error) {
 	return c.sessions.Load(ctx.Ctx(), ctx.Request)
 }
 
 // signIn sends an unauthenticated visitor to the sign-in screen. Under HTMX the
 // redirect becomes HX-Redirect, so the browser navigates instead of nesting the
 // whole page inside a fragment.
-func (c *PostController) signIn(ctx *fhttp.Context) error {
+func (c *PostController) signIn(ctx *hhttp.Context) error {
 	return ctx.Redirect("/auth/login")
 }
 
@@ -421,7 +423,7 @@ func (c *PostController) signIn(ctx *fhttp.Context) error {
 // Formatting happens here rather than in the view: a view that formats a
 // time.Time would need the time package, and what a date looks like on screen is
 // a decision about presentation, which is this side of the line.
-func (c *PostController) row(ctx *fhttp.Context, p models.Post, comments int, sections map[string]models.Category) views.PostRow {
+func (c *PostController) row(ctx *hhttp.Context, p models.Post, comments int, sections map[string]models.Category) views.PostRow {
 	// A draft has no publication date, and formatting the zero value prints
 	// 0001-01-01 -- a date that looks like data and is the absence of it. The
 	// view reads the empty string as "not published", which is what the badge
@@ -474,7 +476,7 @@ func (c *PostController) row(ctx *fhttp.Context, p models.Post, comments int, se
 // canonical is absolute, because a relative one is ignored by every crawler that
 // reads it -- which is the failure mode where the tag is present and does
 // nothing.
-func (c *PostController) article(ctx *fhttp.Context, actor security.Subject, signedIn bool, token string, p models.Post) view.Page {
+func (c *PostController) article(ctx *hhttp.Context, actor auth.Subject, signedIn bool, token string, p models.Post) view.Page {
 	page := c.nav.page(ctx, actor, signedIn, token, p.Title)
 	page.Description = excerpt(p.Body)
 	page.Canonical = c.base + ctx.URL("posts.show", p.ID)
@@ -482,7 +484,7 @@ func (c *PostController) article(ctx *fhttp.Context, actor security.Subject, sig
 }
 
 // thread turns the stored comments into rows the markup draws.
-func (c *PostController) thread(ctx *fhttp.Context, reader security.Subject, found []models.Comment) []views.CommentRow {
+func (c *PostController) thread(ctx *hhttp.Context, reader auth.Subject, found []models.Comment) []views.CommentRow {
 	// The author column holds a subject id, and a thread signed with UUIDs is a
 	// thread that looks broken. The names are resolved in ONE query for the
 	// whole page -- twenty comments would otherwise be twenty lookups, on the
@@ -498,7 +500,7 @@ func (c *PostController) thread(ctx *fhttp.Context, reader security.Subject, fou
 	if err != nil {
 		// Not fatal. An article is worth rendering with a thread that names
 		// people badly; it is not worth failing over one.
-		observability.Log(ctx.Ctx()).Warn("the comment authors could not be named", "error", err)
+		log.For(ctx.Ctx()).Warn("the comment authors could not be named", "error", err)
 	}
 
 	rows := make([]views.CommentRow, 0, len(found))
@@ -561,7 +563,7 @@ func (c *PostController) form(p models.Post) views.PostForm {
 // date that is not a date is rejected here, naming the field, rather than
 // reaching the service as a silent zero. The box is drawn empty then: what was
 // typed in it converted into nothing there is to draw.
-func (c *PostController) input(ctx *fhttp.Context) (requests.StorePost, views.PostForm, validation.Errors, error) {
+func (c *PostController) input(ctx *hhttp.Context) (requests.StorePost, views.PostForm, validation.Errors, error) {
 	var in requests.StorePost
 	errs := validation.Errors{}
 	if err := ctx.Bind(&in); err != nil && !errors.As(err, &errs) {
@@ -585,7 +587,7 @@ func (c *PostController) input(ctx *fhttp.Context) (requests.StorePost, views.Po
 
 // rejectedCreate re-renders the creation form with its errors, as the 422
 // fragment HTMX swaps back in.
-func (c *PostController) rejectedCreate(ctx *fhttp.Context, actor security.Subject, form views.PostForm, errs validation.Errors) error {
+func (c *PostController) rejectedCreate(ctx *hhttp.Context, actor auth.Subject, form views.PostForm, errs validation.Errors) error {
 	token := csrfToken(ctx)
 	return c.Invalid(ctx, "posts.create", views.PostsCreateData{
 		Page:   c.nav.page(ctx, actor, true, token, "New post"),
@@ -595,7 +597,7 @@ func (c *PostController) rejectedCreate(ctx *fhttp.Context, actor security.Subje
 }
 
 // rejectedEdit re-renders the edit form with its errors.
-func (c *PostController) rejectedEdit(ctx *fhttp.Context, actor security.Subject, form views.PostForm, errs validation.Errors) error {
+func (c *PostController) rejectedEdit(ctx *hhttp.Context, actor auth.Subject, form views.PostForm, errs validation.Errors) error {
 	token := csrfToken(ctx)
 	return c.Invalid(ctx, "posts.edit", views.PostsEditData{
 		Page:   c.nav.page(ctx, actor, true, token, "Edit post"),
@@ -610,10 +612,10 @@ func (c *PostController) rejectedEdit(ctx *fhttp.Context, actor security.Subject
 // response. Why a policy said no is information about the system, and it belongs
 // in the log. Anything unrecognized is returned, and the router turns it into
 // the error page in development and a 500 in production.
-func (c *PostController) fail(ctx *fhttp.Context, err error) error {
+func (c *PostController) fail(ctx *hhttp.Context, err error) error {
 	switch {
-	case errors.Is(err, security.ErrForbidden):
-		observability.Log(ctx.Ctx()).Warn("authorization denied", "error", err)
+	case errors.Is(err, auth.ErrForbidden):
+		log.For(ctx.Ctx()).Warn("authorization denied", "error", err)
 		return ctx.Status(http.StatusForbidden)
 	case errors.Is(err, models.ErrPostNotFound):
 		return ctx.Status(http.StatusNotFound)
