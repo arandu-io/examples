@@ -7,8 +7,8 @@ license: MIT
 # Running it
 
 Five steps, and the order is not negotiable — the views are compiled before
-anything Go-shaped will build. `aru` here is v0.67.0, the version this tree was
-last measured with; `go run github.com/arandu-io/aru@v0.67.0 <command>` runs it
+anything Go-shaped will build. `aru` here is v0.69.1, the version this tree was
+last measured with; `go run github.com/arandu-io/aru@v0.69.1 <command>` runs it
 without installing anything.
 
 ```sh
@@ -109,7 +109,7 @@ question, which is correct and is not what the guard is for.
 
 **2. `aru view:build` fails with `does not parse -- this is a bug in the
 generator`.** Your `aru` is older than this tree. Run the version it was
-measured with, `go run github.com/arandu-io/aru@v0.67.0 view:build`, rather
+measured with, `go run github.com/arandu-io/aru@v0.69.1 view:build`, rather
 than working around the message — it is telling the truth about the generator
 it has. A binary built by `go install` or `go run` reports its version as
 `dev`, so name the version rather than asking `aru --version`.

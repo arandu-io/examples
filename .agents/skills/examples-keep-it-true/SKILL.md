@@ -35,8 +35,8 @@ aru doctor && bash tests/test-layout-guard.sh
 
 **3. Move `aru` with it, and say which one.** The generator, the view compiler
 and the doctor move with the framework, and a stale binary fails in a way that
-reads like a bug in this tree. This tree was last measured with `aru` v0.67.0,
-and `go run github.com/arandu-io/aru@v0.67.0 doctor` runs that version without
+reads like a bug in this tree. This tree was last measured with `aru` v0.69.1,
+and `go run github.com/arandu-io/aru@v0.69.1 doctor` runs that version without
 touching the one installed. A build by `go install` or `go run` reports its
 version as `dev`, so the version is the one you named, not what `aru --version`
 prints. Three files name it and move together: `.github/workflows/ci.yml`,
@@ -91,7 +91,7 @@ code, 10,195 of test, 52 test files and eight policies in seven files.
 
 Found by measurement, not by reading, and fixed where it was found: each entry
 was a place the repository said something it could no longer show. The list is
-empty as of the measurement with `aru` v0.67.0; what goes here next is the
+empty as of the measurement with `aru` v0.69.1; what goes here next is the
 next thing a measurement contradicts.
 
 `aru doctor` reports nothing. The eleven warnings `ui auth` v0.20.0 left in
