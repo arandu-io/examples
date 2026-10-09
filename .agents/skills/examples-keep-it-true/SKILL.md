@@ -110,12 +110,14 @@ a place the repository says something it can no longer show.
   `-not -path '*/testdata/*'`. CI gives it with. It happens to pass either way
   today, which is why it has survived.
 
-One thing looks stale and is not:
+One thing was generated and then cut back on purpose:
 
-- **`CommentController`'s other six actions and the four `comments/` views.**
-  `aru make:module` generated them and they compile, but `routes/web.go`
-  registers only `Store`, under `posts.comments`, and says why: the thread hangs
-  off the post, and a top-level `/comments` would be a second address for it.
+- **`CommentController` has one action, `Store`.** `aru make:module` generated
+  seven and four `comments/` views; no route ever reached the other six, and
+  `routes/web.go` says why: the thread hangs off the post, and a top-level
+  `/comments` would be a second address for it. They were removed rather than
+  routed. Reading is `PostController.Show`, moderating is `AdminController`,
+  and the generated edit form bound the post and the author from the body.
 
 ## Adding to the application
 

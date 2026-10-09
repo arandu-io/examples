@@ -76,7 +76,6 @@ import (
 	_ "github.com/arandu-io/examples/storage/framework/views/auth"
 	_ "github.com/arandu-io/examples/storage/framework/views/auth/passwords"
 	_ "github.com/arandu-io/examples/storage/framework/views/auth/two-factor"
-	_ "github.com/arandu-io/examples/storage/framework/views/comments"
 	_ "github.com/arandu-io/examples/storage/framework/views/layouts"
 	_ "github.com/arandu-io/examples/storage/framework/views/mail"
 	_ "github.com/arandu-io/examples/storage/framework/views/posts"
@@ -277,7 +276,7 @@ func Build(cfg appconfig.Config, db *database.DB) (App, error) {
 	deps := routes.Deps{
 		Home:     controllers.NewHomeController(cfg.App.Name, userService, cfg.Auth.Tenant),
 		Post:     controllers.NewPostController(postService, commentService, categoryService, userService, sessions, cfg.App.Name, cfg.App.URL, cfg.Auth.Tenant),
-		Comment:  controllers.NewCommentController(commentService, sessions, cfg.App.Name, userService, cfg.Auth.Tenant),
+		Comment:  controllers.NewCommentController(commentService, sessions),
 		Category: controllers.NewCategoryController(categoryService, sessions, cfg.App.Name, userService, cfg.Auth.Tenant),
 		Admin:    controllers.NewAdminController(postService, commentService, sessions),
 		// The operator's screen, and the socket server it reads. The screen is

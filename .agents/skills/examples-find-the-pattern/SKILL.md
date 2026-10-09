@@ -158,7 +158,8 @@ instance and wrong for two, and the file names the line to swap in each case.
 **4. Generate rather than transcribe.** The posts, comments and categories here
 were written by `aru make:module`, by an older generator than today's: the
 controllers have since lost the hand-written rejection helpers the generator
-used to emit, and the imports were moved to their canonical paths. Copying the
+used to emit, the imports were moved to their canonical paths, and the comment
+controller was cut to the one action a route reaches. Copying the
 generated output by hand into another project gets you the shape of an older
 generator; running the generator gets you the current one.
 

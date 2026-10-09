@@ -3,35 +3,35 @@ package controllers
 import (
 	"errors"
 	"net/http"
-	"strconv"
 
-	fhttp "github.com/arandu-io/framework/http"
 	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/hesape/auth"
-	"github.com/arandu-io/hesape/database"
 	hhttp "github.com/arandu-io/hesape/http"
 	"github.com/arandu-io/hesape/log"
 
 	requests "github.com/arandu-io/examples/app/Http/Requests"
 	models "github.com/arandu-io/examples/app/Models"
 	services "github.com/arandu-io/examples/app/Services"
-	views "github.com/arandu-io/examples/storage/framework/views/comments"
 )
 
-// CommentController answers the seven routes of the comments resource.
+// CommentController answers the comment box under an article, and nothing else.
 //
-// It is thin on purpose: read the request, call the service, render. There is no
-// repository here and there cannot be one -- hhttp.Context carries no database
-// handle, so a controller that reached the data layer would be a controller that
-// skipped the service, and therefore skipped the policy.
+// It is thin on purpose: read the request, call the service, redirect. There is
+// no repository here and there cannot be one -- hhttp.Context carries no
+// database handle, so a controller that reached the data layer would be a
+// controller that skipped the service, and therefore skipped the policy.
+//
+// It has one action and not the seven of a resource. A comment is read in the
+// thread of the post it answers, which PostController.Show draws, and it is
+// moderated in the area AdminController answers. A listing, a page and an edit
+// form of their own at /comments would be a second address for the same
+// conversation, reachable without the article around it -- and an edit form
+// over a comment carries its post and its author as fields somebody can change.
 type CommentController struct {
 	Controller
 
 	svc      *services.CommentService
 	sessions *security.SessionStore
-
-	// nav draws the header, the same way on every screen. See chrome.go.
-	nav navigation
 }
 
 // NewCommentController returns the controller. bootstrap builds it and hands it to
@@ -39,118 +39,12 @@ type CommentController struct {
 //
 // The session store arrives through the constructor rather than through the
 // service: a screen is allowed to know about a cookie, and a service is not
-// allowed to expose its own dependencies. The CSRF token is not issued here --
-// csrfToken reads the one CSRFProtect put on the request.
-func NewCommentController(svc *services.CommentService, sessions *security.SessionStore, appName string, people UserNames, tenant string) *CommentController {
-	return &CommentController{svc: svc, sessions: sessions,
-		nav: navigation{appName: appName, people: people, tenant: tenant}}
+// allowed to expose its own dependencies.
+func NewCommentController(svc *services.CommentService, sessions *security.SessionStore) *CommentController {
+	return &CommentController{svc: svc, sessions: sessions}
 }
 
-// Compile-time proof of the seven actions fhttp.Router.Resource looks for. It
-// registers the ones the controller implements and nothing else, so a route that
-// exists is a route that answers -- and a renamed method fails the build here
-// rather than answering 404 in production.
-var (
-	_ fhttp.Indexer   = (*CommentController)(nil)
-	_ fhttp.Creator   = (*CommentController)(nil)
-	_ fhttp.Storer    = (*CommentController)(nil)
-	_ fhttp.Shower    = (*CommentController)(nil)
-	_ fhttp.Editor    = (*CommentController)(nil)
-	_ fhttp.Updater   = (*CommentController)(nil)
-	_ fhttp.Destroyer = (*CommentController)(nil)
-)
-
-// commentPerPage is how many records the listing asks for when the request
-// does not say. The repository has a bound of its own: this one is about the
-// screen, that one is about the database.
-const commentPerPage = 25
-
-// Index renders the listing.
-func (c *CommentController) Index(ctx *hhttp.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
-
-	// The page size is decided here rather than passed through blindly: asking
-	// for a known number is what lets the next cursor be offered only when a
-	// full page came back.
-	limit := commentPerPage
-	if n, err := strconv.Atoi(ctx.Query("limit")); err == nil && n > 0 {
-		limit = n
-	}
-
-	found, err := c.svc.List(ctx.Ctx(), actor, database.Query{
-		Limit:  limit,
-		Cursor: ctx.Query("cursor"),
-		Sort:   ctx.Query("sort"),
-	})
-	if err != nil {
-		return c.fail(ctx, err)
-	}
-
-	rows := make([]views.CommentRow, 0, len(found))
-	for _, co := range found {
-		rows = append(rows, c.row(co))
-	}
-
-	// The listing writes nothing, but the layout around it does: the sign-out
-	// form and every hx- request read the token off the page data. A listing
-	// rendered without one answers 200 and then refuses the next write with
-	// 419, which reads like a broken session.
-	token := csrfToken(ctx)
-
-	// Keyset pagination picks up after the last id of the page. A partial page
-	// is the last page, and offering a cursor there would be a link to nothing.
-	next := ""
-	if len(rows) == limit {
-		next = rows[len(rows)-1].ID
-	}
-
-	return ctx.View("comments.index", views.CommentsIndexData{
-		Page:       c.nav.page(ctx, actor, true, token, "Comments"),
-		Comments:   rows,
-		NextCursor: next,
-	})
-}
-
-// Show renders one record.
-func (c *CommentController) Show(ctx *hhttp.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
-
-	found, err := c.svc.Get(ctx.Ctx(), actor, ctx.Param("id"))
-	if err != nil {
-		return c.fail(ctx, err)
-	}
-
-	// The token is for the delete button, which sends it as a header: an
-	// hx-delete carries no form body, so the hidden field a form uses would
-	// never arrive and the request would be refused with 419.
-	token := csrfToken(ctx)
-
-	return ctx.View("comments.show", views.CommentsShowData{
-		Page:    c.nav.page(ctx, actor, true, token, "Comment"),
-		Comment: c.row(found),
-	})
-}
-
-// Create renders the empty form.
-func (c *CommentController) Create(ctx *hhttp.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
-	token := csrfToken(ctx)
-
-	return ctx.View("comments.create", views.CommentsCreateData{
-		Page: c.nav.page(ctx, actor, true, token, "New comment"),
-	})
-}
-
-// Store takes the submitted form.
+// Store takes the comment box under an article.
 func (c *CommentController) Store(ctx *hhttp.Context) error {
 	actor, err := c.actor(ctx)
 	if err != nil {
@@ -185,64 +79,6 @@ func (c *CommentController) Store(ctx *hhttp.Context) error {
 	return ctx.Redirect(ctx.URL("posts.show", in.PostId) + "?said=1")
 }
 
-// Edit renders the form filled in.
-func (c *CommentController) Edit(ctx *hhttp.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
-
-	found, err := c.svc.Get(ctx.Ctx(), actor, ctx.Param("id"))
-	if err != nil {
-		return c.fail(ctx, err)
-	}
-	token := csrfToken(ctx)
-
-	return ctx.View("comments.edit", views.CommentsEditData{
-		Page: c.nav.page(ctx, actor, true, token, "Edit comment"),
-		Form: c.form(found),
-	})
-}
-
-// Update writes the submitted form onto the stored record.
-func (c *CommentController) Update(ctx *hhttp.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
-
-	// The approved box is a checkbox: absent when it is not ticked, which Bind
-	// reads as false, and "1" when it is.
-	var in requests.StoreComment
-	if err := ctx.Bind(&in); err != nil {
-		return err
-	}
-
-	updated, err := c.svc.Update(ctx.Ctx(), actor, requests.UpdateComment{
-		ID:       ctx.Param("id"),
-		PostId:   in.PostId,
-		Author:   in.Author,
-		Body:     in.Body,
-		Approved: in.Approved,
-	})
-	if err != nil {
-		return c.fail(ctx, err)
-	}
-	return ctx.Redirect("/comments/" + updated.ID)
-}
-
-// Destroy removes the record.
-func (c *CommentController) Destroy(ctx *hhttp.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
-	if err := c.svc.Delete(ctx.Ctx(), actor, ctx.Param("id")); err != nil {
-		return c.fail(ctx, err)
-	}
-	return ctx.Redirect("/comments")
-}
-
 // actor is who is acting, from the session and never from the request body.
 func (c *CommentController) actor(ctx *hhttp.Context) (auth.Subject, error) {
 	return c.sessions.Load(ctx.Ctx(), ctx.Request)
@@ -253,33 +89,6 @@ func (c *CommentController) actor(ctx *hhttp.Context) (auth.Subject, error) {
 // whole page inside a fragment.
 func (c *CommentController) signIn(ctx *hhttp.Context) error {
 	return ctx.Redirect("/auth/login")
-}
-
-// row turns the entity into what the markup renders.
-//
-// Formatting happens here rather than in the view: a view that formats a
-// time.Time would need the time package, and what a date looks like on screen is
-// a decision about presentation, which is this side of the line.
-func (c *CommentController) row(co models.Comment) views.CommentRow {
-	return views.CommentRow{
-		ID:       co.ID,
-		PostId:   co.PostId,
-		Author:   co.Author,
-		Body:     co.Body,
-		Approved: co.Approved,
-		Created:  co.CreatedAt.Format("2006-01-02 15:04"),
-	}
-}
-
-// form fills the edit form from the stored record.
-func (c *CommentController) form(co models.Comment) views.CommentForm {
-	return views.CommentForm{
-		ID:       co.ID,
-		PostId:   co.PostId,
-		Author:   co.Author,
-		Body:     co.Body,
-		Approved: co.Approved,
-	}
 }
 
 // fail turns a domain error into a status, in one place.
@@ -299,14 +108,12 @@ func (c *CommentController) fail(ctx *hhttp.Context, err error) error {
 		return ctx.Status(http.StatusNotFound)
 	case errors.Is(err, models.ErrCommentConflict):
 		return ctx.Status(http.StatusConflict)
-	case errors.Is(err, models.ErrCommentSort):
-		return ctx.Status(http.StatusBadRequest)
 	default:
 		return err
 	}
 }
 
 // arandu:begin custom
-// Actions beyond the seven go here, and survive regeneration. Register them in
+// Actions beyond the one go here, and survive regeneration. Register them in
 // the custom block of routes/web.go.
 // arandu:end custom
