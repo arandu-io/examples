@@ -35,7 +35,8 @@ tasks:
     cmds:
       # gofmt is the only Go tool that ignores build constraints, so it has to
       # be told to skip the .kyse.go sources -- they are markup, not Go, and the
-      # compiler already excludes them by the `kyse` build tag.
-      - gofmt -l $(find . -name '*.go' -not -name '*.kyse.go')
+      # compiler already excludes them by the `kyse` build tag. testdata/ holds
+      # fixtures, which may be invalid Go on purpose.
+      - gofmt -l $(find . -name '*.go' -not -path '*/testdata/*' -not -name '*.kyse.go')
       - go vet ./...
       - go test -race ./...

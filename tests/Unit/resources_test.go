@@ -157,3 +157,28 @@ func TestBuildEntrypointsUseTheReleasedCLI(t *testing.T) {
 		}
 	}
 }
+
+// filteredGofmt is the formatting check, with both of its filters: .kyse.go
+// sources are markup that only the build tag keeps from the compiler, and
+// testdata/ holds fixtures that may be invalid Go on purpose.
+const filteredGofmt = `gofmt -l $(find . -name '*.go' -not -path '*/testdata/*' -not -name '*.kyse.go')`
+
+// TestEveryPlaceThatStatesTheGofmtCheckStatesTheFilteredOne: the command is
+// written out in three files a contributor copies from, and one without the
+// testdata/ filter passes today only because no fixture here is unformatted.
+// The day one is, the copy without the filter fails on a test that is right.
+func TestEveryPlaceThatStatesTheGofmtCheckStatesTheFilteredOne(t *testing.T) {
+	stated := regexp.MustCompile(`gofmt -l \$\(find [^)]*\)`)
+	for _, path := range []string{"AGENTS.md", "CONTRIBUTING.md", "Taskfile.yml"} {
+		body := tests.File(t, path)
+		found := stated.FindAllString(body, -1)
+		if len(found) == 0 {
+			t.Errorf("%s does not state the gofmt check", path)
+		}
+		for _, command := range found {
+			if command != filteredGofmt {
+				t.Errorf("%s states %q, want %q", path, command, filteredGofmt)
+			}
+		}
+	}
+}

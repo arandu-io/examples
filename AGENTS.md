@@ -47,8 +47,11 @@ above every other step.
 Both filters on `gofmt` are load-bearing and are the project's rather than this
 repository's: `gofmt` is the only tool in the chain that ignores build tags, so
 without `-not -name '*.kyse.go'` it reports a syntax error on every view.
-`CONTRIBUTING.md` and `Taskfile.yml` state the command without the `testdata/`
-filter; `.github/workflows/ci.yml` states it with. Copy the one above.
+`testdata/` holds fixtures that may be invalid Go on purpose. `CONTRIBUTING.md`
+and `Taskfile.yml` state the same command, and
+`TestEveryPlaceThatStatesTheGofmtCheckStatesTheFilteredOne` keeps the three
+alike; `.github/workflows/ci.yml` runs the same two filters through
+`find -exec`.
 
 `aru doctor` reports no findings here, and any finding is a regression,
 `import-not-canonical` included: a symbol the framework only re-exports is

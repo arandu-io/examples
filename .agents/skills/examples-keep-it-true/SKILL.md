@@ -89,12 +89,10 @@ code, 9,784 of test, 50 test files and eight policies in seven files.
 
 ## What is currently stale
 
-Found by measurement, not by reading. Fix them where you touch them; each one is
-a place the repository says something it can no longer show.
-
-- **`CONTRIBUTING.md` and `Taskfile.yml`** give the gofmt command without
-  `-not -path '*/testdata/*'`. CI gives it with. It happens to pass either way
-  today, which is why it has survived.
+Found by measurement, not by reading, and fixed where it was found: each entry
+was a place the repository said something it could no longer show. The list is
+empty as of the measurement with `aru` v0.67.0; what goes here next is the
+next thing a measurement contradicts.
 
 `aru doctor` reports nothing. The eleven warnings `ui auth` v0.20.0 left in
 `app/Http/Controllers/Auth` went with v0.22.0, whose handlers bind the form

@@ -20,7 +20,7 @@ before their first patch.
 ## Before you open a pull request
 
 ```
-gofmt -l $(find . -name '*.go' -not -name '*.kyse.go')
+gofmt -l $(find . -name '*.go' -not -path '*/testdata/*' -not -name '*.kyse.go')
 go vet ./...
 go test -race ./...
 ```
