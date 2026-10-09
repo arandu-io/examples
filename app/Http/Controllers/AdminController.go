@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/hesape/auth"
 	"github.com/arandu-io/hesape/database"
 	hhttp "github.com/arandu-io/hesape/http"
@@ -32,22 +31,15 @@ type AdminController struct {
 
 	posts    *services.PostService
 	comments *services.CommentService
-	sessions *security.SessionStore
 }
 
 // NewAdminController returns the controller. bootstrap builds it.
-func NewAdminController(posts *services.PostService, comments *services.CommentService, sessions *security.SessionStore) *AdminController {
-	return &AdminController{posts: posts, comments: comments, sessions: sessions}
-}
-
-// actor is who is asking, from the session cookie and never from the request.
-func (c *AdminController) actor(ctx *hhttp.Context) (auth.Subject, error) {
-	return c.sessions.Load(ctx.Ctx(), ctx.Request)
-}
-
-// signIn sends an unauthenticated visitor to the sign-in screen.
-func (c *AdminController) signIn(ctx *hhttp.Context) error {
-	return ctx.Redirect("/auth/login")
+//
+// It takes no session store: every route in the area is behind RequireRole in
+// routes/admin.go, which puts who is asking on the request, and guarded reads
+// it there.
+func NewAdminController(posts *services.PostService, comments *services.CommentService) *AdminController {
+	return &AdminController{posts: posts, comments: comments}
 }
 
 // fail turns a service error into a status.
@@ -68,10 +60,7 @@ func (c *AdminController) fail(ctx *hhttp.Context, err error) error {
 
 // Index is the dashboard: what is waiting, and what there is.
 func (c *AdminController) Index(ctx *hhttp.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
+	actor := guarded(ctx)
 	token := csrfToken(ctx)
 
 	posts, err := c.posts.List(ctx.Ctx(), actor, database.Query{Limit: 200})
@@ -110,10 +99,7 @@ func (c *AdminController) Index(ctx *hhttp.Context) error {
 
 // Comments is the moderation queue.
 func (c *AdminController) Comments(ctx *hhttp.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
+	actor := guarded(ctx)
 	token := csrfToken(ctx)
 
 	found, err := c.comments.List(ctx.Ctx(), actor, database.Query{Limit: 200})
@@ -142,10 +128,7 @@ func (c *AdminController) Comments(ctx *hhttp.Context) error {
 
 // Approve publishes one comment and returns to the queue.
 func (c *AdminController) Approve(ctx *hhttp.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
+	actor := guarded(ctx)
 	if _, err := c.comments.Approve(ctx.Ctx(), actor, ctx.Param("id")); err != nil {
 		return c.fail(ctx, err)
 	}
@@ -154,10 +137,7 @@ func (c *AdminController) Approve(ctx *hhttp.Context) error {
 
 // Destroy removes one comment and returns to the queue.
 func (c *AdminController) Destroy(ctx *hhttp.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
+	actor := guarded(ctx)
 	if err := c.comments.Delete(ctx.Ctx(), actor, ctx.Param("id")); err != nil {
 		return c.fail(ctx, err)
 	}

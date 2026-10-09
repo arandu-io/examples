@@ -173,3 +173,47 @@ func seedPostForTenant(t *testing.T, db *database.DB, id, tenant, title, slug st
 	}
 	return id
 }
+
+// TestEveryScreenThatNeedsAnAccountSendsAGuestToSignIn: the guard is on the
+// route, so the table in routes/web.go is where an address is opened or closed,
+// and a guest asking for one that needs an account is sent to sign in rather
+// than shown a form that cannot be submitted.
+//
+// The controllers behind these load no session. A route that lost its guard
+// would reach them with nobody on the request and be refused by the policy --
+// a 403 rather than a way in -- and this test is what says the guard is there.
+func TestEveryScreenThatNeedsAnAccountSendsAGuestToSignIn(t *testing.T) {
+	booted := tests.Boot(t)
+	guest := booted.Client
+	post := seedJourneyPost(t, booted.DB)
+
+	for _, path := range []string{
+		"/posts/create",
+		"/posts/" + post + "/edit",
+		"/categories",
+		"/categories/create",
+		"/dashboard",
+		"/admin/",
+	} {
+		guest.Get(path).Status(http.StatusSeeOther).RedirectsTo("/auth/login")
+	}
+
+	// A write too, with a token issued for this guest -- the sign-in form is a
+	// page that carries one -- so what turns it away is the guard and not the
+	// CSRF check.
+	guest.Get("/auth/login").OK()
+	guest.Post("/posts/"+post+"/comments", map[string]string{"body": "Let me in."}).
+		Status(http.StatusSeeOther).RedirectsTo("/auth/login")
+}
+
+// TestAPublicPageKnowsWhoIsReadingIt: the listing is open to everybody, and
+// still draws more for somebody signed in. LoadSubject on the route is what
+// tells it who that is; without it every reader is drawn the guest's page.
+func TestAPublicPageKnowsWhoIsReadingIt(t *testing.T) {
+	client, db := tests.App(t)
+
+	client.Get("/").OK().DontSee("Write one")
+	signInAs(t, client, db, "Grace Hopper", "")
+	client.Get("/").OK().See("Write one")
+	client.Get("/posts").OK().See("Write one")
+}

@@ -275,25 +275,26 @@ func Build(cfg appconfig.Config, db *database.DB) (App, error) {
 
 	deps := routes.Deps{
 		Home:     controllers.NewHomeController(cfg.App.Name, userService, cfg.Auth.Tenant),
-		Post:     controllers.NewPostController(postService, commentService, categoryService, userService, sessions, cfg.App.Name, cfg.App.URL, cfg.Auth.Tenant),
-		Comment:  controllers.NewCommentController(commentService, sessions),
-		Category: controllers.NewCategoryController(categoryService, sessions, cfg.App.Name, userService, cfg.Auth.Tenant),
-		Admin:    controllers.NewAdminController(postService, commentService, sessions),
+		Post:     controllers.NewPostController(postService, commentService, categoryService, userService, cfg.App.Name, cfg.App.URL, cfg.Auth.Tenant),
+		Comment:  controllers.NewCommentController(commentService),
+		Category: controllers.NewCategoryController(categoryService, cfg.App.Name, userService, cfg.Auth.Tenant),
+		Admin:    controllers.NewAdminController(postService, commentService),
 		// The operator's screen, and the socket server it reads. The screen is
 		// given the registry rather than the server's counter: it draws what was
 		// published, and buildSocket is what publishes it. A screen holding the
 		// counter would be a screen reading the process directly, and the read it
 		// makes crosses tenants.
-		Sockets: controllers.NewSocketsController(gauges, policies.SocketMetricsPolicy{Tenant: cfg.Auth.Tenant}, sessions),
+		Sockets: controllers.NewSocketsController(gauges, policies.SocketMetricsPolicy{Tenant: cfg.Auth.Tenant}),
 		Socket:  socket,
 		// The origin the sitemap builds absolute URLs on. A sitemap of relative
 		// paths is refused by every crawler that reads one, and the value cannot
 		// come from the request: a Host header is what the client sent.
 		Sitemap: controllers.NewSitemapController(postService, cfg.Auth.Tenant, cfg.App.URL),
-		// What the route guards read. The same store the pipeline and the
-		// controllers were given, and it has to be: two stores over one key
-		// would agree about the signature and disagree about which sessions
-		// exist.
+		// What the route guards read, and the only place a controller's route
+		// learns who is asking: no controller here holds the store. The same
+		// store the pipeline and the authentication screens were given, and it
+		// has to be: two stores over one key would agree about the signature and
+		// disagree about which sessions exist.
 		Sessions: sessions,
 	}
 

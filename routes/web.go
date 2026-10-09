@@ -15,6 +15,7 @@ import (
 	"github.com/arandu-io/framework/http/middleware"
 	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/hesape/auth"
+	"github.com/arandu-io/hesape/routing"
 	"github.com/arandu-io/joaju"
 
 	controllers "github.com/arandu-io/examples/app/Http/Controllers"
@@ -85,7 +86,11 @@ func Web(r *http.Router, d Deps) {
 	// the address a reader arrives at is the listing, because a front page that
 	// says "you are logged in" to the people who are and nothing to the people
 	// who are not is a front page for nobody.
-	r.Action("GET", "/{$}", d.Post.Index).Name("home")
+	//
+	// LoadSubject because the listing is public and still wants to know who is
+	// looking: a signed-in reader sees the drafts too. It sends nobody anywhere,
+	// and a request without a session reaches the controller as a guest.
+	r.Action("GET", "/{$}", d.Post.Index, middleware.LoadSubject(d.Sessions)).Name("home")
 
 	// The screen somebody lands on after signing in, and it is for them alone.
 	// Without the guard it answers 200 to anybody: the controller reads the
@@ -109,13 +114,18 @@ func Web(r *http.Router, d Deps) {
 	// posts.create, posts.store, posts.edit, posts.update and posts.destroy.
 	// A link is built from the name, so renaming the path does not leave a dead
 	// href behind.
-	r.Resource("posts", d.Post)
+	//
+	// The listing and the article are read by anybody, so they only load who
+	// is looking; the form, the write and the delete need somebody signed in.
+	// The guard is on each route rather than in the controller, which reads
+	// whoever the guard put on the request and loads no session of its own.
+	guard(r.Resource("posts", d.Post), d.Sessions, "posts.index", "posts.show")
 
 	// The comment thread hangs off the post, because that is where it is read
 	// and where it is written. A top-level /comments would be a second address
 	// for the same conversation, and the id in the path is the post's -- so the
 	// route says which thread without the body having to be trusted about it.
-	r.Action("POST", "/posts/{id}/comments", d.Comment.Store).Name("posts.comments")
+	r.Action("POST", "/posts/{id}/comments", d.Comment.Store, middleware.RequireAuth(d.Sessions)).Name("posts.comments")
 
 	// The sections. Two addresses, and they are two on purpose.
 	//
@@ -125,8 +135,8 @@ func Web(r *http.Router, d Deps) {
 	//
 	// A slug and not an id, because this one is read by people. The id is what a
 	// form posts; the slug is what a URL says.
-	r.Resource("categories", d.Category)
-	r.Action("GET", "/c/{slug}", d.Post.Section).Name("categories.section")
+	guard(r.Resource("categories", d.Category), d.Sessions)
+	r.Action("GET", "/c/{slug}", d.Post.Section, middleware.LoadSubject(d.Sessions)).Name("categories.section")
 
 	// The sitemap, built from this table and the published posts. robots.txt
 	// points at it, and it is a route rather than a file because a file would go
@@ -229,3 +239,26 @@ func (h hijackable) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 // Unwrap keeps the chain intact for anything else that walks it: this writer is
 // one more link, not the end of the line.
 func (h hijackable) Unwrap() nethttp.ResponseWriter { return h.ResponseWriter }
+
+// guard puts every route a Resource call registered behind the guard it needs,
+// and is how the table says which of the seven are open.
+//
+// The names in public are read by anybody and only want to know who is
+// looking, so they get LoadSubject, which sends nobody anywhere. Every other
+// action needs somebody signed in and gets RequireAuth, which sends a visitor
+// with no session to sign in and remembers where they were going. Either way
+// the subject is on the request when the controller runs, and the controller
+// reads it with ctx.User() rather than loading the session a second time.
+//
+// Neither guard decides anything about a record. Whether this person may read
+// this post or change that section is still the Policy's answer, on every
+// service call the action makes.
+func guard(routes []*routing.Route, sessions *security.SessionStore, public ...string) {
+	for _, route := range routes {
+		if len(public) > 0 && route.Named(public...) {
+			route.Middleware(middleware.LoadSubject(sessions))
+			continue
+		}
+		route.Middleware(middleware.RequireAuth(sessions))
+	}
+}

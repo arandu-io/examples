@@ -6,7 +6,6 @@ import (
 	"strconv"
 
 	fhttp "github.com/arandu-io/framework/http"
-	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/hesape/auth"
 	"github.com/arandu-io/hesape/database"
 	hhttp "github.com/arandu-io/hesape/http"
@@ -27,8 +26,7 @@ import (
 type CategoryController struct {
 	Controller
 
-	svc      *services.CategoryService
-	sessions *security.SessionStore
+	svc *services.CategoryService
 
 	// nav draws the header, the same way on every screen. See chrome.go.
 	nav navigation
@@ -37,12 +35,12 @@ type CategoryController struct {
 // NewCategoryController returns the controller. bootstrap builds it and hands it to
 // the routes.
 //
-// The session store arrives through the constructor rather than through the
-// service: a screen is allowed to know about a cookie, and a service is not
-// allowed to expose its own dependencies. The CSRF token is not issued here --
-// csrfToken reads the one CSRFProtect put on the request.
-func NewCategoryController(svc *services.CategoryService, sessions *security.SessionStore, appName string, people UserNames, tenant string) *CategoryController {
-	return &CategoryController{svc: svc, sessions: sessions,
+// It takes no session store. Every route it answers sits behind RequireAuth in
+// routes/web.go, which puts who is asking on the request, and guarded reads it
+// there. Nor does it issue the CSRF token: csrfToken reads the one CSRFProtect
+// put on the request.
+func NewCategoryController(svc *services.CategoryService, appName string, people UserNames, tenant string) *CategoryController {
+	return &CategoryController{svc: svc,
 		nav: navigation{appName: appName, people: people, tenant: tenant}}
 }
 
@@ -67,10 +65,7 @@ const categoryPerPage = 25
 
 // Index renders the listing.
 func (c *CategoryController) Index(ctx *hhttp.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
+	actor := guarded(ctx)
 
 	// The page size is decided here rather than passed through blindly: asking
 	// for a known number is what lets the next cursor be offered only when a
@@ -116,10 +111,7 @@ func (c *CategoryController) Index(ctx *hhttp.Context) error {
 
 // Show renders one record.
 func (c *CategoryController) Show(ctx *hhttp.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
+	actor := guarded(ctx)
 
 	found, err := c.svc.Get(ctx.Ctx(), actor, ctx.Param("id"))
 	if err != nil {
@@ -139,10 +131,7 @@ func (c *CategoryController) Show(ctx *hhttp.Context) error {
 
 // Create renders the empty form.
 func (c *CategoryController) Create(ctx *hhttp.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
+	actor := guarded(ctx)
 	token := csrfToken(ctx)
 
 	return ctx.View("categories.create", views.CategoriesCreateData{
@@ -152,10 +141,7 @@ func (c *CategoryController) Create(ctx *hhttp.Context) error {
 
 // Store takes the submitted form.
 func (c *CategoryController) Store(ctx *hhttp.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
+	actor := guarded(ctx)
 
 	// Bind reads the body and nothing else -- never the query string of a
 	// write -- into the fields requests.StoreCategory declares with a form tag. A
@@ -172,15 +158,12 @@ func (c *CategoryController) Store(ctx *hhttp.Context) error {
 	if err != nil {
 		return c.fail(ctx, err)
 	}
-	return ctx.Redirect("/categories/" + created.ID)
+	return ctx.RedirectRoute("categories.show", created.ID)
 }
 
 // Edit renders the form filled in.
 func (c *CategoryController) Edit(ctx *hhttp.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
+	actor := guarded(ctx)
 
 	found, err := c.svc.Get(ctx.Ctx(), actor, ctx.Param("id"))
 	if err != nil {
@@ -196,10 +179,7 @@ func (c *CategoryController) Edit(ctx *hhttp.Context) error {
 
 // Update writes the submitted form onto the stored record.
 func (c *CategoryController) Update(ctx *hhttp.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
+	actor := guarded(ctx)
 
 	var in requests.StoreCategory
 	if err := ctx.Bind(&in); err != nil {
@@ -215,31 +195,16 @@ func (c *CategoryController) Update(ctx *hhttp.Context) error {
 	if err != nil {
 		return c.fail(ctx, err)
 	}
-	return ctx.Redirect("/categories/" + updated.ID)
+	return ctx.RedirectRoute("categories.show", updated.ID)
 }
 
 // Destroy removes the record.
 func (c *CategoryController) Destroy(ctx *hhttp.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
+	actor := guarded(ctx)
 	if err := c.svc.Delete(ctx.Ctx(), actor, ctx.Param("id")); err != nil {
 		return c.fail(ctx, err)
 	}
-	return ctx.Redirect("/categories")
-}
-
-// actor is who is acting, from the session and never from the request body.
-func (c *CategoryController) actor(ctx *hhttp.Context) (auth.Subject, error) {
-	return c.sessions.Load(ctx.Ctx(), ctx.Request)
-}
-
-// signIn sends an unauthenticated visitor to the sign-in screen. Under HTMX the
-// redirect becomes HX-Redirect, so the browser navigates instead of nesting the
-// whole page inside a fragment.
-func (c *CategoryController) signIn(ctx *hhttp.Context) error {
-	return ctx.Redirect("/auth/login")
+	return ctx.RedirectRoute("categories.index")
 }
 
 // row turns the entity into what the markup renders.

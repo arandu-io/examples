@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/hesape/auth"
 	hhttp "github.com/arandu-io/hesape/http"
 	"github.com/arandu-io/hesape/log"
@@ -48,22 +47,21 @@ type SocketsController struct {
 	// a package-level value so that the tenant it compares against is the one
 	// bootstrap configured, and not a constant this file decided on.
 	metrics policies.SocketMetricsPolicy
-
-	sessions *security.SessionStore
 }
 
 // NewSocketsController returns the controller. bootstrap builds it, with the
 // registry the socket server publishes into.
-func NewSocketsController(gauges *log.Gauges, metrics policies.SocketMetricsPolicy, sessions *security.SessionStore) *SocketsController {
-	return &SocketsController{gauges: gauges, metrics: metrics, sessions: sessions}
+//
+// It takes no session store. The route is behind RequireRole in
+// routes/admin.go, which puts who is asking on the request; that guard is the
+// floor and not the decision, which is still SocketMetricsPolicy's, below.
+func NewSocketsController(gauges *log.Gauges, metrics policies.SocketMetricsPolicy) *SocketsController {
+	return &SocketsController{gauges: gauges, metrics: metrics}
 }
 
 // Index draws the two cards: connections per tenant, and the message totals.
 func (c *SocketsController) Index(ctx *hhttp.Context) error {
-	actor, err := c.sessions.Load(ctx.Ctx(), ctx.Request)
-	if err != nil {
-		return ctx.Redirect("/auth/login")
-	}
+	actor := guarded(ctx)
 	token := csrfToken(ctx)
 
 	// The authorization, and it is not ceremony: nothing below this line touches

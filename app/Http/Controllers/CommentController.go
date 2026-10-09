@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/hesape/auth"
 	hhttp "github.com/arandu-io/hesape/http"
 	"github.com/arandu-io/hesape/log"
@@ -30,26 +29,21 @@ import (
 type CommentController struct {
 	Controller
 
-	svc      *services.CommentService
-	sessions *security.SessionStore
+	svc *services.CommentService
 }
 
 // NewCommentController returns the controller. bootstrap builds it and hands it to
 // the routes.
 //
-// The session store arrives through the constructor rather than through the
-// service: a screen is allowed to know about a cookie, and a service is not
-// allowed to expose its own dependencies.
-func NewCommentController(svc *services.CommentService, sessions *security.SessionStore) *CommentController {
-	return &CommentController{svc: svc, sessions: sessions}
+// It takes no session store. Its route is behind RequireAuth in routes/web.go,
+// which puts who is asking on the request, and guarded reads it there.
+func NewCommentController(svc *services.CommentService) *CommentController {
+	return &CommentController{svc: svc}
 }
 
 // Store takes the comment box under an article.
 func (c *CommentController) Store(ctx *hhttp.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
+	actor := guarded(ctx)
 
 	// Bind reads the body and nothing else -- never the query string of a
 	// write -- into the fields requests.StoreComment declares with a form tag. A
@@ -77,18 +71,6 @@ func (c *CommentController) Store(ctx *hhttp.Context) error {
 	// so rather than leaving them looking for it.
 	_ = created
 	return ctx.Redirect(ctx.URL("posts.show", in.PostId) + "?said=1")
-}
-
-// actor is who is acting, from the session and never from the request body.
-func (c *CommentController) actor(ctx *hhttp.Context) (auth.Subject, error) {
-	return c.sessions.Load(ctx.Ctx(), ctx.Request)
-}
-
-// signIn sends an unauthenticated visitor to the sign-in screen. Under HTMX the
-// redirect becomes HX-Redirect, so the browser navigates instead of nesting the
-// whole page inside a fragment.
-func (c *CommentController) signIn(ctx *hhttp.Context) error {
-	return ctx.Redirect("/auth/login")
 }
 
 // fail turns a domain error into a status, in one place.

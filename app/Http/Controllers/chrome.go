@@ -3,7 +3,6 @@ package controllers
 import (
 	"context"
 
-	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/hesape/auth"
 	hhttp "github.com/arandu-io/hesape/http"
 	"github.com/arandu-io/hesape/view"
@@ -99,11 +98,17 @@ func (n navigation) displayName(ctx *hhttp.Context, id string) string {
 
 // reader is who is asking: the signed-in subject, or a declared guest.
 //
-// The tenant of a guest is the application's, from configuration. A visitor
-// cannot choose whose rows they read, and it is not suspended because nobody
-// signed in.
-func (n navigation) reader(ctx *hhttp.Context, sessions *security.SessionStore) (auth.Subject, bool) {
-	if actor, err := sessions.Load(ctx.Ctx(), ctx.Request); err == nil {
+// The subject is the one middleware.LoadSubject put on the request, off the
+// session cookie, and the route table is where that is said: every public
+// screen that wants to know who is looking carries it in routes/web.go. This
+// reads the request and loads nothing, so there is one place that decides who
+// is signed in and what an expired session answers.
+//
+// No subject is a declared guest, and the tenant of a guest is the
+// application's, from configuration. A visitor cannot choose whose rows they
+// read, and it is not suspended because nobody signed in.
+func (n navigation) reader(ctx *hhttp.Context) (auth.Subject, bool) {
+	if actor, ok := ctx.User(); ok {
 		return actor, true
 	}
 	return auth.Guest(n.tenant), false
@@ -131,4 +136,18 @@ func ifSignedIn(show bool, url string) string {
 func csrfToken(ctx *hhttp.Context) string {
 	token, _ := hhttp.CSRFTokenFrom(ctx.Ctx())
 	return token
+}
+
+// guarded is who is acting on a route only somebody signed in reaches.
+//
+// The route's guard -- RequireAuth, or RequireRole for the moderation area --
+// loaded the session, sent a visitor with none to sign in, and put the subject
+// on the request, so this reads it rather than loading the session again. A
+// route registered without its guard reaches the service with the zero
+// subject, and auth.Authorize refuses a subject with no id that is not a
+// declared guest before any policy is asked: the request is refused rather than
+// answered for nobody, and the route table is where the missing guard shows.
+func guarded(ctx *hhttp.Context) auth.Subject {
+	actor, _ := ctx.User()
+	return actor
 }

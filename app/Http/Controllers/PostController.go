@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	fhttp "github.com/arandu-io/framework/http"
-	"github.com/arandu-io/framework/security"
 	"github.com/arandu-io/hesape/auth"
 	"github.com/arandu-io/hesape/database"
 	hhttp "github.com/arandu-io/hesape/http"
@@ -41,8 +40,7 @@ type PostController struct {
 	people UserNames
 
 	// nav draws the header, the same way on every screen. See chrome.go.
-	nav      navigation
-	sessions *security.SessionStore
+	nav navigation
 
 	// appName is the brand in the navigation bar and the og:site_name, and base
 	// is the origin a canonical URL is absolute against. Both come from the
@@ -59,14 +57,16 @@ type PostController struct {
 // NewPostController returns the controller. bootstrap builds it and hands it to
 // the routes.
 //
-// The session store arrives through the constructor rather than through the
-// service: a screen is allowed to know about a cookie, and a service is not
-// allowed to expose its own dependencies. The CSRF token is not issued here --
-// csrfToken reads the one CSRFProtect put on the request.
-func NewPostController(svc *services.PostService, comments *services.CommentService, categories *services.CategoryService, people UserNames, sessions *security.SessionStore, appName, base, tenant string) *PostController {
+// It takes no session store. Who is asking is put on the request by the
+// route's guard -- RequireAuth on a write, LoadSubject on a public read, both in
+// routes/web.go -- and read here with ctx.User(), so this controller is not a
+// second place that loads a session and decides what an expired one answers.
+// Nor does it issue the CSRF token: csrfToken reads the one CSRFProtect put on
+// the request.
+func NewPostController(svc *services.PostService, comments *services.CommentService, categories *services.CategoryService, people UserNames, appName, base, tenant string) *PostController {
 	return &PostController{
 		svc: svc, comments: comments, categories: categories, people: people,
-		sessions: sessions, appName: appName, base: base, tenant: tenant,
+		appName: appName, base: base, tenant: tenant,
 		nav: navigation{appName: appName, people: people, tenant: tenant},
 	}
 }
@@ -96,7 +96,7 @@ func (c *PostController) Index(ctx *hhttp.Context) error {
 	// sees everything, drafts included. Two queries, because they are two
 	// questions -- and the guest one cannot reach a draft at all rather than
 	// reaching it and discarding it.
-	actor, signedIn := c.nav.reader(ctx, c.sessions)
+	actor, signedIn := c.nav.reader(ctx)
 
 	// The page size is decided here rather than passed through blindly: asking
 	// for a known number is what lets the next cursor be offered only when a
@@ -163,7 +163,7 @@ func (c *PostController) Index(ctx *hhttp.Context) error {
 // differ by a heading and a filter, and a second template would be a second
 // place to fix the card the next time a card changes.
 func (c *PostController) Section(ctx *hhttp.Context) error {
-	actor, signedIn := c.nav.reader(ctx, c.sessions)
+	actor, signedIn := c.nav.reader(ctx)
 
 	category, err := c.categories.BySlug(ctx.Ctx(), actor, ctx.Param("slug"))
 	if err != nil {
@@ -247,7 +247,7 @@ func (c *PostController) Show(ctx *hhttp.Context) error {
 	// may read this post is PostPolicy's answer, not this handler's -- the
 	// article is public when it is published and refused when it is a draft,
 	// and both answers come from the same place every other answer does.
-	actor, signedIn := c.nav.reader(ctx, c.sessions)
+	actor, signedIn := c.nav.reader(ctx)
 
 	found, err := c.svc.Get(ctx.Ctx(), actor, ctx.Param("id"))
 	if err != nil {
@@ -300,11 +300,8 @@ func (c *PostController) Create(ctx *hhttp.Context) error {
 	// The subject, not just the fact that there is one. The header greets by
 	// name and decides whether to offer the moderation queue, and both were
 	// drawn from an empty id here -- so the author writing a post got the header
-	// of a stranger.
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
+	// of a stranger. See guarded for where it comes from.
+	actor := guarded(ctx)
 	token := csrfToken(ctx)
 
 	return ctx.View("posts.create", views.PostsCreateData{
@@ -314,10 +311,7 @@ func (c *PostController) Create(ctx *hhttp.Context) error {
 
 // Store takes the submitted form.
 func (c *PostController) Store(ctx *hhttp.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
+	actor := guarded(ctx)
 
 	// Bind reads the body and nothing else -- never the query string of a
 	// write -- into the fields requests.StorePost declares with a form tag. A
@@ -336,15 +330,12 @@ func (c *PostController) Store(ctx *hhttp.Context) error {
 	if err != nil {
 		return c.fail(ctx, err)
 	}
-	return ctx.Redirect("/posts/" + created.ID)
+	return ctx.RedirectRoute("posts.show", created.ID)
 }
 
 // Edit renders the form filled in.
 func (c *PostController) Edit(ctx *hhttp.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
+	actor := guarded(ctx)
 
 	found, err := c.svc.Get(ctx.Ctx(), actor, ctx.Param("id"))
 	if err != nil {
@@ -360,10 +351,7 @@ func (c *PostController) Edit(ctx *hhttp.Context) error {
 
 // Update writes the submitted form onto the stored record.
 func (c *PostController) Update(ctx *hhttp.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
+	actor := guarded(ctx)
 
 	var in requests.StorePost
 	if err := ctx.Bind(&in); err != nil {
@@ -380,31 +368,16 @@ func (c *PostController) Update(ctx *hhttp.Context) error {
 	if err != nil {
 		return c.fail(ctx, err)
 	}
-	return ctx.Redirect("/posts/" + updated.ID)
+	return ctx.RedirectRoute("posts.show", updated.ID)
 }
 
 // Destroy removes the record.
 func (c *PostController) Destroy(ctx *hhttp.Context) error {
-	actor, err := c.actor(ctx)
-	if err != nil {
-		return c.signIn(ctx)
-	}
+	actor := guarded(ctx)
 	if err := c.svc.Delete(ctx.Ctx(), actor, ctx.Param("id")); err != nil {
 		return c.fail(ctx, err)
 	}
-	return ctx.Redirect("/posts")
-}
-
-// actor is who is acting, from the session and never from the request body.
-func (c *PostController) actor(ctx *hhttp.Context) (auth.Subject, error) {
-	return c.sessions.Load(ctx.Ctx(), ctx.Request)
-}
-
-// signIn sends an unauthenticated visitor to the sign-in screen. Under HTMX the
-// redirect becomes HX-Redirect, so the browser navigates instead of nesting the
-// whole page inside a fragment.
-func (c *PostController) signIn(ctx *hhttp.Context) error {
-	return ctx.Redirect("/auth/login")
+	return ctx.RedirectRoute("posts.index")
 }
 
 // row turns the entity into what the markup renders.
