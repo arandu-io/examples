@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/arandu-io/hesape/auth"
+	"github.com/arandu-io/hesape/otp"
 
 	"github.com/arandu-io/examples/bootstrap"
 )
@@ -16,12 +18,13 @@ import (
 // answers whether its cookies are HTTPS-only, and reads the answer off the
 // cookies the wired application writes.
 //
-// Two of them are built in bootstrap/app.go -- the CSRF guest cookie a page
-// sets for a visitor with no session, and the session cookie a sign-in sets --
-// and both must carry what the framework's loader decided: a guest cookie that
-// disagreed with the session cookie is a site where signing in works and every
-// guest form answers 419, or the other way round. The flash cookie is the
-// kernel's own and follows the same value there.
+// Three of them are built in bootstrap/app.go -- the CSRF guest cookie a page
+// sets for a visitor with no session, the session cookie a sign-in sets, and
+// the authentication kit's pending second-factor cookie -- and all three must
+// carry what the framework's loader decided: a guest cookie that disagreed with
+// the session cookie is a site where signing in works and every guest form
+// answers 419, or the other way round. The flash cookie is the kernel's own
+// and follows the same value there.
 func TestEveryCookieTheApplicationWritesFollowsTheOneSecureDecision(t *testing.T) {
 	for _, c := range []struct {
 		name   string
@@ -72,6 +75,43 @@ func TestEveryCookieTheApplicationWritesFollowsTheOneSecureDecision(t *testing.T
 				if cookie.Secure != c.want {
 					t.Errorf("the session cookie %s is written with Secure=%t, want %t", cookie.Name, cookie.Secure, c.want)
 				}
+			}
+
+			// The third is the authentication kit's own: the short signed cookie
+			// that carries a password-checked sign-in to the second factor. The
+			// kit is handed the value in bootstrap/app.go, and an account with
+			// two-factor authentication is what makes it write the cookie.
+			const (
+				email    = "two-factor@example.test"
+				password = "a-long-enough-password"
+			)
+			ctx := context.Background()
+			user, err := app.Users.Register(ctx, bootstrap.Tenant(), "Ana", email, password)
+			if err != nil {
+				t.Fatalf("registering: %v", err)
+			}
+			provisioning, err := app.TwoFactor.Begin(ctx, user.Subject(), "examples")
+			if err != nil {
+				t.Fatalf("beginning two-factor setup: %v", err)
+			}
+			code, err := otp.Default().Generate(provisioning.Secret, time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := app.TwoFactor.Confirm(ctx, user.Subject(), code); err != nil {
+				t.Fatalf("confirming two-factor setup: %v", err)
+			}
+			var pending *http.Cookie
+			for _, cookie := range signInOn(t, app.Kernel.Handler(), email, password) {
+				if cookie.Name == "two-factor-pending" && cookie.MaxAge > 0 {
+					pending = cookie
+				}
+			}
+			if pending == nil {
+				t.Fatal("a password-checked sign-in to an account with two-factor authentication wrote no pending cookie")
+			}
+			if pending.Secure != c.want {
+				t.Errorf("the pending cookie %s is written with Secure=%t, want %t", pending.Name, pending.Secure, c.want)
 			}
 		})
 	}
