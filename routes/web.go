@@ -7,14 +7,9 @@
 package routes
 
 import (
-	"bufio"
-	"net"
-	nethttp "net/http"
-
 	"github.com/arandu-io/framework/http"
 	"github.com/arandu-io/framework/http/middleware"
 	"github.com/arandu-io/framework/security"
-	"github.com/arandu-io/hesape/auth"
 	"github.com/arandu-io/hesape/routing"
 	"github.com/arandu-io/joaju"
 
@@ -153,90 +148,28 @@ func Web(r *http.Router, d Deps) {
 	// would be a second way to do the one thing, and it would be the slower
 	// one.
 	//
-	// Two middlewares, and both are about what joaju needs from the pipeline
-	// rather than about who may connect -- that is SocketConnectPolicy's answer,
-	// and it runs inside the handler. withSubject is what makes the route work at
-	// all: joaju reads the subject off the request context and answers 401 when
-	// there is none. hijackable is what lets the upgrade happen through the
-	// global middleware; see its own comment.
-	r.Get("/app/{appKey}", d.Socket.ServeHTTP, withSubject(d.Sessions), upgradable)
+	// One middleware, and it is about what joaju needs from the pipeline rather
+	// than about who may connect -- that is SocketConnectPolicy's answer, and it
+	// runs inside the handler. joaju authenticates nobody: it reads the subject
+	// off the request context and answers 401 when there is none, so the route
+	// loads it from the session cookie, the way every public page here does.
+	// LoadSubject and not RequireAuth, because RequireAuth answers a visitor
+	// with a redirect to the sign-in screen, and a socket client cannot follow
+	// one; a 401 from joaju is the answer it can read.
+	//
+	// The upgrade itself needs nothing from this file. Every global middleware
+	// wraps the writer -- middleware.Observe to record the status, and under
+	// APP_ENV=dev the live-reload recorder -- and each wrapper implements
+	// Unwrap, which is the chain joaju's upgrader follows to the connection.
+	// tests/Feature/Socket_test.go opens a socket through the whole pipeline in
+	// both environments and expects 101.
+	r.Get("/app/{appKey}", d.Socket.ServeHTTP, middleware.LoadSubject(d.Sessions))
 
 	// Moderation is its own area, behind its own middleware, and it is where an
 	// administrator sees what is waiting. See routes/admin.go.
 	adminRoutes(r, d)
 	// arandu:end custom
 }
-
-// withSubject puts the signed-in subject on the request context.
-//
-// It is the front door joaju's server documents and does not provide: that
-// server authenticates nobody, it reads the subject somebody else put there and
-// asks a Policy about it. In this application the somebody else is this, and the
-// subject comes off the session cookie -- never off a header, a query string or
-// the body, which is the finding `aru doctor` calls tenant-from-request.
-//
-// A request with no session passes through untouched, and joaju answers it 401.
-// The alternative -- a guest subject invented here -- would be this application
-// deciding that an anonymous visitor may open a socket, and that decision belongs
-// to policies.SocketConnectPolicy, which refuses it.
-func withSubject(sessions *security.SessionStore) http.Middleware {
-	return func(next nethttp.Handler) nethttp.Handler {
-		return nethttp.HandlerFunc(func(w nethttp.ResponseWriter, r *nethttp.Request) {
-			subject, err := sessions.Load(r.Context(), r)
-			if err != nil {
-				next.ServeHTTP(w, r)
-				return
-			}
-			next.ServeHTTP(w, r.WithContext(auth.WithSubject(r.Context(), subject)))
-		})
-	}
-}
-
-// upgradable hands the socket route a ResponseWriter that can be hijacked.
-//
-// Without it this route answers 500 to a perfectly good handshake, with
-// "this connection cannot be upgraded" in the body. joaju's upgrader reaches the
-// connection through a `w.(http.Hijacker)` type assertion, and what arrives here
-// is middleware.Observe's wrapper -- which records the status and the byte count
-// for the access log, forwards Flush, and does not forward Hijack.
-//
-// The wrapper is not the mistake. It implements Unwrap, which is what Go added
-// http.ResponseController for in 1.20, and its own comment says that is how
-// hijacking keeps working behind it. The assertion is the pre-1.20 idiom, and it
-// sees a wrapper rather than the connection. So this walks the chain the way the
-// standard library intends and puts the result back behind the interface the
-// upgrader asks for.
-//
-// It is a stopgap and it says so: the fix is one line in joaju's ws.Upgrader,
-// and when that lands this middleware comes off the route rather than being
-// kept as a second way to reach the connection. It is on this one route and
-// never in the global pipeline -- every other handler in this application wants
-// the wrapper exactly as it is.
-//
-// It works in development too. APP_ENV=dev adds the framework's live-reload
-// middleware, whose recorder wraps the writer to inject the reload script; that
-// recorder implements Unwrap as middleware.Observe's wrapper does, so the chain
-// this walks reaches the connection through both, and a signed-in handshake
-// answers 101 under dev. Without this middleware the same handshake answers
-// 500.
-func upgradable(next nethttp.Handler) nethttp.Handler {
-	return nethttp.HandlerFunc(func(w nethttp.ResponseWriter, r *nethttp.Request) {
-		next.ServeHTTP(hijackable{ResponseWriter: w}, r)
-	})
-}
-
-// hijackable is the writer upgradable installs: everything the pipeline built,
-// plus the Hijack the upgrader looks for.
-type hijackable struct{ nethttp.ResponseWriter }
-
-// Hijack takes over the connection, through whatever wrappers are in the way.
-func (h hijackable) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	return nethttp.NewResponseController(h.ResponseWriter).Hijack()
-}
-
-// Unwrap keeps the chain intact for anything else that walks it: this writer is
-// one more link, not the end of the line.
-func (h hijackable) Unwrap() nethttp.ResponseWriter { return h.ResponseWriter }
 
 // guard puts every route a Resource call registered behind the guard it needs,
 // and is how the table says which of the seven are open.

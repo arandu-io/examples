@@ -79,10 +79,11 @@ is the only thing between a session and every tenant's numbers, because the
 registry it reads is a map and takes no Grant.
 `TestTheSocketCountsAreTheOperatorsAndNotAReaders`.
 
-**The tenant never arrives with the request.** `withSubject` in `routes/web.go`
-puts the session's subject on the context and nothing else; joaju answers 401
-when there is none. `tests/Feature/TenantScoping_test.go` is 988 lines of the
-other tenant seeing nothing.
+**The tenant never arrives with the request.** `middleware.LoadSubject` on the
+socket route in `routes/web.go` puts the session's subject on the context and
+nothing else; joaju answers 401 when there is none.
+`tests/Feature/TenantScoping_test.go` is 988 lines of the other tenant seeing
+nothing.
 
 **A code is spent rather than signed.** Address verification and password reset
 each mail a six-digit code from `hesape/onetime`: `codes.Issue` when it is sent,
