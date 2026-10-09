@@ -180,7 +180,7 @@ fi
 #    seen on the day it lands rather than on the day somebody counts.
 #
 #    kyse is deliberately not among them, and adding it would break this check
-#    rather than widen it. The 34 files under resources/views are templates
+#    rather than widen it. The 29 files under resources/views are templates
 #    whose build tag is the only thing excluding them from the compiler; listing
 #    with that tag hands `go list` a file that opens with @extends and stops it
 #    at a parse error.

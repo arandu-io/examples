@@ -15,7 +15,7 @@ named by the situation.
 ## The gates
 
 Nothing is finished until all of these exit zero. Measured on this tree with
-`aru` v0.62.0 (`go run github.com/arandu-io/aru@v0.62.0 <command>` runs that
+`aru` v0.63.0 (`go run github.com/arandu-io/aru@v0.63.0 <command>` runs that
 version without installing it).
 
 ```sh
@@ -36,8 +36,8 @@ bash tests/test-layout-guard.sh
 `--check` it writes nothing and fails when one of them is stale; `aru doctor`
 reports a stale one too.
 
-`aru view:build` is not optional on a fresh clone. The 34 files
-under `resources/views/*.kyse.go` compile to 34 files under
+`aru view:build` is not optional on a fresh clone. The 29 files
+under `resources/views/*.kyse.go` compile to 29 files under
 `storage/framework/views/`, and `.gitignore` keeps that output out of the tree —
 so before it has run, `go build ./...` fails with `undefined: renderHome` rather
 than with anything about views, and the layout guard fails saying it could not
@@ -50,18 +50,25 @@ without `-not -name '*.kyse.go'` it reports a syntax error on every view.
 `CONTRIBUTING.md` and `Taskfile.yml` state the command without the `testdata/`
 filter; `.github/workflows/ci.yml` states it with. Copy the one above.
 
-`aru doctor` exits zero here with no findings. Any finding is a regression,
+`aru doctor` exits zero here, with warnings in one place only: the sign-in
+screens `arandu-io/ui` v0.20.0 published into `app/Http/Controllers/Auth`. Ten
+handlers there read the form with `r.PostFormValue` (`input-read-by-hand`) and
+`page.go` imports `html/template` for the QR code (`html-template-in-app`) --
+the same eleven warnings `ui auth` leaves in a project `aru new` just created,
+so they are the kit's to fix and arrive with its next `auth --force`, not
+something to rewrite here. Any other finding is a regression,
 `import-not-canonical` included: a symbol the framework only re-exports is
 named from the hesape package that declares it (`auth.Grant`, `database.DB`,
 `hhttp.Context`), and what the framework itself declares or wraps keeps its
 framework path (`fhttp.Router`, `security.SessionStore`). `aru imports:catalog`
 prints the path of every symbol for the version `go.mod` requires.
 
-CI installs `aru` v0.58.0 for `view:build` and `doctor`, which predates
-`import-not-canonical`; the version above is the one this tree answers to.
+CI installs `aru` v0.63.0 for `view:build` and `doctor`, `arandu.toml` names it
+as the oldest CLI the views build with, and the Dockerfile builds them with it:
+`TestBuildEntrypointsUseTheReleasedCLI` keeps the three on one version.
 
 The suite needs no database server. Tests that exercise rows use temporary
-SQLite through `tests.Boot` (`tests/testcase.go:192-200`) or `sqliteEnv`
+SQLite through `tests.Boot` (`tests/testcase.go:194-202`) or `sqliteEnv`
 (`tests/Feature/Commands_test.go:23-28`). Wiring-only tests use `tests.Kernel`
 with PostgreSQL at the closed address `127.0.0.1:1`, without connecting.
 
@@ -74,18 +81,18 @@ with PostgreSQL at the closed address `127.0.0.1:1`, without connecting.
 | `app/Services/` | five services. Row access normally follows Subject → Policy → Grant; pre-authentication user and factor flows use annotated system grants |
 | `app/Http/Controllers/` | seven application controllers over a shared `Controller` base. HTML, XML and process-wide gauges deliberately have different collaborators |
 | `app/Http/Controllers/Auth/` | not one of the seven application controllers: a `foundation.Module` with its own `Routes()`, published by `arandu-io/ui` |
-| `resources/views/` | 34 `.kyse.go` templates. Source; `storage/framework/views/` is the build output |
+| `resources/views/` | 29 `.kyse.go` templates. Source; `storage/framework/views/` is the build output |
 | `routes/web.go`, `routes/admin.go` | 61 registered routes across four modules, 32 of them this application's |
 | `bootstrap/app.go` | the whole wiring, top to bottom, in one function |
 | `database/migrations/`, `database/seeders/` | ten migrations and seven seeders, plus one registry file in each directory |
-| `tests/`, `app/Http/Controllers/Auth/redaction_internal_test.go` | 50 files, 195 test functions — 49 files and 194 functions in the mirrored tree, plus one colocated internal test |
+| `tests/`, `app/Http/Controllers/Auth/redaction_internal_test.go` | 50 files, 200 test functions — 49 files and 199 functions in the mirrored tree, plus one colocated internal test |
 
 Counted with:
 
 ```sh
-find resources/views -name '*.kyse.go' | wc -l                      # 34
+find resources/views -name '*.kyse.go' | wc -l                      # 29
 git ls-files '*_test.go' | wc -l                                    # 50
-grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l  # 195
+grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l  # 200
 git ls-files 'app/Policies/*.go' | wc -l                             # 7
 rg '^type .*Policy struct' app/Policies/*.go | wc -l                  # 8
 GOWORK=off go run . routes | grep -cE '^  (GET|POST|PUT|PATCH|DELETE)'  # 61
@@ -152,7 +159,7 @@ Three consequences:
   measurement. Re-run the command before trusting it, and fix every copy
   together. `tests/test-layout-guard.sh` states two of them in its own comments
   ("Forty-nine test files sit under the capitalised categories in tests/", "The
-  34 files under resources/views") and both are currently right.
+  29 files under resources/views") and both are currently right.
 
 ## Writing code
 

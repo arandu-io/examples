@@ -6,7 +6,7 @@ license: MIT
 
 # Reading this application to find an answer
 
-This is a blog with 61 routes (32 of them its own), 34 views and 195 test
+This is a blog with 61 routes (32 of them its own), 29 views and 200 test
 functions, and every file in it is an answer to a question somebody asked.
 Finding the answer is a lookup, not a search, and the point of the lookup is
 that the file also says *why* the shape is what it is.
@@ -27,7 +27,7 @@ export GOWORK=off && aru view:build && go build ./...
 | how does a repository take a Grant | `app/Repositories/PostRepository.go:68` (`Find`) and `:97` (`List`) |
 | how does a model replace a repository for routine CRUD | `app/Models/Category.go`, and the typed query `aru model:build` writes beside it in `app/Models/CategoryQuery.go`; `app/Services/CategoryService.go` reaches it as `models.Categories(s.db)` |
 | how does a service sit between them | `app/Services/PostService.go:60` (`Get`) — takes an `auth.Subject`, asks the policy, passes the Grant down, asks again about the row it read |
-| how does a controller assemble a page | `app/Http/Controllers/PostController.go:245` (`Show`), `:316` (`Store`) |
+| how does a controller assemble a page | `app/Http/Controllers/PostController.go:245` (`Show`), `:313` (`Store`) |
 | how is a form validated | `app/Http/Requests/PostRequest.go` — `StorePost.Validate` returns `validation.Errors`, and `PostService.Create` calls it (`app/Services/PostService.go:31`) before it asks the policy |
 | how is a rejected form answered | by the router, not by the controller. `PostController.Store` returns the service's error as it is; the page goes back to the form with the messages and what was typed in the flash, htmx gets `HX-Redirect`, JSON gets a 422 problem document. `navigation.page` in `app/Http/Controllers/chrome.go` hands every page that flash, and `tests/Feature/RejectedForms_test.go` holds all three answers |
 | how is a view written and typed | `resources/views/posts/show.kyse.go`, and `resources/views/layouts/app.kyse.go` for the layout |
@@ -74,7 +74,7 @@ answers both "may this be served" and "may this be listed".
 `SocketsController` reads process-wide gauges, which are not scoped to a tenant.
 It is a controller of its own, with `SocketMetricsPolicy` and the action
 `SocketInspectAll` on `AllTenantSockets` — reachable from no other screen. The
-authorization call in `Index`, at `app/Http/Controllers/SocketsController.go:78`,
+authorization call in `Index`, at `app/Http/Controllers/SocketsController.go:76`,
 is the only thing between a session and every tenant's numbers, because the
 registry it reads is a map and takes no Grant.
 `TestTheSocketCountsAreTheOperatorsAndNotAReaders`.
@@ -86,8 +86,8 @@ other tenant seeing nothing.
 
 **A code is spent rather than signed.** Address verification and password reset
 each mail a six-digit code from `hesape/onetime`: `codes.Issue` when it is sent,
-`codes.Consume` when it comes back. `RegisterController.go:21` and
-`PasswordController.go:21` declare the two purpose strings, and the subject a
+`codes.Consume` when it comes back. `RegisterController.go:23` and
+`PasswordController.go:24` declare the two purpose strings, and the subject a
 code is bound to is the tenant, the user and the normalised address —
 `emailCodeSubject` and `resetCodeSubject`, the second with the password
 fingerprint added, so changing the password by any route ends an outstanding
@@ -107,7 +107,7 @@ subject, which is the half a project has to get right.
 
 **The debug console, through the real pipeline.**
 `middleware.Observe(cfg.App.IsDev(), fw.Observability.TracingSecret, k.Recorder())`
-at `bootstrap/app.go:343` is the whole of it. `k.Recorder()` is nil outside
+at `bootstrap/app.go:342` is the whole of it. `k.Recorder()` is nil outside
 development and recording nothing is what production does.
 `TestTheConsoleRecordsARealRequest` makes a request, reads `X-Request-ID` off
 the response, and finds it at `log.ConsolePath` — `/_arandu/debug`.
@@ -115,7 +115,7 @@ the response, and finds it at `log.ConsolePath` — `/_arandu/debug`.
 to name its origin file, because a console showing a request with no queries
 reads exactly like an application that never touched the database.
 
-**The error page.** `middleware.Recover`, at `bootstrap/app.go:306`, is first in
+**The error page.** `middleware.Recover`, at `bootstrap/app.go:305`, is first in
 the pipeline, or a panic in anything below it escapes without a page. It is
 given `AppModule`, so your frames are told from the framework's, and
 `Diagnose: k.Diagnose`, so what the modules know about the system right now —
@@ -132,7 +132,7 @@ it replaces.
 
 **Work that outlives the request.** `events.WithRelay(relay)` brings the outbox
 table and the relay that empties it, and `jobs.NewModule(queueStore)` the jobs
-table (`bootstrap/app.go:383` and `:392`), both over this application's own
+table (`bootstrap/app.go:382` and `:391`), both over this application's own
 database, which is what lets an event commit in the same transaction as the row
 it describes. `TestTheEventCommitsWithTheWrite` and `TestARolledBackWriteStoresNoEvent`
 are the pair.
@@ -149,7 +149,7 @@ and a view whose data is a struct. A handler copied without the first has
 nothing to pass and will not compile — that is the design working, not a
 porting problem.
 
-**3. Do not copy `bootstrap/app.go` wholesale.** `Build`, at line 133, is one
+**3. Do not copy `bootstrap/app.go` wholesale.** `Build`, at line 131, is one
 function for the whole wiring, and it is one deployment's answer.
 `SESSION_DRIVER=memory`, `CACHE_STORE=memory`, an in-process rate limiter, an
 in-memory socket broker and a nil scheduler `Locker` are all right for one

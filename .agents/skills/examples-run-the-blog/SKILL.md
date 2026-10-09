@@ -7,13 +7,13 @@ license: MIT
 # Running it
 
 Five steps, and the order is not negotiable — the views are compiled before
-anything Go-shaped will build. `aru` here is v0.62.0, the version this tree was
-last measured with; `go run github.com/arandu-io/aru@v0.62.0 <command>` runs it
+anything Go-shaped will build. `aru` here is v0.63.0, the version this tree was
+last measured with; `go run github.com/arandu-io/aru@v0.63.0 <command>` runs it
 without installing anything.
 
 ```sh
 export GOWORK=off
-aru view:build                       # 34 views compiled, then the stylesheet
+aru view:build                       # 29 views compiled, then the stylesheet
 docker compose up -d postgres        # or skip it and use SQLite, below
 cp .env.example .env && aru key:generate
 aru migrate && aru db:seed
@@ -109,26 +109,31 @@ question, which is correct and is not what the guard is for.
 
 **2. `aru view:build` fails with `does not parse -- this is a bug in the
 generator`.** Your `aru` is older than this tree. Run the version it was
-measured with, `go run github.com/arandu-io/aru@v0.62.0 view:build`, rather
+measured with, `go run github.com/arandu-io/aru@v0.63.0 view:build`, rather
 than working around the message — it is telling the truth about the generator
 it has. A binary built by `go install` or `go run` reports its version as
 `dev`, so name the version rather than asking `aru --version`.
 
 **3. A CSRF failure on a form you posted by hand.** The hidden field is
 `_token`, and the token is bound to the cookie the form page set. Read it out
-of the form and send the cookie back:
+of the form, send the cookie back, and say which page the form was on:
 
 ```sh
 curl -s -c jar -o form.html http://127.0.0.1:8080/auth/login
 TOK=$(grep -oE 'name="_token" value="[^"]*"' form.html | sed -E 's/.*value="([^"]*)".*/\1/')
-curl -s -b jar -c jar -o /dev/null -w '%{http_code}\n' -X POST \
+curl -s -b jar -c jar -o /dev/null -w '%{http_code} %{redirect_url}\n' -X POST \
+  -H 'Referer: http://127.0.0.1:8080/auth/login' \
   --data-urlencode "_token=$TOK" --data-urlencode 'email=admin@example.com' \
   --data-urlencode 'password=arandu-demo-password' http://127.0.0.1:8080/auth/login
 ```
 
-`303` is the success. `419` is the missing or stale token, `401` is the wrong
-credentials — the two are told apart on purpose. Measured against
-`go run . serve` on a seeded SQLite database.
+`303` to `/` is the success. Wrong credentials are a `303` too, back to the
+Referer, `/auth/login`, with the message in the flash for the form to draw --
+the router answers a refused sign-in the way it answers any refused form. That
+is why the command sends a Referer: without one the refusal goes to `/` as well,
+and the two read the same. `419` is the missing or stale token, and it is told
+apart from a wrong password on purpose. Measured against `go run . serve` on a
+seeded SQLite database.
 
 ## What this deployment is not
 

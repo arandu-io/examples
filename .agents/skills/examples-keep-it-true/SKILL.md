@@ -35,12 +35,13 @@ aru doctor && bash tests/test-layout-guard.sh
 
 **3. Move `aru` with it, and say which one.** The generator, the view compiler
 and the doctor move with the framework, and a stale binary fails in a way that
-reads like a bug in this tree. This tree was last measured with `aru` v0.62.0,
-and `go run github.com/arandu-io/aru@v0.62.0 doctor` runs that version without
+reads like a bug in this tree. This tree was last measured with `aru` v0.63.0,
+and `go run github.com/arandu-io/aru@v0.63.0 doctor` runs that version without
 touching the one installed. A build by `go install` or `go run` reports its
 version as `dev`, so the version is the one you named, not what `aru --version`
-prints. `.github/workflows/ci.yml` installs v0.58.0, which predates
-`import-not-canonical` and passes on a tree that v0.62.0 warns about.
+prints. Three files name it and move together: `.github/workflows/ci.yml`,
+`arandu.toml` and the Dockerfile, and `TestBuildEntrypointsUseTheReleasedCLI`
+fails when one of them is left behind.
 
 **4. Read what the doctor says about imports.** A framework release can move a
 symbol from its bridge packages to hesape. `aru doctor` names each file that
@@ -64,11 +65,11 @@ in `README.md`, in `AGENTS.md`, in this directory, and in the comments of
 `tests/test-layout-guard.sh`, which states two of them about itself.
 
 ```sh
-find resources/views -name '*.kyse.go' | wc -l                            # 34
+find resources/views -name '*.kyse.go' | wc -l                            # 29
 find . -name '*_test.go' -not -path './storage/*' | wc -l                 # 50
-grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l      # 195
-find . -name '*.go' -not -path './storage/*' -not -name '*_test.go' -exec cat {} + | wc -l   # 17592
-find . -name '*_test.go' -not -path './storage/*' -exec cat {} + | wc -l  # 9525
+grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l      # 200
+find . -name '*.go' -not -path './storage/*' -not -name '*_test.go' -exec cat {} + | wc -l   # 16870
+find . -name '*_test.go' -not -path './storage/*' -exec cat {} + | wc -l  # 9766
 ls app/Policies | wc -l                                                   # 7
 grep -E '^type .*Policy struct' app/Policies/*.go | wc -l                 # 8
 ```
@@ -83,32 +84,30 @@ ARANDU_TENANT_ID=11111111-1111-4111-8111-111111111111 \
 GOWORK=off go run . routes | grep -cE '^  (GET|POST|PUT|PATCH|DELETE)'     # 61
 ```
 
-The README's figures were checked against these: 17,592 lines of production
-code, 9,525 of test, 50 test files and eight policies in seven files.
+The README's figures were checked against these: 16,870 lines of production
+code, 9,766 of test, 50 test files and eight policies in seven files.
 
 ## What is currently stale
 
 Found by measurement, not by reading. Fix them where you touch them; each one is
 a place the repository says something it can no longer show.
 
-- **`routes/web.go`, the `upgradable` doc comment.** Its last paragraph states
-  that `APP_ENV=dev` adds a live-reload recorder with no `Unwrap`, so "the
-  socket is a production and staging feature". Measured against
-  `framework v0.51.0` with `APP_ENV=dev`: a signed-in handshake to
-  `/app/examples-app-key` answers `101`. The paragraph outlived the defect.
 - **`bootstrap/console.go:31`.** "tenantID is the tenant this deployment logs
   into", above `func Tenant()`. It is the leading line of an exported symbol's
   doc comment, so it publishes.
-- **`.github/workflows/ci.yml`, the gofmt comment.** It says `testdata/` holds
-  "a file that does not parse -- that one is the test". The only fixture here,
-  `tests/Unit/testdata/missing_grant/main.go`, parses and is gofmt-clean; it
-  fails at type-check, which is what `TestRepositoryWithoutGrantDoesNotCompile`
-  asserts.
-- **`.github/workflows/ci.yml`, the `aru` version.** It installs v0.58.0, behind
-  the v0.62.0 this tree answers to.
 - **`CONTRIBUTING.md` and `Taskfile.yml`** give the gofmt command without
   `-not -path '*/testdata/*'`. CI gives it with. It happens to pass either way
   today, which is why it has survived.
+
+What `aru doctor` still reports is not this application's:
+
+- **Eleven warnings, all in `app/Http/Controllers/Auth`.** Ten handlers the
+  kit published read the form with `r.PostFormValue` (`input-read-by-hand`) and
+  `page.go` imports `html/template` to mark the QR code trusted
+  (`html-template-in-app`). `ui auth` v0.20.0 leaves the same eleven in a
+  project `aru new` has just created. Rewriting them here would be undone by
+  the next `auth --force`; the fix belongs in `arandu-io/ui`, and arrives here
+  with the release that carries it.
 
 One thing was generated and then cut back on purpose:
 
