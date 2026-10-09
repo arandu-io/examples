@@ -4,9 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"time"
-
-	"github.com/arandu-io/framework/foundation/bootstrap"
-	hconfig "github.com/arandu-io/hesape/config"
 )
 
 // SessionDriver is the cache store session state is kept in.
@@ -30,8 +27,16 @@ const (
 	SessionKV SessionDriver = "kv"
 )
 
-// Session is where session state is kept, and how the cookie carrying it is
-// scoped.
+// Session is where session state is kept, how long it lasts, and how the cookie
+// that carries its id is scoped.
+//
+// Whether the cookie is HTTPS-only is not here. The framework's loader reads
+// SESSION_SECURE_COOKIE into Config.Framework.Session.Secure, and that one value
+// is what the session store, the CSRF guest cookie and the flash cookie are all
+// built with: three cookies that disagreed about Secure would be a session that
+// works and a form that answers 419, or the other way round. The name of the
+// cookie is not here either, because it is not configurable: the CSRF token is
+// bound to the session the cookie of that name carries.
 type Session struct {
 	Driver SessionDriver
 
@@ -43,18 +48,9 @@ type Session struct {
 	// can be replayed.
 	CSRFTTL time.Duration
 
-	// Cookie is the name of the cookie carrying the session id.
-	Cookie string
-
 	// Path and Domain scope the cookie.
 	Path   string
 	Domain string
-
-	// Secure marks the cookie HTTPS-only. It follows the environment rather than
-	// a variable: a cookie that is Secure in development never reaches a browser
-	// on http://localhost, and one that is not in production is one network away
-	// from being read.
-	Secure bool
 
 	// SameSite is Lax by default, which keeps the session out of cross-site
 	// form posts while leaving ordinary navigation working.
@@ -68,7 +64,7 @@ type Session struct {
 // has one reader -- loadCache -- and a driver that names a store the cache
 // configuration did not define is refused here, at the boot, rather than at the
 // first request that finds no session where one was written.
-func loadSession(base bootstrap.Configuration, cache Cache) (Session, error) {
+func loadSession(cache Cache) (Session, error) {
 	driver := SessionDriver(env("SESSION_DRIVER", string(SessionMemory)))
 	switch driver {
 	case SessionMemory:
@@ -79,15 +75,22 @@ func loadSession(base bootstrap.Configuration, cache Cache) (Session, error) {
 	default:
 		return Session{}, fmt.Errorf("SESSION_DRIVER has unsupported value %q; expected memory or kv", driver)
 	}
+	// SESSION_SECURE is retired and refused rather than ignored, for the
+	// reason a retired MAIL_ variable is: SESSION_SECURE=false written for a
+	// deployment served over http would otherwise be dropped in silence, and
+	// the first sign would be every session disappearing between two
+	// requests. SESSION_COOKIE is not refused, though nothing reads it either:
+	// every .env copied from an older .env.example carries
+	// SESSION_COOKIE=arandu_session, a line that never changed anything.
+	if env("SESSION_SECURE", "") != "" {
+		return Session{}, fmt.Errorf("SESSION_SECURE is retired; remove it. " +
+			"SESSION_SECURE_COOKIE decides the Secure attribute: set it to false only to serve over http outside APP_ENV=dev")
+	}
 	ttl, err := envSeconds("SESSION_TTL", 12*time.Hour)
 	if err != nil {
 		return Session{}, err
 	}
 	csrfTTL, err := envSeconds("CSRF_TTL", 2*time.Hour)
-	if err != nil {
-		return Session{}, err
-	}
-	secure, err := envBool("SESSION_SECURE", !base.App.Env.Is(hconfig.EnvDev))
 	if err != nil {
 		return Session{}, err
 	}
@@ -99,10 +102,8 @@ func loadSession(base bootstrap.Configuration, cache Cache) (Session, error) {
 		// would be a second answer to how long a login lasts.
 		TTL:      ttl,
 		CSRFTTL:  csrfTTL,
-		Cookie:   env("SESSION_COOKIE", "arandu_session"),
 		Path:     env("SESSION_PATH", "/"),
 		Domain:   env("SESSION_DOMAIN", ""),
-		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	}, nil
 }

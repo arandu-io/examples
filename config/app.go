@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/arandu-io/framework/foundation/bootstrap"
@@ -94,7 +93,7 @@ func From(base bootstrap.Configuration) (Config, error) {
 		return Config{}, err
 	}
 	// After the cache, because the session names one of its stores.
-	session, err := loadSession(base, cache)
+	session, err := loadSession(cache)
 	if err != nil {
 		return Config{}, err
 	}
@@ -159,21 +158,6 @@ func env(key, fallback string) string {
 		return v
 	}
 	return fallback
-}
-
-func envBool(key string, fallback bool) (bool, error) {
-	v, ok := os.LookupEnv(key)
-	if !ok || v == "" {
-		return fallback, nil
-	}
-	switch strings.ToLower(v) {
-	case "1", "true", "yes", "on":
-		return true, nil
-	case "0", "false", "no", "off":
-		return false, nil
-	default:
-		return false, fmt.Errorf("%s must be a boolean, got %q", key, v)
-	}
 }
 
 func envInt(key string, fallback int) (int, error) {

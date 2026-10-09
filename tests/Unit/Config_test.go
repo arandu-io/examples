@@ -13,14 +13,80 @@ import (
 	appconfig "github.com/arandu-io/examples/config"
 )
 
-func TestConfigurationRejectsAnInvalidBoolean(t *testing.T) {
+// TestTheRetiredSessionVariableIsRefusedAtBoot: SESSION_SECURE was read by
+// this application, and nothing reads it now. A deployment that still writes
+// it is told which variable replaced it, rather than having its decision
+// dropped without a word. Left empty, as .env.example used to write it, it is
+// no decision and is not refused -- and neither is SESSION_COOKIE, which an
+// older .env.example wrote beside it and which never changed anything.
+func TestTheRetiredSessionVariableIsRefusedAtBoot(t *testing.T) {
 	clearParsedConfiguration(t)
-	t.Setenv("SESSION_SECURE", "sometimes")
+	t.Setenv("SESSION_SECURE", "false")
 
 	_, err := appconfig.From(configurationBase())
 
-	if err == nil || err.Error() != `SESSION_SECURE must be a boolean, got "sometimes"` {
-		t.Fatalf("error = %v, want the invalid SESSION_SECURE value", err)
+	if err == nil {
+		t.Fatal("the boot accepted SESSION_SECURE=false, a variable nothing reads")
+	}
+	for _, want := range []string{"SESSION_SECURE is retired", "SESSION_SECURE_COOKIE"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q, want it to contain %q", err, want)
+		}
+	}
+
+	t.Setenv("SESSION_SECURE", "")
+	t.Setenv("SESSION_COOKIE", "arandu_session")
+	if _, err := appconfig.From(configurationBase()); err != nil {
+		t.Errorf("the boot refused the two session lines an older .env.example wrote: %v", err)
+	}
+}
+
+// TestTheSessionCookieIsSecureUnlessTheEnvironmentIsDev reads the one decision
+// of the Secure attribute through the configuration a boot loads.
+//
+// The framework's loader is its only reader: SESSION_SECURE_COOKIE when it is
+// written, and otherwise Secure in every environment except dev. This
+// application reads no variable of its own for it -- the session store, the
+// CSRF guest cookie and the flash cookie all take Config.Framework.Session.Secure
+// -- so what is asserted is that value, under the three ways a deployment can
+// answer: by naming dev, by naming anything else, and by declaring the variable.
+//
+// APP_URL takes no part. Behind a proxy that ends TLS the address this process
+// knows is http, and the browser's connection is https all the same.
+func TestTheSessionCookieIsSecureUnlessTheEnvironmentIsDev(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		appEnv string
+		appURL string
+		secure string
+		want   bool
+	}{
+		{name: "dev, named", appEnv: "dev", appURL: "http://localhost:8080", want: false},
+		{name: "dev, with an https address", appEnv: "dev", appURL: "https://localhost:8443", want: false},
+		{name: "staging over http, nothing declared", appEnv: "staging", appURL: "http://app.internal:8080", want: true},
+		{name: "prod over http, nothing declared", appEnv: "prod", appURL: "http://app.internal:8080", want: true},
+		{name: "prod, declared false to serve over http", appEnv: "prod", appURL: "http://app.example.test", secure: "false", want: false},
+		{name: "dev, declared true", appEnv: "dev", appURL: "https://localhost:8443", secure: "true", want: true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			prepareConfigurationLoad(t)
+			t.Setenv("APP_ENV", c.appEnv)
+			t.Setenv("APP_URL", c.appURL)
+			t.Setenv("SESSION_SECURE_COOKIE", c.secure)
+			// APP_DEBUG follows APP_ENV when nothing writes it, and one left in
+			// the shell refuses the named-production case -- an error about a
+			// variable no case here sets, instead of the answer being asked for.
+			t.Setenv("APP_DEBUG", "")
+
+			cfg, err := appconfig.Load()
+			if err != nil {
+				t.Fatalf("loading the configuration: %v", err)
+			}
+			if got := cfg.Framework.Session.Secure; got != c.want {
+				t.Errorf("Framework.Session.Secure = %t, want %t (APP_ENV=%q APP_URL=%q SESSION_SECURE_COOKIE=%q)",
+					got, c.want, c.appEnv, c.appURL, c.secure)
+			}
+		})
 	}
 }
 
@@ -204,8 +270,8 @@ func TestConfigurationUsesDefaultsForExplicitlyEmptyValues(t *testing.T) {
 		t.Fatalf("From: %v", err)
 	}
 
-	if cfg.Session.Secure || cfg.Session.TTL != 12*time.Hour || cfg.Session.CSRFTTL != 2*time.Hour {
-		t.Errorf("session defaults = secure %t, TTL %s, CSRF TTL %s", cfg.Session.Secure, cfg.Session.TTL, cfg.Session.CSRFTTL)
+	if cfg.Session.TTL != 12*time.Hour || cfg.Session.CSRFTTL != 2*time.Hour {
+		t.Errorf("session defaults = TTL %s, CSRF TTL %s", cfg.Session.TTL, cfg.Session.CSRFTTL)
 	}
 	// Zero on all three, and the zero is the assertion rather than an omission:
 	// the pool numbers belong to the adapter, which reads zero as its own
@@ -244,7 +310,7 @@ func clearParsedConfiguration(t *testing.T) {
 	for _, name := range []string{
 		"CACHE_STORE", "SESSION_DRIVER", "QUEUE_CONNECTION", "FILESYSTEM_DISK",
 		"REDIS_URL",
-		"SESSION_SECURE",
+		"SESSION_SECURE", "SESSION_SECURE_COOKIE", "SESSION_COOKIE",
 		"SESSION_TTL", "CSRF_TTL",
 		"DB_MAX_OPEN_CONNS", "DB_MAX_IDLE_CONNS", "DB_CONN_MAX_LIFETIME",
 		"CACHE_TTL",

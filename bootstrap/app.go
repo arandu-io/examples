@@ -132,11 +132,13 @@ func Build(cfg appconfig.Config, db *database.DB) (App, error) {
 	fw := cfg.Framework
 
 	// The CSRF token is bound to the session, and a visitor without one is bound
-	// to a random id in a signed cookie of its own. That cookie carries Secure
-	// exactly when the session cookie does: over plain HTTP in development the
-	// browser would never send a Secure one back, and every form a guest
-	// submits would answer 419.
-	csrf := session.NewCSRF(fw.App.Key, cfg.Session.CSRFTTL).Secure(cfg.Session.Secure)
+	// to a random id in a signed cookie of its own. That cookie, the session
+	// cookie below and the kernel's flash cookie carry Secure from one value,
+	// fw.Session.Secure: SESSION_SECURE_COOKIE when it is written, and otherwise
+	// Secure in every environment but dev. Over plain HTTP in development the
+	// browser would never send a Secure one back, and every form a guest submits
+	// would answer 419.
+	csrf := session.NewCSRF(fw.App.Key, cfg.Session.CSRFTTL).Secure(fw.Session.Secure)
 
 	// Every cache store this application has, by name. CACHE_STORE names the
 	// one the rate limit below counts in, and a name nothing defines is refused
@@ -148,7 +150,7 @@ func Build(cfg appconfig.Config, db *database.DB) (App, error) {
 	if err != nil {
 		return App{}, err
 	}
-	sessions := security.NewSessionStore(fw.App.Key, cfg.Session.TTL, cfg.Session.Secure, backend)
+	sessions := security.NewSessionStore(fw.App.Key, cfg.Session.TTL, fw.Session.Secure, backend)
 
 	// The rate limit counts in a store rather than in this process, which is the
 	// difference between one budget and one budget per replica -- on the
@@ -374,7 +376,7 @@ func Build(cfg appconfig.Config, db *database.DB) (App, error) {
 			// other, never both -- they answer the same path.
 			authui.New(userService, twoFactorService, emailCodes, sessions, csrf,
 				mailer, fw.App.Key, cfg.App.Name,
-				authui.FixedTenant(cfg.Auth.Tenant), cfg.Session.Secure),
+				authui.FixedTenant(cfg.Auth.Tenant), cfg.Framework.Session.Secure),
 			// The outbox table, and the relay built above that empties it. A
 			// module that records domain events stores them in the same
 			// transaction as the write, and this is what brings the table those
