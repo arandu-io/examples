@@ -1,6 +1,6 @@
 ---
 name: examples-keep-it-true
-description: Change this Arandu (Go) example application, or move it onto a newer framework, without quietly retiring something it demonstrates. Use when the request is to "upgrade the framework", "bump the dependency", "go get -u", "update the example", "the framework changed and this broke", "add a feature to the blog", "add a page", "regenerate the module", "fix the README numbers", "this comment is out of date", "a test started failing after the upgrade", or when a version in go.mod, a count written in prose, or a doc comment that describes behaviour is involved. Covers the upgrade procedure, the numbers that have to be re-measured together, the claims currently known to be stale, and the rule that a demonstration without a test named after it is gone.
+description: Change this Arandu (Go) example application, or move it onto a newer framework, without quietly retiring something it demonstrates. Use when the request is to "upgrade the framework", "bump the dependency", "go get -u", "update the example", "the framework changed and this broke", "add a feature to the blog", "add a page", "regenerate the module", "fix the README numbers", "this comment is out of date", "a test started failing after the upgrade", "import-not-canonical", "which package is Grant imported from", "a rejected form", or when a version in go.mod, a count written in prose, or a doc comment that describes behaviour is involved. Covers the upgrade procedure, the numbers that have to be re-measured together, the claims currently known to be stale, and the rule that a demonstration without a test named after it is gone.
 license: MIT
 ---
 
@@ -21,84 +21,106 @@ export GOWORK=off
 go list -m -f '{{if not .Indirect}}{{.Path}} {{.Version}}{{end}}' all | grep -v '^$'
 ```
 
-Today that is `framework v0.37.0`, `hesape v0.14.0`, the `pgx` and `sqlite`
-connectors at `v0.5.0`, `joaju v0.4.0` and `kyse v0.12.1`.
+Today that is `framework v0.51.0`, `hesape v0.50.1`, the `pgx` and `sqlite`
+connectors at `v0.11.0`, `joaju v0.7.1` and `kyse v0.30.0`.
 
 **2. Bump one at a time and run the gates between.** A single `go get -u` across
 all six turns one legible failure into a bisect.
 
 ```sh
 go get github.com/arandu-io/framework@vX.Y.Z && go mod tidy
-aru model:build && aru view:build && go build ./... && go vet ./... && go test -race -count=1 ./...
+aru model:build --check && aru view:build && go build ./... && go vet ./... && go test -race -count=1 ./...
 aru doctor && bash tests/test-layout-guard.sh
 ```
 
-**3. Upgrade `aru` too, and from source.** The generator and the view compiler
-move with the framework, and a stale binary fails in a way that reads like a bug
-in the templates — the Homebrew `aru 0.29.1` currently cannot compile
-`resources/views/auth/login.kyse.go` while a build from the `arandu-io/aru`
-working tree compiles all 29. `aru --version` is the first thing to check when
-`view:build` complains about the generator.
+**3. Move `aru` with it, and say which one.** The generator, the view compiler
+and the doctor move with the framework, and a stale binary fails in a way that
+reads like a bug in this tree. This tree was last measured with `aru` v0.62.0,
+and `go run github.com/arandu-io/aru@v0.62.0 doctor` runs that version without
+touching the one installed. A build by `go install` or `go run` reports its
+version as `dev`, so the version is the one you named, not what `aru --version`
+prints. `.github/workflows/ci.yml` installs v0.58.0, which predates
+`import-not-canonical` and passes on a tree that v0.62.0 warns about.
 
-**4. Read the doc comments that describe the framework's behaviour, not just the
+**4. Read what the doctor says about imports.** A framework release can move a
+symbol from its bridge packages to hesape. `aru doctor` names each file that
+still spells it the old way as `import-not-canonical`, and
+`aru imports:catalog` prints the path every exported symbol should be named by
+for the version `go.mod` requires. A symbol the framework only re-exports goes
+to hesape (`auth.Grant`, `auth.Tenant`, `database.DB`, `hhttp.Context`,
+`log.For`); what the framework declares or wraps keeps its path
+(`fhttp.Router`, `security.SessionStore`, `data.Repository`). The catalog has no
+mode that rewrites the files, so the move is a change you make, and the doc
+comments and this directory spell the same names as the code afterwards.
+
+**5. Read the doc comments that describe the framework's behaviour, not just the
 ones over the code you touched.** This is the step that gets skipped. Several
 comments here are the record of a framework defect and its workaround, and the
 defect being fixed upstream is exactly the event that makes them wrong — with
 nothing failing.
 
-**5. Re-measure every number written in prose, all of them, together.** They are
-in `README.md`, in `AGENTS.md`, and in the comments of
+**6. Re-measure every number written in prose, all of them, together.** They are
+in `README.md`, in `AGENTS.md`, in this directory, and in the comments of
 `tests/test-layout-guard.sh`, which states two of them about itself.
 
 ```sh
-find resources/views -name '*.kyse.go' | wc -l                            # 29
-find . -name '*_test.go' -not -path './storage/*' | wc -l                 # 32
-grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l      # 127
-find . -name '*.go' -not -path './storage/*' -not -name '*_test.go' -exec cat {} + | wc -l   # 13253
-find . -name '*_test.go' -not -path './storage/*' -exec cat {} + | wc -l  # 5469
-ls app/Policies | wc -l                                                   # 6
-GOWORK=off go run . routes | grep -cE '^  (GET|POST|PUT|PATCH|DELETE)'    # 51
+find resources/views -name '*.kyse.go' | wc -l                            # 34
+find . -name '*_test.go' -not -path './storage/*' | wc -l                 # 50
+grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l      # 195
+find . -name '*.go' -not -path './storage/*' -not -name '*_test.go' -exec cat {} + | wc -l   # 17592
+find . -name '*_test.go' -not -path './storage/*' -exec cat {} + | wc -l  # 9525
+ls app/Policies | wc -l                                                   # 7
+grep -E '^type .*Policy struct' app/Policies/*.go | wc -l                 # 8
 ```
 
-The README's figures were checked against these and are right: 13,253 lines of
-production code, 5,500 of test (5,469, rounded), 32 test files, six policies,
-and hesape's 47 components — `ls -d */ | wc -l` in that repository, which counts
-components and not the 153 Go packages under them.
+The route count needs a configuration to boot, and these are the values the
+tests use:
+
+```sh
+APP_ENV=dev APP_KEY=0123456789abcdef0123456789abcdef \
+DATABASE_URL="sqlite://$(mktemp -d)/routes.sqlite" \
+ARANDU_TENANT_ID=11111111-1111-4111-8111-111111111111 \
+GOWORK=off go run . routes | grep -cE '^  (GET|POST|PUT|PATCH|DELETE)'     # 61
+```
+
+The README's figures were checked against these: 17,592 lines of production
+code, 9,525 of test, 50 test files and eight policies in seven files.
 
 ## What is currently stale
 
 Found by measurement, not by reading. Fix them where you touch them; each one is
 a place the repository says something it can no longer show.
 
-- **`routes/web.go`, the `upgradable` doc comment.** It states that
-  `APP_ENV=dev` adds a live-reload recorder with no `Unwrap`, so "the socket is
-  a production and staging feature". Measured against `framework v0.37.0`: with
-  live reload active — `arandu-reload.js` is in the page — a signed-in handshake
-  to `/app/examples-app-key` returns `101` and
-  `pusher:connection_established`. The paragraph outlived the defect.
-- **`bootstrap/console.go:149`.** "open connects using whatever `DB_CONNECTION`
-  says", above `func Open`. That variable appears nowhere else in the
-  repository; the configuration reads `DATABASE_URL`, and `.env.example` says
-  the `DB_*` names are refused rather than ignored. It is a leading paragraph of
-  an exported symbol's doc comment, so it publishes.
-- **`bootstrap/console.go:30`.** "tenantID is the tenant this deployment logs
-  into", above `func Tenant()`.
-- **The Alpine tag.** `resources/views/layouts/app.kyse.go:62` and
-  `resources/views/admin/layout.kyse.go:100` link `alpine.min.js`; the framework
-  registers no such asset, so `view.URL` emits
-  `/_arandu/assets/missing/alpine.min.js` and every page 404s once. No view in
-  the repository uses a single Alpine directive.
-  `TestTheOnlyScriptsServedAreTheEmbeddedOnes` checks the `/_arandu/assets/`
-  prefix, which this URL has, so it passes — its own comment says a tag pointing
-  anywhere else "is a 404", and this is the 404 it lets through.
+- **`routes/web.go`, the `upgradable` doc comment.** Its last paragraph states
+  that `APP_ENV=dev` adds a live-reload recorder with no `Unwrap`, so "the
+  socket is a production and staging feature". Measured against
+  `framework v0.51.0` with `APP_ENV=dev`: a signed-in handshake to
+  `/app/examples-app-key` answers `101`. The paragraph outlived the defect.
+- **`bootstrap/console.go:31`.** "tenantID is the tenant this deployment logs
+  into", above `func Tenant()`. It is the leading line of an exported symbol's
+  doc comment, so it publishes.
 - **`.github/workflows/ci.yml`, the gofmt comment.** It says `testdata/` holds
   "a file that does not parse -- that one is the test". The only fixture here,
   `tests/Unit/testdata/missing_grant/main.go`, parses and is gofmt-clean; it
   fails at type-check, which is what `TestRepositoryWithoutGrantDoesNotCompile`
   asserts.
+- **`.github/workflows/ci.yml`, the `aru` version.** It installs v0.58.0, behind
+  the v0.62.0 this tree answers to.
 - **`CONTRIBUTING.md` and `Taskfile.yml`** give the gofmt command without
   `-not -path '*/testdata/*'`. CI gives it with. It happens to pass either way
   today, which is why it has survived.
+
+Two things look stale and are not:
+
+- **The 422 entry in `resources/views/layouts/app.kyse.go`'s `htmx-config`.**
+  It is for the sign-in screens the authentication kit published, which still
+  answer a refused code or password with a 422 fragment of their own form. The
+  blog's own forms never answer that way, and the layout says so. It leaves when
+  the kit's screens answer through the router.
+- **`CommentController`'s other six actions and the four `comments/` views.**
+  `aru make:module` generated them and they compile, but `routes/web.go`
+  registers only `Store`, under `posts.comments`, and says why: the thread hangs
+  off the post, and a top-level `/comments` would be a second address for it.
 
 ## Adding to the application
 
@@ -112,26 +134,37 @@ itself. Hand-writing the next one quietly retires it.
 **2. Give the claim a test named after it.** Every demonstration here has one —
 `TestAGuestIsRefusedTheDraftBehindAKnownAddress`,
 `TestTheSocketCountsAreTheOperatorsAndNotAReaders`,
-`TestTheConsoleSeesTheQueriesOfTheRequest`. A claim without a test is a
+`TestARejectedPostGoesBackToTheFormWithTheMessage`. A claim without a test is a
 paragraph, and a paragraph is what goes stale. Name it as a sentence about what
 the application does.
 
-**3. Write the reason above the code, in terms of the code.** The comments are
+**3. Let the router answer a rejected form.** The action returns the service's
+`validation.Errors` as they are. The router sends a page back to the form with
+the messages and what was typed in the flash, answers htmx with `HX-Redirect`,
+and answers a client that asked for JSON with a 422 problem document. The page
+draws them because `navigation.page` in `app/Http/Controllers/chrome.go` puts
+the flash on every `view.Page`, and each kyse input is handed the page. A
+controller that draws the form again with a 422 is a second way to answer the
+same thing, and `tests/Feature/RejectedForms_test.go` is what it would break.
+
+**4. Write the reason above the code, in terms of the code.** The comments are
 the payload here. A doc comment documents its symbol and nothing beyond it: no
 date, no decision-record number, no other repository's name — `pkg.go.dev`
 publishes it, and its reader is a developer, not an archaeologist.
 
-**4. Put the test in the right suite.** `tests/Feature` boots the application
+**5. Put the test in the right suite.** `tests/Feature` boots the application
 and makes a request; `tests/Unit` checks one thing without booting anything.
 External `_test` package, capitalised directory, lowercase package clause. The
-`_internal_test.go` exception exists and nothing here takes it.
+one `_internal_test.go` is `app/Http/Controllers/Auth/redaction_internal_test.go`,
+and it is there because it needs unexported redaction helpers.
 `bash tests/test-layout-guard.sh` checks all four rules.
 
-**5. A fixture that writes behind the policy says why.** `auth.SystemGrant`
-carries a `//arandu:system-grant <reason>` line directly above it — eleven of
-them in this repository, in the three seeders and in three test files, each with
-its own sentence. A twelfth without a reason is the beginning of the habit this
-application argues against.
+**6. A fixture that writes behind the policy says why.** `auth.SystemGrant`
+carries a `//arandu:system-grant <reason>` line directly above it — nineteen in
+production code and seeders (`app/Services/TwoFactorService.go`,
+`app/Services/UserService.go` and the three content seeders), and nine more in
+five test files, each with its own sentence. One without a reason is the
+beginning of the habit this application argues against.
 
 ## What may be a dependency here, and what may not
 

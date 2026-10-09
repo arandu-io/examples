@@ -1,15 +1,15 @@
 ---
 name: examples-find-the-pattern
-description: Find how something is actually done in a complete, working Arandu (Go) application, and lift the shape into another one. Use when the request is to "show me an example", "how does Arandu do X", "is there a reference implementation", "how do I write a policy / a repository / a service / a controller / a view", "how is CSRF wired", "how does a guest read a public page", "how do I authorize a read", "where is the sitemap", "how do I count something and show it", "what does a real bootstrap look like", or "copy this into my app". Covers the question-to-file table, what each demonstration proves and the test named after it, and what breaks when a snippet is lifted without the paragraph above it.
+description: Find how something is actually done in a complete, working Arandu (Go) application, and lift the shape into another one. Use when the request is to "show me an example", "how does Arandu do X", "is there a reference implementation", "how do I write a policy / a repository / a service / a controller / a view", "how is CSRF wired", "how does a guest read a public page", "how do I authorize a read", "where is the sitemap", "how do I count something and show it", "what does a real bootstrap look like", "how is a rejected form answered", "which package do I import Grant from", or "copy this into my app". Covers the question-to-file table, what each demonstration proves and the test named after it, and what breaks when a snippet is lifted without the paragraph above it.
 license: MIT
 ---
 
 # Reading this application to find an answer
 
-This is a blog with 51 routes, 29 views and 127 tests, and every file in it is
-an answer to a question somebody asked. Finding the answer is a lookup, not a
-search, and the point of the lookup is that the file also says *why* the shape
-is what it is.
+This is a blog with 61 routes (32 of them its own), 34 views and 195 test
+functions, and every file in it is an answer to a question somebody asked.
+Finding the answer is a lookup, not a search, and the point of the lookup is
+that the file also says *why* the shape is what it is.
 
 Run the gates once before reading, because a stale build is a confusing read:
 
@@ -23,15 +23,18 @@ export GOWORK=off && aru view:build && go build ./...
 | --- | --- |
 | what does the whole wiring look like | `bootstrap/app.go` — one function, top to bottom, no container |
 | how is a route declared, named and guarded | `routes/web.go`; `routes/admin.go` for a whole area behind a group |
-| how does a policy decide | `app/Policies/PostPolicy.go` — the longest of the six, and the one with a guest in it |
-| how does a repository take a Grant | `app/Repositories/PostRepository.go:47` (`Find`) and `:76` (`List`) |
-| how does a service sit between them | `app/Services/PostService.go:60` — takes an `auth.Subject`, asks the policy, passes the Grant down |
-| how does a controller assemble a page | `app/Http/Controllers/PostController.go:254` (`Show`), `:332` (`Store`) |
-| how is a form validated | `app/Http/Requests/PostRequest.go` — `StorePost.Validate` returns `validation.Errors` |
+| how does a policy decide | `app/Policies/PostPolicy.go` — one of seven policy files, and the one with a guest in it |
+| how does a repository take a Grant | `app/Repositories/PostRepository.go:68` (`Find`) and `:97` (`List`) |
+| how does a model replace a repository for routine CRUD | `app/Models/Category.go`, and the typed query `aru model:build` writes beside it in `app/Models/CategoryQuery.go`; `app/Services/CategoryService.go` reaches it as `models.Categories(s.db)` |
+| how does a service sit between them | `app/Services/PostService.go:60` (`Get`) — takes an `auth.Subject`, asks the policy, passes the Grant down, asks again about the row it read |
+| how does a controller assemble a page | `app/Http/Controllers/PostController.go:245` (`Show`), `:316` (`Store`) |
+| how is a form validated | `app/Http/Requests/PostRequest.go` — `StorePost.Validate` returns `validation.Errors`, and `PostService.Create` calls it (`app/Services/PostService.go:31`) before it asks the policy |
+| how is a rejected form answered | by the router, not by the controller. `PostController.Store` returns the service's error as it is; the page goes back to the form with the messages and what was typed in the flash, htmx gets `HX-Redirect`, JSON gets a 422 problem document. `navigation.page` in `app/Http/Controllers/chrome.go` hands every page that flash, and `tests/Feature/RejectedForms_test.go` holds all three answers |
 | how is a view written and typed | `resources/views/posts/show.kyse.go`, and `resources/views/layouts/app.kyse.go` for the layout |
-| how is a schema change written | `database/migrations/`, seven of them, oldest first |
+| how is a schema change written | `database/migrations/`, ten of them plus the registry, oldest first |
 | how is a fixture written that has no request behind it | `database/seeders/PostSeeder.go:63` — `SystemGrant` with `//arandu:system-grant` and a reason |
-| how does a command reach the same application a request does | `bootstrap/console.go`, `Dispatch` |
+| how does a command reach the same application a request does | `bootstrap/console.go:42`, `Dispatch` |
+| which package a symbol is imported from | `aru imports:catalog`. A symbol the framework only re-exports is named from hesape (`auth.Grant`, `database.DB`, `hhttp.Context`); what the framework declares or wraps keeps its path (`fhttp.Router`, `security.SessionStore`). `aru doctor` reports `import-not-canonical` otherwise |
 | what does a test of a claim look like | `tests/Unit/GrantRequired_test.go`, the whole file |
 
 ## The security demonstrations, and what each one proves
@@ -71,13 +74,14 @@ answers both "may this be served" and "may this be listed".
 `SocketsController` reads process-wide gauges, which are not scoped to a tenant.
 It is a controller of its own, with `SocketMetricsPolicy` and the action
 `SocketInspectAll` on `AllTenantSockets` — reachable from no other screen. The
-authorization call in `Index` is the only thing between a session and every
-tenant's numbers, because the registry it reads is a map and takes no Grant.
+authorization call in `Index`, at `app/Http/Controllers/SocketsController.go:78`,
+is the only thing between a session and every tenant's numbers, because the
+registry it reads is a map and takes no Grant.
 `TestTheSocketCountsAreTheOperatorsAndNotAReaders`.
 
 **The tenant never arrives with the request.** `withSubject` in `routes/web.go`
 puts the session's subject on the context and nothing else; joaju answers 401
-when there is none. `tests/Feature/TenantScoping_test.go` is 513 lines of the
+when there is none. `tests/Feature/TenantScoping_test.go` is 988 lines of the
 other tenant seeing nothing.
 
 **A code is spent rather than signed.** Address verification and password reset
@@ -103,7 +107,7 @@ subject, which is the half a project has to get right.
 
 **The debug console, through the real pipeline.**
 `middleware.Observe(cfg.App.IsDev(), fw.Observability.TracingSecret, k.Recorder())`
-in `bootstrap/app.go` is the whole of it. `k.Recorder()` is nil outside
+at `bootstrap/app.go:343` is the whole of it. `k.Recorder()` is nil outside
 development and recording nothing is what production does.
 `TestTheConsoleRecordsARealRequest` makes a request, reads `X-Request-ID` off
 the response, and finds it at `log.ConsolePath` — `/_arandu/debug`.
@@ -111,11 +115,12 @@ the response, and finds it at `log.ConsolePath` — `/_arandu/debug`.
 to name its origin file, because a console showing a request with no queries
 reads exactly like an application that never touched the database.
 
-**The error page.** `middleware.Recover` is first in the pipeline, or a panic in
-anything below it escapes without a page. It is given `AppModule`, so your
-frames are told from the framework's, and `Diagnose: k.Diagnose`, so what the
-modules know about the system right now — the outbox falling behind — appears
-next to the failure somebody is already looking at.
+**The error page.** `middleware.Recover`, at `bootstrap/app.go:306`, is first in
+the pipeline, or a panic in anything below it escapes without a page. It is
+given `AppModule`, so your frames are told from the framework's, and
+`Diagnose: k.Diagnose`, so what the modules know about the system right now —
+the outbox falling behind — appears next to the failure somebody is already
+looking at.
 
 **A number a screen draws.** `app/Listeners/SocketGauges.go` declares four
 metric names as constants, writes them, and the screen reads them from the
@@ -125,8 +130,9 @@ a socket count without holding the socket server. `messages()` in
 why that is a decision rather than a gap — half a count is worse than the zero
 it replaces.
 
-**Work that outlives the request.** `events.NewModule()` brings the outbox table
-and `jobs.NewModule(queueStore)` the jobs table, both over this application's own
+**Work that outlives the request.** `events.WithRelay(relay)` brings the outbox
+table and the relay that empties it, and `jobs.NewModule(queueStore)` the jobs
+table (`bootstrap/app.go:383` and `:392`), both over this application's own
 database, which is what lets an event commit in the same transaction as the row
 it describes. `TestTheEventCommitsWithTheWrite` and `TestARolledBackWriteStoresNoEvent`
 are the pair.
@@ -135,8 +141,7 @@ are the pair.
 
 **1. Take the paragraph with the code.** The comment above a function here is
 usually the reason the signature is that shape. Lifted without it, the next
-person edits it back into the shape it was written to avoid — which has already
-happened once in this repository, and `bootstrap/console.go` says so at `db:seed`.
+person edits it back into the shape it was written to avoid.
 
 **2. Check what the shape depends on.** Three things travel with almost every
 snippet here: a policy that issues the Grant, a tenant that came off the Grant,
@@ -144,15 +149,18 @@ and a view whose data is a struct. A handler copied without the first has
 nothing to pass and will not compile — that is the design working, not a
 porting problem.
 
-**3. Do not copy `bootstrap/app.go` wholesale.** It is one deployment's answer.
+**3. Do not copy `bootstrap/app.go` wholesale.** `Build`, at line 133, is one
+function for the whole wiring, and it is one deployment's answer.
 `SESSION_DRIVER=memory`, `CACHE_STORE=memory`, an in-process rate limiter, an
 in-memory socket broker and a nil scheduler `Locker` are all right for one
 instance and wrong for two, and the file names the line to swap in each case.
 
 **4. Generate rather than transcribe.** The posts, comments and categories here
-were written by `aru make:module`. Copying the generated output by hand into
-another project gets you the shape of an older generator; running the generator
-gets you the current one.
+were written by `aru make:module`, by an older generator than today's: the
+controllers have since lost the hand-written rejection helpers the generator
+used to emit, and the imports were moved to their canonical paths. Copying the
+generated output by hand into another project gets you the shape of an older
+generator; running the generator gets you the current one.
 
 **5. Then run the gates**, which are in `AGENTS.md` and start with
-`aru view:build`.
+`aru model:build --check` and `aru view:build`.

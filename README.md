@@ -17,14 +17,14 @@ A blog: posts filed into sections, a comment thread that requires a confirmed
 address, a moderation panel, a password reset, and a live socket. Most of it was
 written by the toolchain rather than by hand, which is the part worth reading —
 `aru make:module` wrote the posts, the comments and the categories end to end.
-What a person had to decide is the six policies in `app/Policies/`, the
+What a person had to decide is the eight policies in `app/Policies/`, the
 moderation panel and the sitemap, and the auth screens `arandu-io/ui` published
 for this application to finish.
 
 ## What it delivers
 
 - **A repository call that cannot skip authorization** — every method that reads
-  or writes a row on `PostRepository` and `CommentRepository` takes a
+  or writes a row on `PostRepository` and `CommentRepository` takes an
   `auth.Grant`, and `tests/Unit/GrantRequired_test.go` proves the absence
   does not compile — on the generated code itself, not on the framework's own.
 - **A public read path decided entirely by policy** — a guest gets the
@@ -47,7 +47,7 @@ for this application to finish.
   the same `PostPolicy` a browser uses, instead of holding a system grant that
   would list everything.
 
-13,253 lines of production code and 5,500 of test, across 32 test files, with
+17,592 lines of production code and 9,525 of test, across 50 test files, with
 the compiled views in neither — `aru view:build` writes them and `.gitignore`
 keeps build output out. Built against `arandu-io/framework`, `arandu-io/kyse`,
 `arandu-io/hesape` and `arandu-io/joaju`, with a PostgreSQL and a SQLite driver
@@ -83,7 +83,7 @@ password that is refused outside development.
 what it ran against; `arandu-io/arandu` is the skeleton this application started
 from; `arandu-io/ui` published the auth screens into it; `arandu-io/joaju` is
 the socket server, in this process rather than beside it; `hesape` is the
-47-package collection underneath the framework.
+component collection underneath the framework.
 
 ## Learning Arandu
 

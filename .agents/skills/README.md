@@ -35,7 +35,7 @@ already obvious.
 
 The other half of the answer is that this repository is built to be checked
 rather than trusted. The claims it makes have tests named after them, the gates
-are seven commands, and the numbers in its prose were measured with commands
+are eight commands, and the numbers in its prose were measured with commands
 that are written down beside them. An assistant that runs those is not guessing.
 
 ## Adding your own

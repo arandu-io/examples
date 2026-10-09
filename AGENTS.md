@@ -14,11 +14,13 @@ named by the situation.
 
 ## The gates
 
-Nothing is finished until all of these exit zero. Measured on this tree.
+Nothing is finished until all of these exit zero. Measured on this tree with
+`aru` v0.62.0 (`go run github.com/arandu-io/aru@v0.62.0 <command>` runs that
+version without installing it).
 
 ```sh
 export GOWORK=off
-aru model:build
+aru model:build --check
 aru view:build
 gofmt -l $(find . -name '*.go' -not -path '*/testdata/*' -not -name '*.kyse.go')
 go build ./...
@@ -30,8 +32,9 @@ bash tests/test-layout-guard.sh
 
 `aru model:build` writes the typed query beside each entity in `app/Models`
 (`CategoryQuery.go`, `PostQuery.go`, `UserQuery.go`) and the generated part of
-`database/factories/CategoryFactory.go`. Those files are committed, so on a
-clean tree it changes nothing; `aru doctor` reports one that is stale.
+`database/factories/CategoryFactory.go`. Those files are committed, so with
+`--check` it writes nothing and fails when one of them is stale; `aru doctor`
+reports a stale one too.
 
 `aru view:build` is not optional on a fresh clone. The 34 files
 under `resources/views/*.kyse.go` compile to 34 files under
@@ -47,11 +50,19 @@ without `-not -name '*.kyse.go'` it reports a syntax error on every view.
 `CONTRIBUTING.md` and `Taskfile.yml` state the command without the `testdata/`
 filter; `.github/workflows/ci.yml` states it with. Copy the one above.
 
-`aru doctor` exits zero here with no findings. Any finding is a regression.
+`aru doctor` exits zero here with no findings. Any finding is a regression,
+`import-not-canonical` included: a symbol the framework only re-exports is
+named from the hesape package that declares it (`auth.Grant`, `database.DB`,
+`hhttp.Context`), and what the framework itself declares or wraps keeps its
+framework path (`fhttp.Router`, `security.SessionStore`). `aru imports:catalog`
+prints the path of every symbol for the version `go.mod` requires.
+
+CI installs `aru` v0.58.0 for `view:build` and `doctor`, which predates
+`import-not-canonical`; the version above is the one this tree answers to.
 
 The suite needs no database server. Tests that exercise rows use temporary
-SQLite through `tests.Boot` (`tests/testcase.go:193-200`) or `sqliteEnv`
-(`tests/Feature/Commands_test.go:23-27`). Wiring-only tests use `tests.Kernel`
+SQLite through `tests.Boot` (`tests/testcase.go:192-200`) or `sqliteEnv`
+(`tests/Feature/Commands_test.go:23-28`). Wiring-only tests use `tests.Kernel`
 with PostgreSQL at the closed address `127.0.0.1:1`, without connecting.
 
 ## The tree
@@ -67,14 +78,14 @@ with PostgreSQL at the closed address `127.0.0.1:1`, without connecting.
 | `routes/web.go`, `routes/admin.go` | 61 registered routes across four modules, 32 of them this application's |
 | `bootstrap/app.go` | the whole wiring, top to bottom, in one function |
 | `database/migrations/`, `database/seeders/` | ten migrations and seven seeders, plus one registry file in each directory |
-| `tests/`, `app/Http/Controllers/Auth/redaction_internal_test.go` | 49 files, 190 test functions — 48 files and 189 functions in the mirrored tree, plus one colocated internal test |
+| `tests/`, `app/Http/Controllers/Auth/redaction_internal_test.go` | 50 files, 195 test functions — 49 files and 194 functions in the mirrored tree, plus one colocated internal test |
 
 Counted with:
 
 ```sh
 find resources/views -name '*.kyse.go' | wc -l                      # 34
-git ls-files '*_test.go' | wc -l                                    # 49
-grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l  # 190
+git ls-files '*_test.go' | wc -l                                    # 50
+grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l  # 195
 git ls-files 'app/Policies/*.go' | wc -l                             # 7
 rg '^type .*Policy struct' app/Policies/*.go | wc -l                  # 8
 GOWORK=off go run . routes | grep -cE '^  (GET|POST|PUT|PATCH|DELETE)'  # 61
@@ -95,7 +106,8 @@ exists to argue against. None of them is missing by accident.
 | a repository row read or write without a Grant | nothing. `tests/Unit/testdata/missing_grant/main.go` is the fixture that must not compile; the two `Health` methods only ping |
 | a second query filtered "for guests" | a named action with a query of its own — `PostPublicList` beside `PostList` in `app/Policies/PostPolicy.go` |
 | a tenant read off a path, a body, a query or a header | `auth.Tenant(g)`. `withSubject` in `routes/web.go` takes the subject off the session cookie and nothing else |
-| a hand-written repository for routine CRUD | an entity that embeds `model.Model`, its table declared once beside it, and the typed query `aru model:build` generates there (`models.Categories(db)`); parameterised SQL repositories remain for complex queries and operations |
+| a hand-written repository for routine CRUD | an entity that embeds `model.Model`, its table declared once beside it, and the typed query `aru model:build` generates there (`models.Categories(s.db)` in `app/Services/CategoryService.go`); parameterised SQL repositories remain for complex queries and operations |
+| a controller that draws a rejected form again, with a 422 or with a helper on the base controller | nothing. The action returns the service's `validation.Errors` as they are and the router answers: back to the form through the flash for a page, `HX-Redirect` for htmx, a 422 problem document for JSON. `tests/Feature/RejectedForms_test.go` holds all three. The 422 entry in the layout's `htmx-config` is for the published sign-in screens only, and the layout says so |
 | a template engine with runtime lookup | `.kyse.go`, compiled to Go. A missing field is a build error |
 | npm, a bundler, `node_modules`, a CDN script | nothing. `TestResourcesHoldNoJavaScript` and `TestTheOnlyScriptsServedAreTheEmbeddedOnes` walk the tree and the response |
 | production or seed data that writes behind a Policy without saying so | `auth.SystemGrant` with a `//arandu:system-grant <reason>` line directly above it. Nineteen production and seeder calls carry that reason; tests use additional grants to arrange cases |
@@ -110,7 +122,7 @@ Grant, then hands `Find`, `List`, `Create` and `Update` a Grant issued for the
 wrong action and requires each to refuse. Carrying *a* Grant is not enough.
 
 **The tenant comes from the Grant.** `auth.Tenant(g)`, never from the request.
-`tests/Feature/TenantScoping_test.go` is 987 lines of one tenant failing to see
+`tests/Feature/TenantScoping_test.go` is 988 lines of one tenant failing to see
 another's rows, and it is the largest test file here for that reason. Its
 fixture writes two rows of the second tenant that name the first's — a post
 filed under our section id, a comment hung off our article — because a key that
@@ -139,8 +151,8 @@ Three consequences:
 - A number written in prose — in `README.md`, in a comment, in this file — is a
   measurement. Re-run the command before trusting it, and fix every copy
   together. `tests/test-layout-guard.sh` states two of them in its own comments
-  ("48 test files under tests/ plus one colocated internal test", "the 34 files
-  under resources/views") and both are currently right.
+  ("Forty-nine test files sit under the capitalised categories in tests/", "The
+  34 files under resources/views") and both are currently right.
 
 ## Writing code
 
@@ -150,7 +162,7 @@ in English. A test name is a sentence about what the application does:
 `TestTheConsoleSeesTheQueriesOfTheRequest`.
 
 A doc comment documents its symbol and nothing beyond it. One here has drifted
-off its own and is worth not copying: `bootstrap/console.go:32` opens
+off its own and is worth not copying: `bootstrap/console.go:31` opens
 "tenantID is…" above `func Tenant()`. There were two — the doc on `Open` said
 the connection was made by "whatever `DB_CONNECTION` says", a variable that
 appears nowhere else here — and that one went when `Open` was rewritten to hand
