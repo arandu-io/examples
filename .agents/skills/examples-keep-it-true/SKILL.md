@@ -92,9 +92,6 @@ code, 9,784 of test, 50 test files and eight policies in seven files.
 Found by measurement, not by reading. Fix them where you touch them; each one is
 a place the repository says something it can no longer show.
 
-- **`bootstrap/console.go:31`.** "tenantID is the tenant this deployment logs
-  into", above `func Tenant()`. It is the leading line of an exported symbol's
-  doc comment, so it publishes.
 - **`CONTRIBUTING.md` and `Taskfile.yml`** give the gofmt command without
   `-not -path '*/testdata/*'`. CI gives it with. It happens to pass either way
   today, which is why it has survived.

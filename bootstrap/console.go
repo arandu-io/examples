@@ -28,13 +28,13 @@ var (
 	Commit  = "unknown"
 )
 
-// tenantID is the tenant this deployment logs into.
+// Tenant is the tenant this deployment logs into.
 //
 // It reads the configuration rather than the environment directly, so there is
 // one answer to the question and it is in config/auth.go.
 func Tenant() string { return appconfig.Tenant() }
 
-// dispatch runs one command against a fully wired application.
+// Dispatch runs one command against a fully wired application.
 //
 // Every command builds the same application, and that is the point: `aru work`
 // reaches the same services a request does, so a worker is never a second,

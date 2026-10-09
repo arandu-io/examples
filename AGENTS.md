@@ -186,12 +186,12 @@ in English. A test name is a sentence about what the application does:
 `TestAGuestIsRefusedTheDraftBehindAKnownAddress`,
 `TestTheConsoleSeesTheQueriesOfTheRequest`.
 
-A doc comment documents its symbol and nothing beyond it. One here has drifted
-off its own and is worth not copying: `bootstrap/console.go:31` opens
-"tenantID is…" above `func Tenant()`. There were two — the doc on `Open` said
-the connection was made by "whatever `DB_CONNECTION` says", a variable that
-appears nowhere else here — and that one went when `Open` was rewritten to hand
-the adapter the whole parsed connection.
+A doc comment documents its symbol and nothing beyond it, and opens with the
+symbol's name. `bootstrap/console.go` had two that did not -- "tenantID is…"
+above `func Tenant()` and "dispatch runs…" above `func Dispatch` -- left over
+from when both were unexported, and the doc on `Open` once said the connection
+was made by "whatever `DB_CONNECTION` says", a variable that appears nowhere
+else here. All three are gone; the pattern is what a rename leaves behind.
 
 Every externally scoped test lives under a capitalised category in `tests/`, in
 an external `_test` package with a lowercase package clause. The one exception
