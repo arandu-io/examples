@@ -42,16 +42,25 @@ type ResetData = authui.AuthPage
 					Autocomplete: "one-time-code", Required: true, Autofocus: true,
 				}) !!}
 
-				{!! components.Field(components.FieldProps{
-					Name: "password", Label: "New password", Type: "password",
-					Page: .,
-					Hint: "At least twelve characters.",
+				{!! components.Password(components.PasswordProps{
+					ComponentProps: components.ComponentProps{Parts: components.Parts{
+						"group": {Class: "relative flex w-full min-w-0 items-center outline-none"},
+						"input": {Class: "text-foreground placeholder:text-muted-foreground block h-full min-w-0 flex-1 appearance-none rounded-none border-0 bg-transparent shadow-none outline-none ring-0 focus-visible:ring-0 aria-invalid:ring-0"},
+						"reveal": {Class: "order-last me-1 shrink-0"},
+					}},
+					Name: "password", Label: "New password",
+					Page: ., Policy: .PasswordPolicy,
 					Autocomplete: "new-password", Required: true,
 				}) !!}
 
-				{!! components.Field(components.FieldProps{
-					Name: "password_confirmation", Label: "Confirm the new password", Type: "password",
-					Page: .,
+				{!! components.Password(components.PasswordProps{
+					ComponentProps: components.ComponentProps{Parts: components.Parts{
+						"group": {Class: "relative flex w-full min-w-0 items-center outline-none"},
+						"input": {Class: "text-foreground placeholder:text-muted-foreground block h-full min-w-0 flex-1 appearance-none rounded-none border-0 bg-transparent shadow-none outline-none ring-0 focus-visible:ring-0 aria-invalid:ring-0"},
+						"reveal": {Class: "order-last me-1 shrink-0"},
+					}},
+					Name: "password_confirmation", Label: "Confirm the new password",
+					Page: ., Confirming: true,
 					Autocomplete: "new-password", Required: true,
 				}) !!}
 

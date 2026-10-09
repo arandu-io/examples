@@ -99,15 +99,11 @@ a place the repository says something it can no longer show.
   `-not -path '*/testdata/*'`. CI gives it with. It happens to pass either way
   today, which is why it has survived.
 
-What `aru doctor` still reports is not this application's:
-
-- **Eleven warnings, all in `app/Http/Controllers/Auth`.** Ten handlers the
-  kit published read the form with `r.PostFormValue` (`input-read-by-hand`) and
-  `page.go` imports `html/template` to mark the QR code trusted
-  (`html-template-in-app`). `ui auth` v0.20.0 leaves the same eleven in a
-  project `aru new` has just created. Rewriting them here would be undone by
-  the next `auth --force`; the fix belongs in `arandu-io/ui`, and arrives here
-  with the release that carries it.
+`aru doctor` reports nothing. The eleven warnings `ui auth` v0.20.0 left in
+`app/Http/Controllers/Auth` went with v0.22.0, whose handlers bind the form
+into request structs and whose setup screen draws the QR code as an image.
+What this tree keeps different from the kit, and puts back after every
+`auth --force`, is listed in `AGENTS.md`.
 
 One thing was generated and then cut back on purpose:
 

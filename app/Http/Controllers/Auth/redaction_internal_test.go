@@ -18,7 +18,7 @@ func TestInternalAuthenticationStateRedactsDiagnostics(t *testing.T) {
 	}{
 		{
 			name: "registration input",
-			value: registrationInput{
+			value: registrationRequest{
 				Name: "Ada", Email: "ada@example.test",
 				Password: "registration-secret", PasswordConfirmation: "confirmation-secret",
 			},

@@ -57,6 +57,30 @@ func (p pendingSignIn) LogValue() slog.Value {
 	)
 }
 
+// authenticatorCodeRequest is what the challenge and the setup confirmation
+// send: the six digits the authenticator app shows.
+type authenticatorCodeRequest struct {
+	Code string `form:"authenticator_code"`
+}
+
+// LogValue says whether a code arrived and never which: a code is a credential
+// for the thirty seconds it is good for.
+func (in authenticatorCodeRequest) LogValue() slog.Value {
+	return slog.GroupValue(slog.Bool("code_supplied", in.Code != ""))
+}
+
+// recoveryCodeRequest is what the recovery challenge sends: one of the codes
+// shown once when two-factor authentication was set up.
+type recoveryCodeRequest struct {
+	Code string `form:"recovery_code"`
+}
+
+// LogValue says whether a code arrived and never which: a recovery code signs
+// somebody in on its own.
+func (in recoveryCodeRequest) LogValue() slog.Value {
+	return slog.GroupValue(slog.Bool("code_supplied", in.Code != ""))
+}
+
 func (m *Module) writePending(w http.ResponseWriter, u models.User, remember bool) error {
 	// This is the private signed-cookie wire form. pendingSignIn.MarshalJSON is
 	// deliberately diagnostic-safe, so the operational payload is explicit at
@@ -129,11 +153,14 @@ func (m *Module) verifyTwoFactorChallenge(ctx *hhttp.Context) error {
 		redirect(w, r, "/auth/login")
 		return nil
 	}
-	code := strings.TrimSpace(r.PostFormValue("authenticator_code"))
-	if code == "" {
+	var in authenticatorCodeRequest
+	if err := ctx.Bind(&in); err != nil {
+		return err
+	}
+	if in.Code == "" {
 		return validation.Errors{"authenticator_code": {"that code is not valid"}}
 	}
-	if err := m.factors.VerifyAuthenticator(r.Context(), u.TenantID, u.ID, code); err != nil {
+	if err := m.factors.VerifyAuthenticator(r.Context(), u.TenantID, u.ID, in.Code); err != nil {
 		if m.challengeLocked(w, r, err) {
 			return nil
 		}
@@ -167,11 +194,14 @@ func (m *Module) verifyRecoveryChallenge(ctx *hhttp.Context) error {
 		redirect(w, r, "/auth/login")
 		return nil
 	}
-	code := strings.TrimSpace(r.PostFormValue("recovery_code"))
-	if code == "" {
+	var in recoveryCodeRequest
+	if err := ctx.Bind(&in); err != nil {
+		return err
+	}
+	if in.Code == "" {
 		return validation.Errors{"recovery_code": {"that recovery code is not valid"}}
 	}
-	if err := m.factors.ConsumeRecovery(r.Context(), u.TenantID, u.ID, code); err != nil {
+	if err := m.factors.ConsumeRecovery(r.Context(), u.TenantID, u.ID, in.Code); err != nil {
 		if m.challengeLocked(w, r, err) {
 			return nil
 		}
@@ -274,11 +304,14 @@ func (m *Module) confirmTwoFactorSetup(ctx *hhttp.Context) error {
 		redirect(w, r, "/auth/login")
 		return nil
 	}
-	code := strings.TrimSpace(r.PostFormValue("authenticator_code"))
-	if code == "" {
+	var in authenticatorCodeRequest
+	if err := ctx.Bind(&in); err != nil {
+		return err
+	}
+	if in.Code == "" {
 		return validation.Errors{"authenticator_code": {"that code is not valid"}}
 	}
-	recoveryCodes, err := m.factors.Confirm(r.Context(), subject, code)
+	recoveryCodes, err := m.factors.Confirm(r.Context(), subject, in.Code)
 	if err != nil {
 		if errors.Is(err, twofactor.ErrInvalidCode) {
 			return validation.Errors{"authenticator_code": {"that code is not valid"}}

@@ -72,15 +72,20 @@ func (c RegistrationCredential) asksForConfirmation() bool { return c == Passwor
 // that is absent rather than one that is the hash of nothing.
 const registrationAsks = PasswordTwice
 
-type registrationInput struct {
-	Name                 string
-	Email                string
-	Password             string
-	PasswordConfirmation string
+// registrationRequest is what the sign-up form sends.
+//
+// ctx.Bind fills it through the form tags and nothing else: a key the form does
+// not declare reaches no field, so a request that carries roles or a tenant sets
+// neither. Every value arrives trimmed.
+type registrationRequest struct {
+	Name                 string `form:"name"`
+	Email                string `form:"email"`
+	Password             string `form:"password"`
+	PasswordConfirmation string `form:"password_confirmation"`
 }
 
 // MarshalJSON keeps both password fields out of serialized diagnostics.
-func (in registrationInput) MarshalJSON() ([]byte, error) {
+func (in registrationRequest) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		Name                 string `json:"name"`
 		Email                string `json:"email"`
@@ -93,7 +98,7 @@ func (in registrationInput) MarshalJSON() ([]byte, error) {
 }
 
 // LogValue keeps the same boundary for structured logs.
-func (in registrationInput) LogValue() slog.Value {
+func (in registrationRequest) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("name", in.Name), slog.String("email", in.Email),
 		slog.String("password", redacted(in.Password)),
@@ -101,11 +106,78 @@ func (in registrationInput) LogValue() slog.Value {
 	)
 }
 
+// passwordPolicy is the rule a password chosen on these screens is held to,
+// and the list drawn under the box it is typed into.
+//
+// Both handlers that take a new password -- sign-up and reset -- check it
+// against this, and both screens are handed the same declaration as
+// AuthPage.PasswordPolicy, which the password component draws its checklist
+// from. The line a person reads and the rule that turns them away are one
+// declaration, so a minimum raised here is raised in both places and a screen
+// never promises a password its handler then refuses.
+//
+// It starts at hashing.MinPasswordLen and ends at hashing.MaxPasswordLen, the
+// bounds hashing.Make refuses outside of. Raise the minimum, or add MixedCase,
+// Numbers or Symbols; a minimum below that floor would accept on the screen a
+// password the user service cannot store.
+//
+// A new policy on every call, because a policy records what its last check
+// refused: one shared between two requests could answer one with the other's
+// messages.
+func passwordPolicy() *validation.Password {
+	return validation.PasswordMin(hashing.MinPasswordLen).Max(hashing.MaxPasswordLen)
+}
+
+// checkNewPassword adds what passwordPolicy refuses about password to errs,
+// under field.
+//
+// The empty password is refused here first, and not left to the policy: a
+// policy's length rule, like every rule but required, passes a value that is
+// absent, so an empty box would go through it and reach the user service -- and
+// the reset would spend its code on a password that cannot be stored.
+func checkNewPassword(errs validation.Errors, field, password string) {
+	if password == "" {
+		errs[field] = []string{"type a password"}
+		return
+	}
+	policy := passwordPolicy()
+	if !policy.Passes(field, password) {
+		errs[field] = policy.Message()
+	}
+}
+
+// verifyRequest is what the confirmation form sends: the address and the code
+// mailed to it.
+type verifyRequest struct {
+	Email string `form:"email"`
+	Code  string `form:"email_code"`
+}
+
+// LogValue keeps the address and the code out of a log line: the code is a
+// credential until it is spent.
+func (in verifyRequest) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.Bool("email_supplied", in.Email != ""),
+		slog.Bool("code_supplied", in.Code != ""),
+	)
+}
+
+// resendRequest is what the form asking for another code sends.
+type resendRequest struct {
+	Email string `form:"email"`
+}
+
+// LogValue keeps the address out of a log line.
+func (in resendRequest) LogValue() slog.Value {
+	return slog.GroupValue(slog.Bool("email_supplied", in.Email != ""))
+}
+
 func (m *Module) showRegister(w http.ResponseWriter, r *http.Request) {
 	m.screen(w, r, "auth.register", AuthPage{
 		Page:                   m.page(r, "Create an account"),
 		WithoutPasswordBox:     !registrationAsks.asksForPassword(),
 		WithoutConfirmationBox: !registrationAsks.asksForConfirmation(),
+		PasswordPolicy:         passwordPolicy(),
 	})
 }
 
@@ -113,11 +185,9 @@ func (m *Module) showRegister(w http.ResponseWriter, r *http.Request) {
 // which sends the person back to it with the messages and what was typed.
 func (m *Module) doRegister(ctx *hhttp.Context) error {
 	w, r := ctx.Response, ctx.Request
-	in := registrationInput{
-		Name:                 strings.TrimSpace(r.PostFormValue("name")),
-		Email:                strings.TrimSpace(r.PostFormValue("email")),
-		Password:             r.PostFormValue("password"),
-		PasswordConfirmation: r.PostFormValue("password_confirmation"),
+	var in registrationRequest
+	if err := ctx.Bind(&in); err != nil {
+		return err
 	}
 	// A form that drew no password box did not collect one, so a password in
 	// the body arrived from somewhere else. Dropped rather than passed on:
@@ -135,8 +205,8 @@ func (m *Module) doRegister(ctx *hhttp.Context) error {
 	if in.Email == "" {
 		errs["email"] = []string{"type your email address"}
 	}
-	if registrationAsks.asksForPassword() && len([]rune(in.Password)) < hashing.MinPasswordLen {
-		errs["password"] = []string{"the password is too short"}
+	if registrationAsks.asksForPassword() {
+		checkNewPassword(errs, "password", in.Password)
 	}
 	if registrationAsks.asksForConfirmation() && in.Password != in.PasswordConfirmation {
 		errs["password_confirmation"] = []string{"the two passwords do not match"}
@@ -178,13 +248,15 @@ func (m *Module) showVerifyNotice(w http.ResponseWriter, r *http.Request) {
 // user, and MarkVerified repeats the captured address condition at the write.
 func (m *Module) verify(ctx *hhttp.Context) error {
 	w, r := ctx.Response, ctx.Request
-	email := strings.TrimSpace(r.PostFormValue("email"))
-	code := strings.TrimSpace(r.PostFormValue("email_code"))
-	if email == "" || code == "" {
+	var in verifyRequest
+	if err := ctx.Bind(&in); err != nil {
+		return err
+	}
+	if in.Email == "" || in.Code == "" {
 		return validation.Errors{"email_code": {"type the code from your email"}}
 	}
-	u, err := m.users.Lookup(r.Context(), m.tenant(r), email)
-	if err != nil || m.codes.Consume(r.Context(), verifyPurpose, emailCodeSubject(u), code) != nil {
+	u, err := m.users.Lookup(r.Context(), m.tenant(r), in.Email)
+	if err != nil || m.codes.Consume(r.Context(), verifyPurpose, emailCodeSubject(u), in.Code) != nil {
 		return validation.Errors{"email_code": {"that code is not valid"}}
 	}
 	_, firstVerification, err := m.users.MarkVerified(r.Context(), u.TenantID, u.ID, u.Email)
@@ -202,14 +274,19 @@ func (m *Module) verify(ctx *hhttp.Context) error {
 
 // resendVerification does not reveal whether the address exists. The native
 // CodeStore applies expiry, cooldown, attempt limits and atomic consumption.
-func (m *Module) resendVerification(w http.ResponseWriter, r *http.Request) {
-	email := strings.TrimSpace(r.PostFormValue("email"))
-	if u, err := m.users.Lookup(r.Context(), m.tenant(r), email); err == nil && !u.Verified() {
+func (m *Module) resendVerification(ctx *hhttp.Context) error {
+	w, r := ctx.Response, ctx.Request
+	var in resendRequest
+	if err := ctx.Bind(&in); err != nil {
+		return err
+	}
+	if u, err := m.users.Lookup(r.Context(), m.tenant(r), in.Email); err == nil && !u.Verified() {
 		if err := m.sendVerification(r, u); err != nil && !errors.Is(err, onetime.ErrCooldown) {
 			log.For(r.Context()).Error("resending the verification code", "error", err)
 		}
 	}
-	m.notify(w, r, "/auth/verify", verificationSent, url.Values{"email": {email}})
+	m.notify(w, r, "/auth/verify", verificationSent, url.Values{"email": {in.Email}})
+	return nil
 }
 
 func (m *Module) sendVerification(r *http.Request, u models.User) error {

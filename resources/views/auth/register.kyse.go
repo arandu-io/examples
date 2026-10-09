@@ -41,26 +41,33 @@ type RegisterData = authui.AuthPage
 				     the same value decides both sides. An application whose
 				     identity is proved some other way draws neither, and one
 				     that decided a confirmation box is not worth the second
-				     typing draws only the first.
-
-				     Plain fields with the hint, not the password component: its
-				     checklist grades against the component's default policy,
-				     eight characters, while the handler refuses anything under
-				     twelve. A panel that ticks a password the server then
-				     rejects is worse than a sentence that says the rule. --}}
+				     typing draws only the first. --}}
 				@if(.AsksForPassword())
-					{!! components.Field(components.FieldProps{
-						Name: "password", Label: "Password", Type: "password",
-						Page: .,
-						Hint: "At least twelve characters.",
+					{{-- The hint is gone because the panel says the same thing and
+					     says all of it: the checklist is drawn from the policy the
+					     server rejects with, so it cannot fall out of step with a
+					     sentence somebody typed here. --}}
+					{!! components.Password(components.PasswordProps{
+						ComponentProps: components.ComponentProps{Parts: components.Parts{
+							"group": {Class: "relative flex w-full min-w-0 items-center outline-none"},
+							"input": {Class: "text-foreground placeholder:text-muted-foreground block h-full min-w-0 flex-1 appearance-none rounded-none border-0 bg-transparent shadow-none outline-none ring-0 focus-visible:ring-0 aria-invalid:ring-0"},
+							"reveal": {Class: "order-last me-1 shrink-0"},
+						}},
+						Name: "password", Label: "Password",
+						Page: ., Policy: .PasswordPolicy,
 						Autocomplete: "new-password", Required: true,
 					}) !!}
 				@endif
 
 				@if(.AsksForPasswordConfirmation())
-					{!! components.Field(components.FieldProps{
-						Name: "password_confirmation", Label: "Confirm password", Type: "password",
-						Page: .,
+					{!! components.Password(components.PasswordProps{
+						ComponentProps: components.ComponentProps{Parts: components.Parts{
+							"group": {Class: "relative flex w-full min-w-0 items-center outline-none"},
+							"input": {Class: "text-foreground placeholder:text-muted-foreground block h-full min-w-0 flex-1 appearance-none rounded-none border-0 bg-transparent shadow-none outline-none ring-0 focus-visible:ring-0 aria-invalid:ring-0"},
+							"reveal": {Class: "order-last me-1 shrink-0"},
+						}},
+						Name: "password_confirmation", Label: "Confirm password",
+						Page: ., Confirming: true,
 						Autocomplete: "new-password", Required: true,
 					}) !!}
 				@endif

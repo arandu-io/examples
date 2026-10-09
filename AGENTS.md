@@ -50,18 +50,33 @@ without `-not -name '*.kyse.go'` it reports a syntax error on every view.
 `CONTRIBUTING.md` and `Taskfile.yml` state the command without the `testdata/`
 filter; `.github/workflows/ci.yml` states it with. Copy the one above.
 
-`aru doctor` exits zero here, with warnings in one place only: the sign-in
-screens `arandu-io/ui` v0.20.0 published into `app/Http/Controllers/Auth`. Ten
-handlers there read the form with `r.PostFormValue` (`input-read-by-hand`) and
-`page.go` imports `html/template` for the QR code (`html-template-in-app`) --
-the same eleven warnings `ui auth` leaves in a project `aru new` just created,
-so they are the kit's to fix and arrive with its next `auth --force`, not
-something to rewrite here. Any other finding is a regression,
+`aru doctor` reports no findings here, and any finding is a regression,
 `import-not-canonical` included: a symbol the framework only re-exports is
 named from the hesape package that declares it (`auth.Grant`, `database.DB`,
 `hhttp.Context`), and what the framework itself declares or wraps keeps its
 framework path (`fhttp.Router`, `security.SessionStore`). `aru imports:catalog`
 prints the path of every symbol for the version `go.mod` requires.
+
+The sign-in screens in `app/Http/Controllers/Auth` and `resources/views/auth`
+are what `go run github.com/arandu-io/ui@v0.22.0 auth --force` publishes,
+with four differences kept on purpose. A republish overwrites all four, so
+they are put back by hand afterwards:
+
+- `resources/views/layouts/app.kyse.go` is this blog's layout -- masthead,
+  footer, icons, fonts, no `custom.js` -- and `resources/js/`, which the kit
+  writes for that script, is deleted.
+- `registrationRequest` and `pendingSignIn` carry a `MarshalJSON` that writes
+  `[redacted]` for the password fields and the fingerprint, and a `LogValue`
+  that does the same; `writePending` encodes the signed cookie from a map, the
+  one place the real fingerprint has to survive. `redaction_internal_test.go`
+  holds both.
+- Every code field -- `email_code` on the verify and reset screens,
+  `authenticator_code` on the challenge and setup screens -- is a plain
+  `components.Field` with `Autocomplete: "one-time-code"`, not
+  `components.OneTimeCode`, which at kyse v0.30.0 does not write the field's
+  message.
+- `HomeController`'s comment names the guard this application mounts it
+  behind: `RequireAuth` on `/dashboard`.
 
 CI installs `aru` v0.67.0 for `view:build` and `doctor`, `arandu.toml` names it
 as the oldest CLI the views build with, and the Dockerfile builds them with it.
