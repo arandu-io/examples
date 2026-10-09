@@ -21,8 +21,8 @@ export GOWORK=off
 go list -m -f '{{if not .Indirect}}{{.Path}} {{.Version}}{{end}}' all | grep -v '^$'
 ```
 
-Today that is `framework v0.51.0`, `hesape v0.50.1`, the `pgx` and `sqlite`
-connectors at `v0.11.0`, `joaju v0.7.1` and `kyse v0.30.0`.
+Today that is `framework v0.53.0`, `hesape v0.50.3`, the `pgx` and `sqlite`
+connectors at `v0.11.0`, `joaju v0.7.2` and `kyse v0.30.0`.
 
 **2. Bump one at a time and run the gates between.** A single `go get -u` across
 all six turns one legible failure into a bisect.
@@ -66,10 +66,10 @@ in `README.md`, in `AGENTS.md`, in this directory, and in the comments of
 
 ```sh
 find resources/views -name '*.kyse.go' | wc -l                            # 29
-find . -name '*_test.go' -not -path './storage/*' | wc -l                 # 50
-grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l      # 201
-find . -name '*.go' -not -path './storage/*' -not -name '*_test.go' -exec cat {} + | wc -l   # 16873
-find . -name '*_test.go' -not -path './storage/*' -exec cat {} + | wc -l  # 9784
+find . -name '*_test.go' -not -path './storage/*' | wc -l                 # 52
+grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l      # 205
+find . -name '*.go' -not -path './storage/*' -not -name '*_test.go' -exec cat {} + | wc -l   # 17079
+find . -name '*_test.go' -not -path './storage/*' -exec cat {} + | wc -l  # 10195
 ls app/Policies | wc -l                                                   # 7
 grep -E '^type .*Policy struct' app/Policies/*.go | wc -l                 # 8
 ```
@@ -84,8 +84,8 @@ ARANDU_TENANT_ID=11111111-1111-4111-8111-111111111111 \
 GOWORK=off go run . routes | grep -cE '^  (GET|POST|PUT|PATCH|DELETE)'     # 61
 ```
 
-The README's figures were checked against these: 16,873 lines of production
-code, 9,784 of test, 50 test files and eight policies in seven files.
+The README's figures were checked against these: 17,079 lines of production
+code, 10,195 of test, 52 test files and eight policies in seven files.
 
 ## What is currently stale
 
