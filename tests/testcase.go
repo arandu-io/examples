@@ -75,6 +75,11 @@ func Kernel(t *testing.T, env config.Env) *foundation.Application {
 			LogLevel: slog.LevelError,
 			Editor:   "vscode",
 		},
+		// What the framework's loader answers when SESSION_LIFETIME is unset.
+		// Written out because this configuration is built by hand, and the
+		// zero it would otherwise hold is a session that expires as it is
+		// written.
+		Session: fwbootstrap.Session{Lifetime: 2 * time.Hour},
 	}
 	// Both halves, because each validates its own and neither validates the
 	// other: an invalid key and an unreachable connection fail in different

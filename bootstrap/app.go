@@ -145,12 +145,16 @@ func Build(cfg appconfig.Config, db *database.DB) (App, error) {
 	// rather than quietly replaced.
 	stores := newCacheStores(cfg.Cache)
 
-	// The session, over the store SESSION_DRIVER named.
+	// The session, over the store SESSION_DRIVER named. How long it lasts and
+	// whether its cookie is Secure are the framework loader's two answers --
+	// SESSION_LIFETIME in minutes and SESSION_SECURE_COOKIE -- and the store
+	// takes nothing else: the loader refuses every other SESSION_* that asks the
+	// cookie for something this store does not write.
 	backend, err := sessionBackend(cfg.Session)
 	if err != nil {
 		return App{}, err
 	}
-	sessions := security.NewSessionStore(fw.App.Key, cfg.Session.TTL, fw.Session.Secure, backend)
+	sessions := security.NewSessionStore(fw.App.Key, fw.Session.Lifetime, fw.Session.Secure, backend)
 
 	// The rate limit counts in a store rather than in this process, which is the
 	// difference between one budget and one budget per replica -- on the

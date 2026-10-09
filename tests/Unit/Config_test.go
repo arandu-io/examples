@@ -2,6 +2,7 @@ package unit_test
 
 import (
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	hconfig "github.com/arandu-io/hesape/config"
 
 	appconfig "github.com/arandu-io/examples/config"
+	"github.com/arandu-io/examples/tests"
 )
 
 // TestTheRetiredSessionVariableIsRefusedAtBoot: SESSION_SECURE was read by
@@ -90,6 +92,110 @@ func TestTheSessionCookieIsSecureUnlessTheEnvironmentIsDev(t *testing.T) {
 	}
 }
 
+// TestTheSessionLifetimeIsReadInMinutesByTheFramework: SESSION_LIFETIME has one
+// reader, the framework's loader, and the session store is built from what it
+// answers. Unset it is the framework's two hours; written, it is minutes.
+func TestTheSessionLifetimeIsReadInMinutesByTheFramework(t *testing.T) {
+	for _, c := range []struct {
+		lifetime string
+		want     time.Duration
+	}{
+		{lifetime: "", want: 2 * time.Hour},
+		{lifetime: "30", want: 30 * time.Minute},
+		{lifetime: "720", want: 12 * time.Hour},
+	} {
+		t.Run("SESSION_LIFETIME="+c.lifetime, func(t *testing.T) {
+			prepareConfigurationLoad(t)
+			t.Setenv("SESSION_LIFETIME", c.lifetime)
+
+			cfg, err := appconfig.Load()
+			if err != nil {
+				t.Fatalf("loading the configuration: %v", err)
+			}
+			if got := cfg.Framework.Session.Lifetime; got != c.want {
+				t.Errorf("Framework.Session.Lifetime = %s, want %s", got, c.want)
+			}
+		})
+	}
+}
+
+// TestASessionSettingTheStoreDoesNotReadStopsTheBoot: the session variables
+// this application used to read, and the cookie scope it never applied, are
+// refused by the framework's loader rather than read here into fields nothing
+// built a cookie from. The refusal is the framework's, so what is asserted is
+// that the boot stopped and that the message names the variable -- and, for
+// the lifetime that used to be counted in seconds, the line that replaces it.
+func TestASessionSettingTheStoreDoesNotReadStopsTheBoot(t *testing.T) {
+	for _, c := range []struct {
+		name, value string
+		want        []string
+	}{
+		{name: "SESSION_TTL", value: "43200", want: []string{"SESSION_TTL", "SESSION_LIFETIME=720"}},
+		{name: "SESSION_PATH", value: "/blog", want: []string{"SESSION_PATH", "/blog"}},
+		{name: "SESSION_DOMAIN", value: "example.com", want: []string{"SESSION_DOMAIN", "example.com"}},
+		{name: "SESSION_SAME_SITE", value: "strict", want: []string{"SESSION_SAME_SITE", "strict"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			prepareConfigurationLoad(t)
+			t.Setenv(c.name, c.value)
+
+			_, err := appconfig.Load()
+			if err == nil {
+				t.Fatalf("the boot accepted %s=%s, and nothing reads it", c.name, c.value)
+			}
+			for _, want := range c.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("%s=%s: error = %q, want it to contain %q", c.name, c.value, err, want)
+				}
+			}
+		})
+	}
+}
+
+// TestTheShippedEnvironmentFileBoots copies .env.example to a .env and loads the
+// configuration from it, the way `cp .env.example .env` starts every clone.
+//
+// The file is the first configuration anybody runs, so a line in it the boot
+// refuses is a clone that does not start. The two values a clone is told to
+// fill -- APP_KEY by aru key:generate, and a database it can reach -- come from
+// the environment, which the file never overrides; every other line is read as
+// written, and the session it describes lasts twelve hours.
+func TestTheShippedEnvironmentFileBoots(t *testing.T) {
+	body := tests.File(t, ".env.example")
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Every variable the file names starts unset, so the file is what answers,
+	// and is put back afterwards: loading a .env writes into the process
+	// environment, and nothing it sets may outlive this test.
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		name, _, ok := strings.Cut(line, "=")
+		if !ok {
+			t.Fatalf(".env.example holds a line that is not KEY=value: %q", line)
+		}
+		t.Setenv(name, "")
+		if err := os.Unsetenv(name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(dir)
+	t.Setenv("APP_KEY", "0123456789abcdef0123456789abcdef")
+	t.Setenv("DATABASE_URL", "sqlite://"+filepath.Join(t.TempDir(), "test.sqlite"))
+
+	cfg, err := appconfig.Load()
+	if err != nil {
+		t.Fatalf("the boot refused .env.example: %v", err)
+	}
+	if got := cfg.Framework.Session.Lifetime; got != 12*time.Hour {
+		t.Errorf("the session .env.example describes lasts %s, want 12h0m0s", got)
+	}
+}
+
 func TestConfigurationRejectsAnInvalidInteger(t *testing.T) {
 	prepareConfigurationLoad(t)
 	t.Setenv("QUEUE_WORKERS", "many")
@@ -127,11 +233,11 @@ func TestAPoolSettingThatIsNotANumberStopsTheBoot(t *testing.T) {
 
 func TestConfigurationRejectsANonPositiveDuration(t *testing.T) {
 	clearParsedConfiguration(t)
-	t.Setenv("SESSION_TTL", "0")
+	t.Setenv("CSRF_TTL", "0")
 
 	_, err := appconfig.From(configurationBase())
 
-	want := `SESSION_TTL must be a positive number of seconds, got "0"`
+	want := `CSRF_TTL must be a positive number of seconds, got "0"`
 	if err == nil || err.Error() != want {
 		t.Fatalf("error = %v, want %q", err, want)
 	}
@@ -270,8 +376,8 @@ func TestConfigurationUsesDefaultsForExplicitlyEmptyValues(t *testing.T) {
 		t.Fatalf("From: %v", err)
 	}
 
-	if cfg.Session.TTL != 12*time.Hour || cfg.Session.CSRFTTL != 2*time.Hour {
-		t.Errorf("session defaults = TTL %s, CSRF TTL %s", cfg.Session.TTL, cfg.Session.CSRFTTL)
+	if cfg.Session.CSRFTTL != 2*time.Hour {
+		t.Errorf("CSRF TTL default = %s, want 2h0m0s", cfg.Session.CSRFTTL)
 	}
 	// Zero on all three, and the zero is the assertion rather than an omission:
 	// the pool numbers belong to the adapter, which reads zero as its own
@@ -311,7 +417,8 @@ func clearParsedConfiguration(t *testing.T) {
 		"CACHE_STORE", "SESSION_DRIVER", "QUEUE_CONNECTION", "FILESYSTEM_DISK",
 		"REDIS_URL",
 		"SESSION_SECURE", "SESSION_SECURE_COOKIE", "SESSION_COOKIE",
-		"SESSION_TTL", "CSRF_TTL",
+		"SESSION_LIFETIME", "SESSION_TTL", "CSRF_TTL",
+		"SESSION_PATH", "SESSION_DOMAIN", "SESSION_SAME_SITE",
 		"DB_MAX_OPEN_CONNS", "DB_MAX_IDLE_CONNS", "DB_CONN_MAX_LIFETIME",
 		"CACHE_TTL",
 		"QUEUE_WORKERS", "QUEUE_RETRY_AFTER", "QUEUE_MAX_ATTEMPTS",

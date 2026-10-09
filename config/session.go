@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"net/http"
 	"time"
 )
 
@@ -27,34 +26,30 @@ const (
 	SessionKV SessionDriver = "kv"
 )
 
-// Session is where session state is kept, how long it lasts, and how the cookie
-// that carries its id is scoped.
+// Session is where session state is kept and how long a CSRF token lasts.
 //
-// Whether the cookie is HTTPS-only is not here. The framework's loader reads
-// SESSION_SECURE_COOKIE into Config.Framework.Session.Secure, and that one value
-// is what the session store, the CSRF guest cookie and the flash cookie are all
-// built with: three cookies that disagreed about Secure would be a session that
-// works and a form that answers 419, or the other way round. The name of the
-// cookie is not here either, because it is not configurable: the CSRF token is
-// bound to the session the cookie of that name carries.
+// The two values the session store itself takes are not here. The framework's
+// loader reads both into Config.Framework.Session: SESSION_LIFETIME, in
+// minutes, into Lifetime, and SESSION_SECURE_COOKIE into Secure. Secure is what
+// the session store, the CSRF guest cookie and the flash cookie are all built
+// with: three cookies that disagreed about it would be a session that works and
+// a form that answers 419, or the other way round.
+//
+// Nothing else about the cookie is configurable, and that is the store rather
+// than an omission here. It writes the cookie on path /, for the host that
+// answered, with SameSite=Lax, under a name the CSRF token is bound to. The
+// framework's loader refuses SESSION_PATH, SESSION_DOMAIN and
+// SESSION_SAME_SITE when they ask for anything else, so this application reads
+// none of them: a field that held one would be a value nothing built a cookie
+// from.
 type Session struct {
 	Driver SessionDriver
 
-	// TTL is how long a session survives without activity.
-	TTL time.Duration
-
-	// CSRFTTL is how long a CSRF token stays valid. Shorter than the session on
-	// purpose: a token that outlives the page it was rendered on is a token that
-	// can be replayed.
+	// CSRFTTL is how long a CSRF token stays valid: two hours by default, which
+	// is never longer than the framework's default session and is a sixth of
+	// the twelve hours .env.example writes. Short on purpose: a token that
+	// outlives the page it was rendered on is a token that can be replayed.
 	CSRFTTL time.Duration
-
-	// Path and Domain scope the cookie.
-	Path   string
-	Domain string
-
-	// SameSite is Lax by default, which keeps the session out of cross-site
-	// form posts while leaving ordinary navigation working.
-	SameSite http.SameSite
 }
 
 // loadSession reads the session settings, against the cache stores that are
@@ -86,24 +81,14 @@ func loadSession(cache Cache) (Session, error) {
 		return Session{}, fmt.Errorf("SESSION_SECURE is retired; remove it. " +
 			"SESSION_SECURE_COOKIE decides the Secure attribute: set it to false only to serve over http outside APP_ENV=dev")
 	}
-	ttl, err := envSeconds("SESSION_TTL", 12*time.Hour)
-	if err != nil {
-		return Session{}, err
-	}
+	// CSRF_TTL is read here, in seconds, like every other duration in this
+	// directory. SESSION_LIFETIME is not: the framework's loader reads it, in
+	// minutes, and refuses a SESSION_TTL left over from when this application
+	// read the lifetime itself, so a second reader here would be a second answer
+	// to how long a login lasts.
 	csrfTTL, err := envSeconds("CSRF_TTL", 2*time.Hour)
 	if err != nil {
 		return Session{}, err
 	}
-	return Session{
-		Driver: driver,
-		// Both lifetimes are read here, in seconds, like every other duration in
-		// this directory. The session store and the CSRF token are built by this
-		// application, out of these two values, so a second reader of either one
-		// would be a second answer to how long a login lasts.
-		TTL:      ttl,
-		CSRFTTL:  csrfTTL,
-		Path:     env("SESSION_PATH", "/"),
-		Domain:   env("SESSION_DOMAIN", ""),
-		SameSite: http.SameSiteLaxMode,
-	}, nil
+	return Session{Driver: driver, CSRFTTL: csrfTTL}, nil
 }
