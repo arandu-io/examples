@@ -303,3 +303,19 @@ func TestARefusedSignInFromAJSONClientIsAProblemDocument(t *testing.T) {
 
 // regexpChecked finds the remember-me box drawn ticked.
 var regexpChecked = regexp.MustCompile(`name="remember"[^>]*\bchecked\b`)
+
+// TestTheLayoutLeavesHtmxResponseHandlingAtItsDefault: nothing here answers a
+// rejected form with a 422 to swap, the sign-in screens included, so the layout
+// does not teach htmx to swap one. An entry that did would be a second way to
+// answer the same rejection, and it would quietly keep working for any handler
+// that went back to drawing its own refusal.
+func TestTheLayoutLeavesHtmxResponseHandlingAtItsDefault(t *testing.T) {
+	client, _ := tests.App(t)
+
+	for _, page := range []string{"/", "/auth/login"} {
+		body := client.Get(page).OK().See(`name="htmx-config"`).Body()
+		if strings.Contains(body, "responseHandling") {
+			t.Errorf("%s configures htmx's response handling; a rejected form is a redirect, not a 422 to swap", page)
+		}
+	}
+}

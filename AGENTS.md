@@ -85,14 +85,14 @@ with PostgreSQL at the closed address `127.0.0.1:1`, without connecting.
 | `routes/web.go`, `routes/admin.go` | 61 registered routes across four modules, 32 of them this application's |
 | `bootstrap/app.go` | the whole wiring, top to bottom, in one function |
 | `database/migrations/`, `database/seeders/` | ten migrations and seven seeders, plus one registry file in each directory |
-| `tests/`, `app/Http/Controllers/Auth/redaction_internal_test.go` | 50 files, 200 test functions — 49 files and 199 functions in the mirrored tree, plus one colocated internal test |
+| `tests/`, `app/Http/Controllers/Auth/redaction_internal_test.go` | 50 files, 201 test functions — 49 files and 200 functions in the mirrored tree, plus one colocated internal test |
 
 Counted with:
 
 ```sh
 find resources/views -name '*.kyse.go' | wc -l                      # 29
 git ls-files '*_test.go' | wc -l                                    # 50
-grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l  # 200
+grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l  # 201
 git ls-files 'app/Policies/*.go' | wc -l                             # 7
 rg '^type .*Policy struct' app/Policies/*.go | wc -l                  # 8
 GOWORK=off go run . routes | grep -cE '^  (GET|POST|PUT|PATCH|DELETE)'  # 61
