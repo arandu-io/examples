@@ -21,9 +21,11 @@ import (
 	"context"
 	"database/sql"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -234,8 +236,40 @@ func Boot(t *testing.T) Booted {
 	}
 	return Booted{
 		App:    app,
-		Client: arandutest.NewClient(t, app.Kernel.Handler()),
+		Client: arandutest.NewClient(t, navigating(app.Kernel.Handler())),
 		DB:     db,
 		Mail:   box,
 	}
+}
+
+// navigating makes the client send what a browser sends with a page and with a
+// form, unless the test said otherwise: an Accept that asks for HTML on every
+// request, and on a form it submits, the page it last loaded as the Referer.
+//
+// Both decide how a rejected form is answered. The router sends the person
+// back to the Referer, and to "/" without one -- which is also where a
+// successful sign-in goes, so a test without it cannot tell a refusal from a
+// success by the redirect. And the one-shot flash that carries the messages and
+// what was typed is spent only on a GET that asks for HTML, so that an asset or
+// an htmx fragment the same page fires does not use it up; without the header
+// the form after a rejection draws nothing, and a test could assert the
+// redirect but never the sentence somebody reads.
+func navigating(next http.Handler) http.Handler {
+	var (
+		mu   sync.Mutex
+		page string
+	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Accept") == "" {
+			r.Header.Set("Accept", "text/html")
+		}
+		mu.Lock()
+		if r.Method == http.MethodGet {
+			page = r.URL.RequestURI()
+		} else if r.Header.Get("Referer") == "" && page != "" {
+			r.Header.Set("Referer", page)
+		}
+		mu.Unlock()
+		next.ServeHTTP(w, r)
+	})
 }

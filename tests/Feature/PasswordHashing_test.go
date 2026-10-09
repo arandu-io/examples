@@ -107,7 +107,7 @@ func TestEveryPathThatWritesAPasswordWritesTheSameKind(t *testing.T) {
 	// Through the reset code.
 	code := askForAResetCode(t, client, box, address)
 	const viaCode = "a-completely-new-password"
-	submitReset(client, code, address, viaCode).OK().See("has been changed")
+	passwordChanged(client, submitReset(client, code, address, viaCode))
 	afterReset := storedPassword(t, db, address)
 
 	// Through the service the seeder calls.

@@ -49,9 +49,9 @@ func TestARegistrationReachesTheListenerThroughTheWiredRelay(t *testing.T) {
 	register(t, booted.Client)
 	code := verificationCode(t, booted.Mail)
 	booted.Client.Get("/auth/verify?email=" + newReader).OK()
-	booted.Client.Post("/auth/verify/confirm", map[string]string{
+	addressConfirmed(booted.Client, booted.Client.Post("/auth/verify/confirm", map[string]string{
 		"email": newReader, "email_code": code,
-	}).OK().See("confirmed")
+	}))
 
 	ctx := context.Background()
 	outbox := events.NewOutbox(booted.DB)

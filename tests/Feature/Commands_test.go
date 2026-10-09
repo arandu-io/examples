@@ -159,24 +159,28 @@ func TestLoginOnSQLite(t *testing.T) {
 	form := httptest.NewRecorder()
 	handler.ServeHTTP(form, httptest.NewRequest(http.MethodGet, "/auth/login", nil))
 
+	// A refused sign-in is a 303 back to the form, and the reason is on the form
+	// the browser is sent to: the router writes it to the flash, and the GET
+	// that follows draws it. There is no 401 body to read, because there is no
+	// body at all -- a reload of what follows asks for the form rather than
+	// posting the password again.
 	t.Run("wrong password is refused", func(t *testing.T) {
 		rec := post(t, handler, form, "admin@example.test", "not-the-password")
-		if rec.Code != http.StatusUnauthorized {
-			t.Fatalf("status = %d, want 401", rec.Code)
-		}
-		if len(rec.Result().Cookies()) != 0 {
-			t.Error("a failed login must not set a session cookie")
+		wrongPassword := refusedSignIn(t, handler, form, rec)
+		if !strings.Contains(wrongPassword, "invalid email or password") {
+			t.Errorf("the form after a wrong password does not say why:\n%s", wrongPassword)
 		}
 	})
 
 	t.Run("unknown user is refused the same way", func(t *testing.T) {
 		rec := post(t, handler, form, "nobody@example.test", "a-long-enough-password")
-		if rec.Code != http.StatusUnauthorized {
-			t.Fatalf("status = %d, want 401", rec.Code)
-		}
-		// Same answer as a wrong password: otherwise the endpoint tells an
+		unknown := refusedSignIn(t, handler, form, rec)
+		// Same sentence as a wrong password: otherwise the endpoint tells an
 		// attacker which addresses have accounts.
-		if strings.Contains(strings.ToLower(rec.Body.String()), "not found") {
+		if !strings.Contains(unknown, "invalid email or password") {
+			t.Errorf("the form after an unknown address does not give the wrong-password sentence:\n%s", unknown)
+		}
+		if strings.Contains(strings.ToLower(unknown), "not found") {
 			t.Error("the response distinguishes an unknown user from a wrong password")
 		}
 	})
@@ -292,6 +296,9 @@ func post(t *testing.T, handler http.Handler, form *httptest.ResponseRecorder, e
 	}
 	r := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(body.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	// The page the form was drawn on, as a browser sends it: a refused attempt
+	// is sent back there, and without it the router falls back to "/".
+	r.Header.Set("Referer", "/auth/login")
 	for _, c := range form.Result().Cookies() {
 		r.AddCookie(c)
 	}
@@ -299,6 +306,39 @@ func post(t *testing.T, handler http.Handler, form *httptest.ResponseRecorder, e
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, r)
 	return rec
+}
+
+// refusedSignIn requires rec to be a refused sign-in -- a 303 back to the form
+// that sets no session -- and answers the form the browser is sent to, drawn
+// with the flash the refusal left.
+func refusedSignIn(t *testing.T, handler http.Handler, form, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303 back to the form", rec.Code)
+	}
+	if to := rec.Header().Get("Location"); to != "/auth/login" {
+		t.Fatalf("the refusal sent the browser to %q, want /auth/login", to)
+	}
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == session.CookieName && c.MaxAge >= 0 {
+			t.Fatalf("a failed login set a session cookie: %+v", c)
+		}
+	}
+
+	r := httptest.NewRequest(http.MethodGet, "/auth/login", nil)
+	r.Header.Set("Accept", "text/html")
+	for _, c := range form.Result().Cookies() {
+		r.AddCookie(c)
+	}
+	for _, c := range rec.Result().Cookies() {
+		r.AddCookie(c)
+	}
+	page := httptest.NewRecorder()
+	handler.ServeHTTP(page, r)
+	if page.Code != http.StatusOK {
+		t.Fatalf("the form after the refusal answered %d", page.Code)
+	}
+	return page.Body.String()
 }
 
 func csrfToken(t *testing.T, html string) string {

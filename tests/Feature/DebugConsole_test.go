@@ -88,8 +88,10 @@ func TestTheConsoleSeesTheQueriesOfTheRequest(t *testing.T) {
 	handler.ServeHTTP(form, httptest.NewRequest(http.MethodGet, "/auth/login", nil))
 
 	rec := post(t, handler, form, "nobody@example.test", "a-long-enough-password")
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("the login was not attempted: status %d", rec.Code)
+	// 303 back to the form is the refusal; a 419 would be the CSRF middleware
+	// turning the request away before the handler ran.
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/auth/login" {
+		t.Fatalf("the login was not attempted: status %d, Location %q", rec.Code, rec.Header().Get("Location"))
 	}
 	id := rec.Header().Get("X-Request-ID")
 

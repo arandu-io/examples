@@ -1,6 +1,7 @@
 package feature_test
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/arandu-io/examples/bootstrap"
@@ -65,5 +66,6 @@ func TestUserSeederCreatesAndReplaces(t *testing.T) {
 	client.Get("/auth/login").OK()
 	client.Post("/auth/login", map[string]string{
 		"email": "op@example.com", "password": "the-first-password",
-	}).Status(401)
+	}).Status(http.StatusSeeOther).RedirectsTo("/auth/login")
+	client.Get("/auth/login").OK().See("invalid email or password")
 }

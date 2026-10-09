@@ -79,7 +79,6 @@ import (
 	_ "github.com/arandu-io/examples/storage/framework/views/comments"
 	_ "github.com/arandu-io/examples/storage/framework/views/layouts"
 	_ "github.com/arandu-io/examples/storage/framework/views/mail"
-	_ "github.com/arandu-io/examples/storage/framework/views/partials"
 	_ "github.com/arandu-io/examples/storage/framework/views/posts"
 )
 

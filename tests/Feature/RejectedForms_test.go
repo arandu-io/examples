@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -22,7 +23,9 @@ import (
 // The three tests below are the three representations of one rejected post.
 // The fourth is the comment box on an article, which is the form a reader
 // actually meets: it posts to an address of its own and has to come back to
-// the article rather than to a page the reader never opened.
+// the article rather than to a page the reader never opened. The last three are
+// the sign-in, which is the published authentication screen and answers a
+// wrong password through the same router, in the same three representations.
 
 // browserAs is a signed-in browser that can say what kind of request it makes.
 //
@@ -197,3 +200,106 @@ func TestARefusedCommentComesBackUnderTheArticle(t *testing.T) {
 		t.Fatalf("a refused comment left %d comments stored, want none", stored)
 	}
 }
+
+// guestBrowser is a signed-out browser holding the sign-in form, and the
+// address of an account that exists.
+func guestBrowser(t *testing.T, booted tests.Booted) (*harandutest.Client, string) {
+	t.Helper()
+
+	email := prepareAccount(t, booted.Client, booted.DB, "Grace Hopper", "")
+	browser := harandutest.NewClient(t, booted.App.Kernel.Handler()).WithHeader("Accept", "text/html")
+	browser.Get("/auth/login").AssertOk()
+	return browser, email
+}
+
+// wrongPassword is a sign-in the handler refuses: the account exists and the
+// password is not its own. The box is ticked, because a refusal that quietly
+// unticks it is a refusal nothing on screen admits to.
+func wrongPassword(email string) map[string]string {
+	return map[string]string{"email": email, "password": "not-the-password-at-all", "remember": "1"}
+}
+
+func TestARefusedSignInGoesBackToTheFormWithTheMessage(t *testing.T) {
+	booted := tests.Boot(t)
+	browser, email := guestBrowser(t, booted)
+
+	refused := browser.WithHeader("Referer", "/auth/login").Post("/auth/login", wrongPassword(email))
+	browser.WithHeader("Referer", "")
+
+	// The same 303 a rejected post gets, back to the form: a reload of what
+	// follows asks for the form rather than posting the password again.
+	refused.AssertStatus(http.StatusSeeOther).AssertRedirect("/auth/login")
+	if got := refused.Header("Cache-Control"); !strings.Contains(got, "no-store") {
+		t.Errorf("the answer to a refused sign-in is cacheable (Cache-Control %q)", got)
+	}
+
+	// The message is on the form, the address is still in its box, the box is
+	// still ticked, and the password never comes back.
+	form := browser.Get("/auth/login").AssertOk().
+		AssertSee("invalid email or password").
+		AssertSee(`value="` + email + `"`).
+		AssertDontSee("not-the-password-at-all").
+		GetContent()
+	if !strings.Contains(form, `name="remember"`) || !regexpChecked.MatchString(form) {
+		t.Errorf("the remember-me box came back unticked after a refused sign-in")
+	}
+
+	// The reload: the flash was spent on the first GET.
+	browser.Get("/auth/login").AssertOk().AssertDontSee("invalid email or password")
+
+	// And nobody was signed in: the guard still sends this browser to sign in.
+	browser.Get("/dashboard").AssertStatus(http.StatusSeeOther).AssertRedirect("/auth/login")
+}
+
+// TestARefusedSignInFromHTMXIsANavigationBack: the sign-in form is boosted, so
+// htmx makes the post. It is answered as every other rejected form here is --
+// HX-Redirect back to the form, with no body -- which is why the layout no
+// longer teaches htmx to swap a 422.
+func TestARefusedSignInFromHTMXIsANavigationBack(t *testing.T) {
+	booted := tests.Boot(t)
+	browser, email := guestBrowser(t, booted)
+
+	refused := browser.WithHeader("HX-Request", "true").WithHeader("Referer", "/auth/login").
+		Post("/auth/login", wrongPassword(email))
+	browser.WithHeader("HX-Request", "").WithHeader("Referer", "")
+
+	refused.AssertStatus(http.StatusNoContent).AssertRedirect("/auth/login")
+	if body := refused.GetContent(); body != "" {
+		t.Errorf("the htmx answer to a refused sign-in has a body htmx would swap in before navigating: %q", body)
+	}
+
+	browser.Get("/auth/login").AssertOk().AssertSee("invalid email or password").AssertSee(`value="` + email + `"`)
+}
+
+// TestARefusedSignInFromAJSONClientIsAProblemDocument: a client that asked for
+// JSON gets 422 and the message by field, and nothing is left in the flash.
+func TestARefusedSignInFromAJSONClientIsAProblemDocument(t *testing.T) {
+	booted := tests.Boot(t)
+	browser, email := guestBrowser(t, booted)
+
+	refused := browser.WithHeader("Accept", "application/json").Post("/auth/login", wrongPassword(email))
+	browser.WithHeader("Accept", "text/html")
+
+	refused.AssertStatus(http.StatusUnprocessableEntity)
+	if got := refused.Header("Content-Type"); !strings.HasPrefix(got, "application/problem+json") {
+		t.Fatalf("Content-Type = %q, want application/problem+json", got)
+	}
+	var problem struct {
+		Status int                 `json:"status"`
+		Errors map[string][]string `json:"errors"`
+	}
+	if err := json.Unmarshal([]byte(refused.GetContent()), &problem); err != nil {
+		t.Fatalf("the body is not a problem document: %v\n%s", err, refused.GetContent())
+	}
+	if problem.Status != http.StatusUnprocessableEntity || len(problem.Errors["email"]) == 0 {
+		t.Fatalf("problem = %+v, want status 422 and a message for email", problem)
+	}
+	if strings.Contains(refused.GetContent(), "not-the-password-at-all") {
+		t.Error("the problem document carries the password that was typed")
+	}
+
+	browser.Get("/auth/login").AssertOk().AssertDontSee("invalid email or password")
+}
+
+// regexpChecked finds the remember-me box drawn ticked.
+var regexpChecked = regexp.MustCompile(`name="remember"[^>]*\bchecked\b`)

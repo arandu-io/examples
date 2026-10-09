@@ -89,18 +89,22 @@ func TestTheVerificationCodeIsPurposeBoundAndScoped(t *testing.T) {
 	register(t, client)
 
 	client.Get("/auth/password").OK()
-	client.Post("/auth/password/email", map[string]string{"email": newReader}).OK()
+	client.Post("/auth/password/email", map[string]string{"email": newReader}).
+		Status(http.StatusSeeOther).RedirectsTo("/auth/password/reset")
 	resetCode := verificationCode(t, box)
 
 	for _, code := range []string{"", "not-a-code", resetCode} {
 		client.Get("/auth/verify?email=" + newReader).OK()
-		// 422 and not 200. HTMX swaps the fragment of either, so a refused code
-		// answered 200 leaves the browser, the log and every dashboard agreeing
-		// that a forged or wrong-purpose code confirmed an address.
-		body := client.Post("/auth/verify/confirm", map[string]string{
+		// Back to the form it was typed on, with the message, and not on to the
+		// sign-in screen a confirmed address is sent to: a refused code that went
+		// where an accepted one goes would leave the browser, the log and every
+		// dashboard agreeing that a forged or wrong-purpose code confirmed an
+		// address.
+		client.Post("/auth/verify/confirm", map[string]string{
 			"email": newReader, "email_code": code,
 		}).
-			Status(http.StatusUnprocessableEntity).Body()
+			Status(http.StatusSeeOther).RedirectsTo("/auth/verify?email=" + newReader)
+		body := client.Get("/auth/verify?email=" + newReader).OK().Body()
 		if !strings.Contains(body, "not valid") && !strings.Contains(body, "type the code") {
 			t.Errorf("the code %q was not refused: %s", code, first200(body))
 		}
@@ -118,9 +122,9 @@ func TestConfirmingTheAddressOpensTheCommentForm(t *testing.T) {
 	code := verificationCode(t, box)
 
 	client.Get("/auth/verify?email=" + newReader).OK()
-	client.Post("/auth/verify/confirm", map[string]string{
+	addressConfirmed(client, client.Post("/auth/verify/confirm", map[string]string{
 		"email": newReader, "email_code": code,
-	}).OK().See("confirmed")
+	}))
 	// Signing in AFTER confirming is what puts the verified flag in the session.
 	// Doing it the other way round leaves a session that is stale in the safe
 	// direction, and that is deliberate -- see auth.Subject.Verified.
@@ -144,13 +148,14 @@ func TestTheVerificationCodeIsSingleUse(t *testing.T) {
 	code := verificationCode(t, box)
 
 	client.Get("/auth/verify?email=" + newReader).OK()
-	client.Post("/auth/verify/confirm", map[string]string{
+	addressConfirmed(client, client.Post("/auth/verify/confirm", map[string]string{
 		"email": newReader, "email_code": code,
-	}).OK().See("confirmed")
+	}))
 	client.Get("/auth/verify?email=" + newReader).OK()
 	client.Post("/auth/verify/confirm", map[string]string{
 		"email": newReader, "email_code": code,
-	}).Status(http.StatusUnprocessableEntity).See("not valid")
+	}).Status(http.StatusSeeOther).RedirectsTo("/auth/verify?email=" + newReader)
+	client.Get("/auth/verify?email=" + newReader).OK().See("not valid")
 }
 
 // TestARegistrationCannotAskForARole.
@@ -183,8 +188,9 @@ func TestARegistrationCannotAskForARole(t *testing.T) {
 
 // TestABadFormComesBackWithTheMessagesAndNotA200.
 //
-// HTMX swaps the fragment either way, so a 200 would leave the browser, the log
-// and every dashboard agreeing that the registration succeeded.
+// Back to the form, through a redirect, and not on to the screen a registration
+// that succeeded goes to: a 200, or a redirect to /auth/verify, would leave the
+// browser, the log and every dashboard agreeing that the registration happened.
 func TestABadFormComesBackWithTheMessagesAndNotA200(t *testing.T) {
 	client, _ := tests.App(t)
 
@@ -196,9 +202,10 @@ func TestABadFormComesBackWithTheMessagesAndNotA200(t *testing.T) {
 		"password_confirmation": "different",
 	})
 
-	res.Status(http.StatusUnprocessableEntity)
-	// What was typed comes back, except the passwords.
-	res.See("ada@example.com").DontSee("different")
+	res.Status(http.StatusSeeOther).RedirectsTo("/auth/register")
+	// What was typed comes back, except the passwords, and so do the messages.
+	client.Get("/auth/register").OK().
+		See("ada@example.com").See("the two passwords do not match").DontSee("different")
 }
 
 // The helpers below. They are here rather than in tests/testcase.go because they
@@ -216,6 +223,13 @@ func register(t *testing.T, client *arandutest.Client) {
 		"password":              goodPassword,
 		"password_confirmation": goodPassword,
 	}).RedirectsTo("/auth/verify")
+}
+
+// addressConfirmed requires res to be an accepted verification code: a redirect
+// to the sign-in screen, which then says the address is confirmed.
+func addressConfirmed(client *arandutest.Client, res *arandutest.Response) {
+	res.Status(http.StatusSeeOther).RedirectsTo("/auth/login")
+	client.Get("/auth/login").OK().See("confirmed")
 }
 
 // signIn opens a session for the account register created.

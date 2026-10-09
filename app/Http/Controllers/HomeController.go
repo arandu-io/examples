@@ -1,7 +1,7 @@
 package controllers
 
 import (
-	"github.com/arandu-io/framework/http"
+	fhttp "github.com/arandu-io/framework/http"
 	hhttp "github.com/arandu-io/hesape/http"
 
 	authui "github.com/arandu-io/examples/app/Http/Controllers/Auth"
@@ -44,7 +44,7 @@ func NewHomeController(appName string, people authui.UserNames, tenant string) *
 
 // Compile-time proof that this controller answers GET / the way Resource and the
 // route table expect. It costs nothing and catches a renamed method.
-var _ http.Indexer = (*HomeController)(nil)
+var _ fhttp.Indexer = (*HomeController)(nil)
 
 // Index renders the landing page.
 //

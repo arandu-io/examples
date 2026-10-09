@@ -15,18 +15,18 @@ import (
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 
 	{{-- htmx writes a <style> element for its request indicators unless told
-	     not to, and style-src 'self' refuses an inline one.
+	     not to, and the policy is style-src 'self' with no unsafe-inline: the
+	     browser refuses it, once per page, in a console nobody has open. The
+	     classes it would have written are in the stylesheet already.
 
-	     The 422 entry is for the sign-in screens and nothing else. They are
-	     the published authentication kit, and they still answer a refused
-	     code or password with a 422 fragment of their own form; without this
-	     entry htmx throws that answer away and the screen says nothing. This
-	     application's own forms are never answered that way: a rejected post,
-	     section or comment goes back through the router's redirect, which htmx
-	     follows as a navigation, so a reload asks for the page instead of
-	     posting the form again. The entry leaves when the kit's screens answer
-	     the same way. --}}
-	<meta name="htmx-config" content='{"includeIndicatorStyles":false,"responseHandling":[{"code":"204","swap":false},{"code":"422","swap":true},{"code":"[23]..","swap":true},{"code":"[45]..","swap":false,"error":true}]}'>
+	     Its table of response handling is left at the default on purpose. A
+	     rejected form is not answered with a 422 to swap: the router sends it
+	     back with a redirect, which htmx follows as a navigation, so the page
+	     after it is a page and a reload asks for that page rather than posting
+	     the form again. That holds for every form here, the sign-in screens
+	     included. A layout that taught htmx to swap a 422 would be a second way
+	     to answer the same rejection. --}}
+	<meta name="htmx-config" content='{"includeIndicatorStyles":false}'>
 	<title>{{ .PageTitle() }}</title>
 	<link rel="icon" href="/favicon.ico" sizes="any">
 	<link rel="icon" href="/favicon.png" type="image/png">

@@ -78,7 +78,9 @@ func TestSomebodyArrivesAndEndsUpCommenting(t *testing.T) {
 	client.Get("/auth/verify?email=" + email).OK()
 	client.Post("/auth/verify/confirm", map[string]string{
 		"email": email, "email_code": code,
-	}).OK().See("confirmed")
+	}).
+		Status(http.StatusSeeOther).RedirectsTo("/auth/login")
+	client.Get("/auth/login").OK().See("confirmed")
 
 	// 6. Now they sign in, and the comment form is there.
 	client.Get("/auth/login").OK()
@@ -112,7 +114,7 @@ func TestSomebodyArrivesAndEndsUpCommenting(t *testing.T) {
 
 	client.Get("/auth/password").OK()
 	client.Post("/auth/password/email", map[string]string{"email": email}).
-		OK().See("on its way")
+		Status(http.StatusSeeOther).RedirectsTo("/auth/password/reset")
 
 	reset, _ := box.Last()
 	resetCode := emailCodePattern.FindString(reset.Text)
@@ -120,9 +122,10 @@ func TestSomebodyArrivesAndEndsUpCommenting(t *testing.T) {
 		t.Fatalf("no reset code in the message:\n%s", reset.Text)
 	}
 
-	// The response that confirms delivery is already the form that accepts the
-	// code, and it keeps the address the person typed.
-	form := client.Get("/auth/password/reset?email=" + email).OK().Body()
+	// The answer that confirms delivery is a redirect to the form that accepts
+	// the code, and that form says the code is on its way and keeps the address
+	// the person typed.
+	form := client.Get("/auth/password/reset?email=" + email).OK().See("on its way").Body()
 	if !strings.Contains(form, email) {
 		t.Errorf("the reset form does not carry the address the code was sent to:\n%s", form)
 	}
@@ -131,7 +134,9 @@ func TestSomebodyArrivesAndEndsUpCommenting(t *testing.T) {
 	client.Post("/auth/password/update", map[string]string{
 		"email_code": resetCode, "email": email,
 		"password": changed, "password_confirmation": changed,
-	}).OK().See("has been changed")
+	}).
+		Status(http.StatusSeeOther).RedirectsTo("/auth/login")
+	client.Get("/auth/login").OK().See("has been changed")
 
 	// And the code is spent atomically. Its subject also carries the password
 	// fingerprint, so any password change invalidates every older code.
@@ -139,7 +144,9 @@ func TestSomebodyArrivesAndEndsUpCommenting(t *testing.T) {
 	client.Post("/auth/password/update", map[string]string{
 		"email_code": resetCode, "email": email,
 		"password": "a-third-password-entirely", "password_confirmation": "a-third-password-entirely",
-	}).Status(422).See("not valid")
+	}).
+		Status(http.StatusSeeOther).RedirectsTo("/auth/password/reset?email=" + email)
+	client.Get("/auth/password/reset?email=" + email).OK().See("not valid")
 
 	// 9. The new password works and the old one does not.
 	client.Get("/auth/login").OK()
@@ -153,7 +160,8 @@ func TestSomebodyArrivesAndEndsUpCommenting(t *testing.T) {
 
 	client.Get("/auth/login").OK()
 	client.Post("/auth/login", map[string]string{"email": email, "password": password}).
-		Status(401)
+		Status(http.StatusSeeOther).RedirectsTo("/auth/login")
+	client.Get("/auth/login").OK().See("invalid email or password")
 }
 
 // A reset ends every session of the account, and that is the point of having
@@ -172,7 +180,8 @@ func TestAPasswordResetEndsTheSessionsThatWereAlreadyOpen(t *testing.T) {
 	client.Get("/dashboard").OK()
 
 	client.Get("/auth/password").OK()
-	client.Post("/auth/password/email", map[string]string{"email": email}).OK()
+	client.Post("/auth/password/email", map[string]string{"email": email}).
+		Status(http.StatusSeeOther).RedirectsTo("/auth/password/reset")
 
 	sent, _ := box.Last()
 	code := emailCodePattern.FindString(sent.Text)
@@ -185,7 +194,9 @@ func TestAPasswordResetEndsTheSessionsThatWereAlreadyOpen(t *testing.T) {
 	client.Post("/auth/password/update", map[string]string{
 		"email_code": code, "email": email,
 		"password": changed, "password_confirmation": changed,
-	}).OK().See("has been changed")
+	}).
+		Status(http.StatusSeeOther).RedirectsTo("/auth/login")
+	client.Get("/auth/login").OK().See("has been changed")
 
 	res := client.Get("/dashboard")
 	res.Status(303)
@@ -222,7 +233,8 @@ func TestConfirmingWithTheRightPasswordIsAcceptedAndTheWrongOneIsNot(t *testing.
 
 	client.Get("/auth/password/confirm").OK()
 	client.Post("/auth/password/confirm", map[string]string{"password": "not-the-password"}).
-		Status(401).See("not the password")
+		Status(http.StatusSeeOther).RedirectsTo("/auth/password/confirm")
+	client.Get("/auth/password/confirm").OK().See("not the password")
 
 	client.Get("/auth/password/confirm").OK()
 	client.Post("/auth/password/confirm", map[string]string{"password": "a-password-that-passes"}).

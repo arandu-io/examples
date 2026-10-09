@@ -110,13 +110,8 @@ a place the repository says something it can no longer show.
   `-not -path '*/testdata/*'`. CI gives it with. It happens to pass either way
   today, which is why it has survived.
 
-Two things look stale and are not:
+One thing looks stale and is not:
 
-- **The 422 entry in `resources/views/layouts/app.kyse.go`'s `htmx-config`.**
-  It is for the sign-in screens the authentication kit published, which still
-  answer a refused code or password with a 422 fragment of their own form. The
-  blog's own forms never answer that way, and the layout says so. It leaves when
-  the kit's screens answer through the router.
 - **`CommentController`'s other six actions and the four `comments/` views.**
   `aru make:module` generated them and they compile, but `routes/web.go`
   registers only `Store`, under `posts.comments`, and says why: the thread hangs

@@ -2,6 +2,7 @@ package feature_test
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -36,12 +37,12 @@ func TestAResetCodeIsRefusedTheSecondTimeItIsUsed(t *testing.T) {
 	code := askForAResetCode(t, client, box, resetAccount)
 
 	const first = "a-completely-new-password"
-	submitReset(client, code, resetAccount, first).OK().See("has been changed")
+	passwordChanged(client, submitReset(client, code, resetAccount, first))
 	client.Get("/auth/password/reset?email=" + resetAccount).OK()
 
 	// The same code, a second time. Nothing about it has changed.
 	const second = "another-new-password-again"
-	body := submitReset(client, code, resetAccount, second).Status(422).Body()
+	body := refusedAt(client, submitReset(client, code, resetAccount, second), "/auth/password/reset?email="+resetAccount)
 	if !strings.Contains(body, "not valid") {
 		t.Errorf("a spent code was not refused as spent:\n%s", body)
 	}
@@ -49,7 +50,7 @@ func TestAResetCodeIsRefusedTheSecondTimeItIsUsed(t *testing.T) {
 	// And the refusal is real: the second password was never written.
 	client.Get("/auth/login").OK()
 	client.Post("/auth/login", map[string]string{"email": resetAccount, "password": second}).
-		Status(401)
+		Status(http.StatusSeeOther).RedirectsTo("/auth/login")
 	client.Get("/auth/login").OK()
 	client.Post("/auth/login", map[string]string{"email": resetAccount, "password": first}).
 		RedirectsTo("/")
@@ -81,7 +82,8 @@ func TestAResetCodeDiesWhenThePasswordChangesByAnyOtherRoute(t *testing.T) {
 		t.Fatalf("replacing the password out of band: %v", err)
 	}
 
-	body := submitReset(client, code, resetAccount, "a-password-from-the-code").Status(422).Body()
+	body := refusedAt(client, submitReset(client, code, resetAccount, "a-password-from-the-code"),
+		"/auth/password/reset?email="+resetAccount)
 	if !strings.Contains(body, "not valid") {
 		t.Errorf("a code minted against a password that has since been replaced was accepted:\n%s", body)
 	}
@@ -116,8 +118,8 @@ func TestAResetCodeIsRefusedAtAnAddressItWasNotMintedFor(t *testing.T) {
 
 	code := askForAResetCode(t, client, box, resetAccount)
 
-	body := submitReset(client, code, other, "a-password-for-the-wrong-one").
-		Status(422).Body()
+	body := refusedAt(client, submitReset(client, code, other, "a-password-for-the-wrong-one"),
+		"/auth/password/reset?email="+resetAccount)
 	if !strings.Contains(body, "not valid") {
 		t.Errorf("a code minted for one address was accepted at another:\n%s", body)
 	}
@@ -127,7 +129,7 @@ func TestAResetCodeIsRefusedAtAnAddressItWasNotMintedFor(t *testing.T) {
 	client.Get("/auth/login").OK()
 	client.Post("/auth/login", map[string]string{
 		"email": other, "password": "a-password-for-the-wrong-one",
-	}).Status(401)
+	}).Status(http.StatusSeeOther).RedirectsTo("/auth/login")
 	client.Get("/auth/login").OK()
 	client.Post("/auth/login", map[string]string{
 		"email": other, "password": "a-password-that-passes",
@@ -178,7 +180,7 @@ func TestNoAuthenticationTokenTableIsCreatedForResetCodes(t *testing.T) {
 	}
 
 	// And the cache-backed code works without an application token table.
-	submitReset(client, code, resetAccount, "a-completely-new-password").OK().See("has been changed")
+	passwordChanged(client, submitReset(client, code, resetAccount, "a-completely-new-password"))
 }
 
 // askForAResetCode walks the form and returns the code out of the message.
@@ -191,7 +193,11 @@ func askForAResetCode(t *testing.T, client *arandutest.Client, box *mail.Array, 
 	t.Helper()
 
 	client.Get("/auth/password").OK()
-	client.Post("/auth/password/email", map[string]string{"email": email}).OK()
+	// The answer is a redirect to the next screen, not that screen drawn at the
+	// address the form posted to: a reload of what follows asks for the reset
+	// form instead of mailing another code.
+	client.Post("/auth/password/email", map[string]string{"email": email}).
+		Status(http.StatusSeeOther).RedirectsTo("/auth/password/reset")
 
 	sent, ok := box.Last()
 	if !ok {
@@ -212,4 +218,19 @@ func submitReset(client *arandutest.Client, code, email, password string) *arand
 		"email_code": code, "email": email,
 		"password": password, "password_confirmation": password,
 	})
+}
+
+// passwordChanged requires res to be an accepted reset: a redirect to the
+// sign-in screen, which then says the password changed.
+func passwordChanged(client *arandutest.Client, res *arandutest.Response) {
+	res.Status(http.StatusSeeOther).RedirectsTo("/auth/login")
+	client.Get("/auth/login").OK().See("has been changed")
+}
+
+// refusedAt requires res to be a rejected form sent back to the page it was
+// posted from, and answers that page as the browser draws it next: with the
+// messages the router left in the flash.
+func refusedAt(client *arandutest.Client, res *arandutest.Response, form string) string {
+	res.Status(http.StatusSeeOther).RedirectsTo(form)
+	return client.Get(form).OK().Body()
 }
