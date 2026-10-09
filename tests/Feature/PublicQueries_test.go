@@ -213,29 +213,6 @@ func TestACommentCannotTargetAnotherTenantsPost(t *testing.T) {
 	}
 }
 
-// TestACommentCannotBeMovedToAnotherTenantsPost applies the same relationship
-// boundary to updates.
-//
-// The moderator is fully authorized to edit this tenant's comment; the failure
-// must therefore come from the target post being outside the Grant's tenant,
-// not from a route guard or a missing write permission.
-func TestACommentCannotBeMovedToAnotherTenantsPost(t *testing.T) {
-	db := migratedDB(t)
-	ctx := context.Background()
-	scopedFixture(t, db)
-
-	actor := auth.Subject{
-		ID: "admin", Tenant: bootstrap.Tenant(), Roles: []string{"admin"}, Verified: true,
-	}
-	svc := services.NewCommentService(repositories.NewCommentRepository(db))
-	_, err := svc.Update(ctx, actor, requests.UpdateComment{
-		ID: ourComment, PostId: theirPost, Author: "u1", Body: "Moved.", Approved: true,
-	})
-	if !errors.Is(err, models.ErrPostNotFound) {
-		t.Fatalf("moving a comment under another tenant's post returned %v, want ErrPostNotFound", err)
-	}
-}
-
 // TestUpdatingAnUnknownCommentStillReportsTheComment preserves the repository
 // contract after the relationship predicate was added.
 //

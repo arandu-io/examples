@@ -28,9 +28,9 @@ func NewCommentService(repo *repositories.CommentRepository) *CommentService {
 // Create normalizes protected fields, then walks the mandatory path: validate,
 // Authorize, Grant, Repository. There is no other order that compiles.
 func (s *CommentService) Create(ctx context.Context, actor auth.Subject, in requests.StoreComment) (models.Comment, error) {
-	// Protected fields are normalized before validation. A browser form should
-	// not have to submit an author merely because UpdateComment shares this
-	// validation shape, and a submitted value must never choose the answer.
+	// Protected fields are normalized before validation. A browser form does
+	// not submit an author, and a value that is submitted must never choose the
+	// answer.
 	in.Author = actor.ID
 	in.Approved = false
 	if errs := in.Validate(); errs.Any() {
@@ -129,9 +129,12 @@ func (s *CommentService) PublicForPost(ctx context.Context, actor auth.Subject, 
 
 // Approve makes a comment public.
 //
-// It is a separate action from Update because it is a separate permission: the
-// author may correct their own words and only an administrator may publish
-// them, and one method taking a boolean would put both behind one policy check.
+// It reads the stored row through Get before writing, so the policy decides
+// against the row as it is stored rather than against what a client claims it
+// is, and then asks for CommentUpdate on that row, which only a moderator
+// holds. Approval is the one change a comment undergoes after it is written:
+// the thread hangs off the post, and nothing here edits a comment's words or
+// moves it to another post.
 func (s *CommentService) Approve(ctx context.Context, actor auth.Subject, id string) (models.Comment, error) {
 	found, err := s.Get(ctx, actor, id)
 	if err != nil {
@@ -145,36 +148,6 @@ func (s *CommentService) Approve(ctx context.Context, actor auth.Subject, id str
 
 	found.Approved = true
 	return s.repo.Update(ctx, g, found)
-}
-
-// Update changes the mutable fields.
-//
-// It reads before writing, so the policy decides against the stored row rather
-// than against what the client claims the row is. Skipping this is how a check
-// passes on attacker-supplied data.
-func (s *CommentService) Update(ctx context.Context, actor auth.Subject, in requests.UpdateComment) (models.Comment, error) {
-	if errs := in.Validate(); errs.Any() {
-		return models.Comment{}, errs
-	}
-
-	view, err := auth.Authorize(ctx, s.policy, actor, policies.CommentView, models.Comment{})
-	if err != nil {
-		return models.Comment{}, err
-	}
-	stored, err := s.repo.Find(ctx, view, in.ID)
-	if err != nil {
-		return models.Comment{}, err
-	}
-
-	g, err := auth.Authorize(ctx, s.policy, actor, policies.CommentUpdate, stored)
-	if err != nil {
-		return models.Comment{}, err
-	}
-	stored.PostId = in.PostId
-	stored.Author = in.Author
-	stored.Body = in.Body
-	stored.Approved = in.Approved
-	return s.repo.Update(ctx, g, stored)
 }
 
 // Delete removes a comment.

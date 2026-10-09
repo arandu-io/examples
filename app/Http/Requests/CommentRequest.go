@@ -31,29 +31,5 @@ func (r StoreComment) Validate() validation.Errors {
 	return e
 }
 
-// UpdateComment carries the id as well, and the same rules.
-type UpdateComment struct {
-	ID       string
-	PostId   string
-	Author   string
-	Body     string
-	Approved bool
-}
-
-// Validate reports the errors per field.
-func (r UpdateComment) Validate() validation.Errors {
-	e := StoreComment{
-		PostId:   r.PostId,
-		Author:   r.Author,
-		Body:     r.Body,
-		Approved: r.Approved,
-	}.Validate()
-	validation.Required(e, "id", r.ID)
-	return e
-}
-
-// Compile-time proof that both requests honor the validation contract.
-var (
-	_ validation.Validatable = StoreComment{}
-	_ validation.Validatable = UpdateComment{}
-)
+// Compile-time proof that the request honors the validation contract.
+var _ validation.Validatable = StoreComment{}
