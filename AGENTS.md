@@ -106,14 +106,14 @@ with PostgreSQL at the closed address `127.0.0.1:1`, without connecting.
 | `routes/web.go`, `routes/admin.go` | 61 registered routes across four modules, 32 of them this application's |
 | `bootstrap/app.go` | the whole wiring, top to bottom, in one function |
 | `database/migrations/`, `database/seeders/` | ten migrations and seven seeders, plus one registry file in each directory |
-| `tests/`, `app/Http/Controllers/Auth/redaction_internal_test.go` | 52 files, 205 test functions — 51 files and 204 functions in the mirrored tree, plus one colocated internal test |
+| `tests/`, `app/Http/Controllers/Auth/redaction_internal_test.go` | 53 files, 209 test functions — 52 files and 208 functions in the mirrored tree, plus one colocated internal test |
 
 Counted with:
 
 ```sh
 find resources/views -name '*.kyse.go' | wc -l                      # 29
-git ls-files '*_test.go' | wc -l                                    # 52
-grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l  # 205
+git ls-files '*_test.go' | wc -l                                    # 53
+grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l  # 209
 git ls-files 'app/Policies/*.go' | wc -l                             # 7
 rg '^type .*Policy struct' app/Policies/*.go | wc -l                  # 8
 GOWORK=off go run . routes | grep -cE '^  (GET|POST|PUT|PATCH|DELETE)'  # 61
@@ -179,7 +179,7 @@ Three consequences:
 - A number written in prose — in `README.md`, in a comment, in this file — is a
   measurement. Re-run the command before trusting it, and fix every copy
   together. `tests/test-layout-guard.sh` states two of them in its own comments
-  ("Fifty-one test files sit under the capitalised categories in tests/", "The
+  ("Fifty-two test files sit under the capitalised categories in tests/", "The
   29 files under resources/views") and both are currently right.
 
 ## Writing code

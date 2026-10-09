@@ -41,6 +41,16 @@ refused at boot with `invalid APP_ENV: "production" (expected dev, staging or
 prod)`, which is the kind of mistake worth making on a laptop rather than in a
 deploy.
 
+A sign-in lasts `SESSION_LIFETIME`, in minutes, read by the framework.
+`.env.example` writes 720, twelve hours; the SQLite lines above write nothing,
+so a sign-in there lasts the framework's default of two hours. Measured on the
+cookie a sign-in sets: `Max-Age=43200` from the copied `.env`, `Max-Age=1800`
+with `SESSION_LIFETIME=30`. An `.env` copied from an older `.env.example` stops
+the boot at the line that wrote the lifetime in seconds, and the message gives
+the minutes to write instead. The cookie's path, domain and SameSite are not
+settings: the store writes it on `/`, for the host that answered, with
+`SameSite=Lax`, and a variable asking for anything else stops the boot too.
+
 `go run .` and `aru` reach the same code: `bootstrap.Dispatch` is the entry
 point either way, so a command is never a second, subtly different program.
 
@@ -72,7 +82,7 @@ see a refusal rather than reading about one.
 
 ## What answers, and where
 
-Measured against the booted application with `framework v0.53.0`, asking for
+Measured against the booted application with `framework v0.55.0`, asking for
 HTML. The status depends on `APP_ENV`, and that is the point of two of these:
 
 | path | prod | dev |

@@ -21,7 +21,7 @@ export GOWORK=off
 go list -m -f '{{if not .Indirect}}{{.Path}} {{.Version}}{{end}}' all | grep -v '^$'
 ```
 
-Today that is `framework v0.53.0`, `hesape v0.50.3`, the `pgx` and `sqlite`
+Today that is `framework v0.55.0`, `hesape v0.52.0`, the `pgx` and `sqlite`
 connectors at `v0.11.0`, `joaju v0.7.2` and `kyse v0.30.0`.
 
 **2. Bump one at a time and run the gates between.** A single `go get -u` across
@@ -66,10 +66,10 @@ in `README.md`, in `AGENTS.md`, in this directory, and in the comments of
 
 ```sh
 find resources/views -name '*.kyse.go' | wc -l                            # 29
-find . -name '*_test.go' -not -path './storage/*' | wc -l                 # 52
-grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l      # 205
-find . -name '*.go' -not -path './storage/*' -not -name '*_test.go' -exec cat {} + | wc -l   # 17079
-find . -name '*_test.go' -not -path './storage/*' -exec cat {} + | wc -l  # 10195
+find . -name '*_test.go' -not -path './storage/*' | wc -l                 # 53
+grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l      # 209
+find . -name '*.go' -not -path './storage/*' -not -name '*_test.go' -exec cat {} + | wc -l   # 17073
+find . -name '*_test.go' -not -path './storage/*' -exec cat {} + | wc -l  # 10365
 ls app/Policies | wc -l                                                   # 7
 grep -E '^type .*Policy struct' app/Policies/*.go | wc -l                 # 8
 ```
@@ -84,8 +84,8 @@ ARANDU_TENANT_ID=11111111-1111-4111-8111-111111111111 \
 GOWORK=off go run . routes | grep -cE '^  (GET|POST|PUT|PATCH|DELETE)'     # 61
 ```
 
-The README's figures were checked against these: 17,079 lines of production
-code, 10,195 of test, 52 test files and eight policies in seven files.
+The README's figures were checked against these: 17,073 lines of production
+code, 10,365 of test, 53 test files and eight policies in seven files.
 
 ## What is currently stale
 
