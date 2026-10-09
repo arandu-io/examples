@@ -37,11 +37,11 @@ aru doctor && bash tests/test-layout-guard.sh
 and the doctor move with the framework, and a stale binary fails in a way that
 reads like a bug in this tree. This tree was last measured with `aru` v0.69.2,
 and `go run github.com/arandu-io/aru@v0.69.2 doctor` runs that version without
-touching the one installed. A build by `go install` or `go run` reports its
-version as `dev`, so the version is the one you named, not what `aru --version`
-prints. Three files name it and move together: `.github/workflows/ci.yml`,
-`arandu.toml` and the Dockerfile, and `TestBuildEntrypointsUseTheReleasedCLI`
-fails when one of them is left behind.
+touching the one installed. A build by `go install` or `go run` at a tag
+reports that tag, so `aru --version` answers which one you have. Three files
+name it and move together: `.github/workflows/ci.yml`, `arandu.toml` and the
+Dockerfile, and `TestBuildEntrypointsUseTheReleasedCLI` fails when one of them
+is left behind.
 
 **4. Read what the doctor says about imports.** A framework release can move a
 symbol from its bridge packages to hesape. `aru doctor` names each file that

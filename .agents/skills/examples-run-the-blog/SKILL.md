@@ -121,8 +121,8 @@ question, which is correct and is not what the guard is for.
 generator`.** Your `aru` is older than this tree. Run the version it was
 measured with, `go run github.com/arandu-io/aru@v0.69.2 view:build`, rather
 than working around the message — it is telling the truth about the generator
-it has. A binary built by `go install` or `go run` reports its version as
-`dev`, so name the version rather than asking `aru --version`.
+it has. `aru --version` says which one you have: a binary built by
+`go install` or `go run` at a tag reports that tag.
 
 **3. A CSRF failure on a form you posted by hand.** The hidden field is
 `_token`, and the token is bound to the cookie the form page set. Read it out
