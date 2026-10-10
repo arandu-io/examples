@@ -281,9 +281,9 @@ func Build(cfg appconfig.Config, db *database.DB) (App, error) {
 
 	deps := routes.Deps{
 		Home:     controllers.NewHomeController(cfg.App.Name, userService, cfg.Auth.Tenant),
-		Post:     controllers.NewPostController(postService, commentService, categoryService, userService, cfg.App.Name, cfg.App.URL, cfg.Auth.Tenant),
+		Post:     controllers.NewPostController(postService, commentService, categoryService, userService, cfg.App.URL, cfg.Auth.Tenant),
 		Comment:  controllers.NewCommentController(commentService),
-		Category: controllers.NewCategoryController(categoryService, cfg.App.Name, userService, cfg.Auth.Tenant),
+		Category: controllers.NewCategoryController(categoryService, userService, cfg.Auth.Tenant),
 		Admin:    controllers.NewAdminController(postService, commentService),
 		// The operator's screen, and the socket server it reads. The screen is
 		// given the registry rather than the server's counter: it draws what was

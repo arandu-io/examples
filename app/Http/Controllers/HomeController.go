@@ -17,7 +17,9 @@ type HomeController struct {
 
 	// appName is what the page is titled. It arrives through the constructor
 	// rather than through a global read: a controller that reads the
-	// environment is a controller no test can pin.
+	// environment is a controller no test can pin. The brand is not drawn from
+	// it: the framework puts the name on the request, and the header reads it
+	// there.
 	appName string
 
 	// people and tenant are how the id in a session becomes a name to greet.
@@ -78,7 +80,7 @@ func (c *HomeController) Index(ctx *hhttp.Context) error {
 	// for somebody the policy would let in, the moderation queue. It resolves
 	// the name through the same application-owned service the kit uses, so this
 	// page and the other screens greet the same person the same way.
-	page := navigation{appName: c.appName, people: c.people, tenant: c.tenant}.
+	page := navigation{people: c.people, tenant: c.tenant}.
 		page(ctx, subject, signedIn, token, c.appName)
 
 	return ctx.View("home", authui.AuthPage{

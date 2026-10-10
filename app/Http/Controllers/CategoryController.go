@@ -38,10 +38,10 @@ type CategoryController struct {
 // It takes no session store. Every route it answers sits behind RequireAuth in
 // routes/web.go, which puts who is asking on the request, and guarded reads it
 // there. Nor does it issue the CSRF token: csrfToken reads the one CSRFProtect
-// put on the request.
-func NewCategoryController(svc *services.CategoryService, appName string, people UserNames, tenant string) *CategoryController {
+// put on the request, and the header reads the application name from there too.
+func NewCategoryController(svc *services.CategoryService, people UserNames, tenant string) *CategoryController {
 	return &CategoryController{svc: svc,
-		nav: navigation{appName: appName, people: people, tenant: tenant}}
+		nav: navigation{people: people, tenant: tenant}}
 }
 
 // Compile-time proof of the seven actions fhttp.Router.Resource looks for. It

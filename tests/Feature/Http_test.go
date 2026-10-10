@@ -27,6 +27,7 @@ import (
 // at a connection that does not exist, so a page that reads one would assert
 // only that the error page renders.
 func TestTheLandingPageRenders(t *testing.T) {
+	t.Setenv("APP_NAME", configuredName)
 	client, _ := tests.App(t)
 
 	body := client.Get("/").OK().Body()
@@ -40,13 +41,15 @@ func TestTheLandingPageRenders(t *testing.T) {
 	// layout and the controller -- so this would fail in every project that
 	// published the kit, for something the person did not break.
 	//
-	// The app name survives the swap because both controllers pass it. APP_NAME
-	// is not set by tests.App, so the configuration default is what the
-	// controller was handed. What is proved here is that the value travelled -- a
-	// weaker assertion, that the body is not empty, would pass with the error
-	// page.
-	if !strings.Contains(body, "og:site_name") {
-		t.Error("the application name the controller was given did not reach the page")
+	// The name survives the swap because it is the configuration's on both sides
+	// of it: this tree's header reads the APP_NAME the framework put on the
+	// request, and the kit's controller is handed the same value. It is read out
+	// of the og:site_name slot, and set to a value nothing else could have
+	// written: the tag itself is in the layout whatever it holds, and this page
+	// is titled with the name, so finding either anywhere in the body would
+	// pass with the brand left blank.
+	if got := slot(siteName, body); got != configuredName {
+		t.Errorf("og:site_name is %q, want the configured APP_NAME %q", got, configuredName)
 	}
 	// The stylesheet and the scripts are embedded and content-addressed. A page
 	// that asks for them by a plain name gets a 404 and no styling.

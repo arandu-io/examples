@@ -26,11 +26,14 @@ type UserNames interface {
 //
 // It is a value each controller holds rather than something on the base
 // Controller: that type carries no dependencies on purpose, and the header needs
-// three. Injected, it stays as testable as the controller around it.
+// two. Injected, it stays as testable as the controller around it.
+//
+// The brand is not one of them. The application's name is the same on every
+// request, so the framework puts APP_NAME on the request context before any
+// route runs, and page reads it there -- the way csrfToken reads the token. A
+// name handed in through every constructor was a second road to the same
+// string, and the one a new controller would forget.
 type navigation struct {
-	// appName is the brand in the corner and the suffix of every title.
-	appName string
-
 	// people resolves the signed-in id into a name. The session carries an id,
 	// deliberately -- a name in a session is a name that stays wrong after
 	// somebody changes it.
@@ -56,7 +59,7 @@ type navigation struct {
 // know about: this application's own areas.
 func (n navigation) page(ctx *hhttp.Context, actor auth.Subject, signedIn bool, token, title string) view.Page {
 	page := authui.Chrome(authui.ChromeProps{
-		AppName:       n.appName,
+		AppName:       hhttp.AppNameFrom(ctx.Ctx()),
 		Title:         title,
 		Path:          ctx.Request.URL.Path,
 		Token:         token,

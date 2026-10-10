@@ -42,13 +42,11 @@ type PostController struct {
 	// nav draws the header, the same way on every screen. See chrome.go.
 	nav navigation
 
-	// appName is the brand in the navigation bar and the og:site_name, and base
-	// is the origin a canonical URL is absolute against. Both come from the
+	// base is the origin a canonical URL is absolute against. It comes from the
 	// configuration through the constructor: a canonical built from the Host
 	// header is one the client chose, which is how the same page ends up
 	// declaring two different canonicals to a crawler.
-	appName string
-	base    string
+	base string
 	// tenant is what a guest reads under. It is the application's, from
 	// configuration, and never from the request.
 	tenant string
@@ -62,12 +60,12 @@ type PostController struct {
 // routes/web.go -- and read here with ctx.User(), so this controller is not a
 // second place that loads a session and decides what an expired one answers.
 // Nor does it issue the CSRF token: csrfToken reads the one CSRFProtect put on
-// the request.
-func NewPostController(svc *services.PostService, comments *services.CommentService, categories *services.CategoryService, people UserNames, appName, base, tenant string) *PostController {
+// the request, and the header reads the application name from there too.
+func NewPostController(svc *services.PostService, comments *services.CommentService, categories *services.CategoryService, people UserNames, base, tenant string) *PostController {
 	return &PostController{
 		svc: svc, comments: comments, categories: categories, people: people,
-		appName: appName, base: base, tenant: tenant,
-		nav: navigation{appName: appName, people: people, tenant: tenant},
+		base: base, tenant: tenant,
+		nav: navigation{people: people, tenant: tenant},
 	}
 }
 
