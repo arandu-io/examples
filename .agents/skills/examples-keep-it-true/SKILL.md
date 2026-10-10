@@ -66,10 +66,10 @@ in `README.md`, in `AGENTS.md`, in this directory, and in the comments of
 
 ```sh
 find resources/views -name '*.kyse.go' | wc -l                            # 29
-find . -name '*_test.go' -not -path './storage/*' | wc -l                 # 53
-grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l      # 209
+find . -name '*_test.go' -not -path './storage/*' | wc -l                 # 54
+grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l      # 211
 find . -name '*.go' -not -path './storage/*' -not -name '*_test.go' -exec cat {} + | wc -l   # 17073
-find . -name '*_test.go' -not -path './storage/*' -exec cat {} + | wc -l  # 10365
+find . -name '*_test.go' -not -path './storage/*' -exec cat {} + | wc -l  # 10643
 ls app/Policies | wc -l                                                   # 7
 grep -E '^type .*Policy struct' app/Policies/*.go | wc -l                 # 8
 ```
@@ -85,7 +85,7 @@ GOWORK=off go run . routes | grep -cE '^  (GET|POST|PUT|PATCH|DELETE)'     # 61
 ```
 
 The README's figures were checked against these: 17,073 lines of production
-code, 10,365 of test, 53 test files and eight policies in seven files.
+code, 10,643 of test, 54 test files and eight policies in seven files.
 
 ## What is currently stale
 

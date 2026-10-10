@@ -94,7 +94,7 @@ fi
 # 2. A test outside tests/ has to need an unexported identifier, and says so in
 #    its name. Anything else belongs in a category.
 #
-#    Fifty-two test files sit under the capitalised categories in tests/. The
+#    Fifty-three test files sit under the capitalised categories in tests/. The
 #    only colocated test is app/Http/Controllers/Auth/redaction_internal_test.go,
 #    which needs unexported redaction helpers and names that exception. The check
 #    is what prevents an unrelated test from starting a second layout in app/.
