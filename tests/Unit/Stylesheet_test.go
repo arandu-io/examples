@@ -47,6 +47,10 @@ func TestTheStylesheetCarriesTheClassesTheMarkupRenders(t *testing.T) {
 			"a short page stops at its content and the footer floats halfway up the window"},
 		{".text-right", "every number in a components.StatCard, on admin/sockets",
 			"the counts sit against the left edge under headings that are right-aligned, so no column lines up with the one above it"},
+		{".input-group>:is(input,textarea,select,[data-control])", "the box inside every components.Password, on sign-in, registration, confirmation and reset",
+			"the box keeps its own border inside the group, so it and the button that shows it are two loose boxes rather than one control"},
+		{".password-panel", "the requirement checklist of components.Password",
+			"the checklist opens in the flow under the box and pushes the rest of the form down on the first keystroke"},
 	} {
 		if !strings.Contains(stylesheet, want.class) {
 			t.Errorf("%s is not in the compiled stylesheet, and it is what draws %s: %s.\nRun `aru view:build`, and if that does not put it there, the file it is written in is not one the stylesheet declares as a source.",
