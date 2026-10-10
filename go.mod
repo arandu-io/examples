@@ -3,15 +3,15 @@ module github.com/arandu-io/examples
 go 1.26.0
 
 require (
-	github.com/arandu-io/framework v0.55.1
-	github.com/arandu-io/hesape v0.52.0
+	github.com/arandu-io/framework v0.56.0
+	github.com/arandu-io/hesape v0.54.0
 	github.com/arandu-io/hesape/database/connectors/pgx v0.11.0
 	github.com/arandu-io/hesape/database/connectors/sqlite v0.11.0
-	github.com/arandu-io/joaju v0.7.3
+	github.com/arandu-io/joaju v0.7.4
 )
 
 require (
-	github.com/arandu-io/kyse v0.33.0
+	github.com/arandu-io/kyse v0.34.1
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
