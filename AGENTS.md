@@ -76,13 +76,14 @@ they are put back by hand afterwards:
 - Every code field -- `email_code` on the verify and reset screens,
   `authenticator_code` on the challenge and setup screens -- is a plain
   `components.Field` with `Autocomplete: "one-time-code"`, not the kit's
-  `components.OneTimeCode`. The reason this started -- that component not
-  writing the field's message -- went with kyse v0.31.0; two others stay. Its
-  squares carry no name and the code submits through a hidden input that
-  `ui.js` fills as each square is typed, so without the script the form sends
-  an empty code. And `resources/css/basecoat/components.css` does not import
-  `one-time-code.css`, which holds the rules for `otp` and `otp-square`, so the
-  squares would draw as default text inputs of default width.
+  `components.OneTimeCode`. Of the three reasons this had, one stays. That
+  component not writing the field's message went with kyse v0.31.0, and its
+  code not reaching the server without `ui.js` went with kyse v0.34.0, which
+  draws a visible input carrying the field's name and leaves the squares
+  hidden until the script shows them. But `resources/css/basecoat/components.css`
+  does not import `one-time-code.css`, which holds the rules for `otp` and
+  `otp-square`, so once the script showed them the squares would draw as
+  default text inputs of default width.
 - `HomeController`'s comment names the guard this application mounts it
   behind: `RequireAuth` on `/dashboard`.
 
@@ -111,14 +112,14 @@ with PostgreSQL at the closed address `127.0.0.1:1`, without connecting.
 | `routes/web.go`, `routes/admin.go` | 61 registered routes across four modules, 32 of them this application's |
 | `bootstrap/app.go` | the whole wiring, top to bottom, in one function |
 | `database/migrations/`, `database/seeders/` | ten migrations and seven seeders, plus one registry file in each directory |
-| `tests/`, `app/Http/Controllers/Auth/redaction_internal_test.go` | 54 files, 211 test functions — 53 files and 210 functions in the mirrored tree, plus one colocated internal test |
+| `tests/`, `app/Http/Controllers/Auth/redaction_internal_test.go` | 55 files, 212 test functions — 54 files and 211 functions in the mirrored tree, plus one colocated internal test |
 
 Counted with:
 
 ```sh
 find resources/views -name '*.kyse.go' | wc -l                      # 29
-git ls-files '*_test.go' | wc -l                                    # 54
-grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l  # 211
+git ls-files '*_test.go' | wc -l                                    # 55
+grep -rhoE '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | wc -l  # 212
 git ls-files 'app/Policies/*.go' | wc -l                             # 7
 rg '^type .*Policy struct' app/Policies/*.go | wc -l                  # 8
 GOWORK=off go run . routes | grep -cE '^  (GET|POST|PUT|PATCH|DELETE)'  # 61
@@ -184,7 +185,7 @@ Three consequences:
 - A number written in prose — in `README.md`, in a comment, in this file — is a
   measurement. Re-run the command before trusting it, and fix every copy
   together. `tests/test-layout-guard.sh` states two of them in its own comments
-  ("Fifty-three test files sit under the capitalised categories in tests/", "The
+  ("Fifty-four test files sit under the capitalised categories in tests/", "The
   29 files under resources/views") and both are currently right.
 
 ## Writing code
